@@ -58,7 +58,7 @@ void loop()
 
 	// dbT is the absolute time of the start of the current pulse.
 	// if now is at least pulseLen millis beyond the previous beat, advance the beat
-  if (nowTime > (downbeatTime + pulseLen)) {  // TODO: handle clock wrap
+  if (nowTime > (downbeatTime + pulseLen)) {  
     downbeatTime += measureLen;
 	}
 
@@ -72,14 +72,14 @@ void loop()
 			// (dbT is greater than nowTime, but by less than mL/2))
 			// or if we're in the midst of a pulse (dbT is less than nT)
 			// ((dbT - (mL/2)) < nT < dbT)
-				// Advance time -- shift downbeat to NOW!
+				// Advance downbeat to NOW!
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
-				// so Retard time: shift the downbeat to now plus measureLen
+				// Retard downbeat to now + measureLen
 
+			// solved for simplicity:
+			downbeatTime = nowTime;
 			if (downbeatTime > (nowTime + (measureLen/2))) {
-				downbeatTime = nowTime + measureLen;
-			} else {
-				downbeatTime = nowTime;
+				downbeatTime += measureLen;
 			}
 
 			if (++tapCount > 1) {
