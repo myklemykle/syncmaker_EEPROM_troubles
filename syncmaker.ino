@@ -45,28 +45,47 @@ void setup()
 	btn1.interval(debounceLen);
 	btn2.attach(button2Pin);
 	btn2.interval(debounceLen);
+
+	downbeatTime = millis(); // now!
 }
 
 void loop()
 {
-  unsigned long nowTime = millis();
+  unsigned long nowTime = millis(); 
 
 	btn1.update();
 	btn2.update();
 
-  while(nowTime - downbeatTime > (measureLen / pPM)) {
-    //downbeatTime += measureLen;
+	// dbT is the absolute time of the start of the current pulse.
+	// if now is at least pulseLen millis beyond the previous beat, advance the beat
+  if (nowTime > (downbeatTime + pulseLen)) {  // TODO: handle clock wrap
     downbeatTime += (measureLen / pPM);
 	}
 
 	if (ARMED(btn1, btn2)) {
 		newLed2State = HIGH;
 		if (TAP(btn1, btn2)) { 
-			// Shift the downbeat to NOW!
-			downbeatTime = nowTime;
+
+			// Adjust position of downbeat based on tap:
+
+			// If the next beat is closer than the previous beat
+			// (dbT is greater than nowTime, but by less than mL/2))
+			// or if we're in the midst of a pulse (dbT is less than nT)
+			// ((dbT - (mL/2)) < nT < dbT)
+				// Advance time -- shift downbeat to NOW!
+			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
+				// so Retard time: shift the downbeat to now plus 1 beat (measureLen/pPM)
+
+			if (downbeatTime > (nowTime + (measureLen/(2*pPM)))) {
+				downbeatTime = nowTime + (measureLen/pPM);
+			} else {
+				downbeatTime = nowTime;
+			}
+
 			if (++tapCount > 1) {
-				// Set the measure length to the time between taps
+				// Also adjust the measure length to the time between taps
 				measureLen = nowTime - lastTapTime;
+				// TODO: make sure measureLen is greater than pulseLen!
 			}
 			lastTapTime = nowTime;
 		} else {
