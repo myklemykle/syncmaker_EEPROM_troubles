@@ -76,7 +76,8 @@ void loop()
     imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
 		// absolute amplitude of 3d vector
 		inertia = sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)); // maybe the sqrt can be left out?
-		Serial.println(inertia);
+		if (inertia > 2.0) 
+			Serial.println(inertia);
 	}
 
 	// dbT is the absolute time of the start of the current pulse.
@@ -108,19 +109,26 @@ void loop()
 			if (++tapCount > 1) {
 				// Also adjust the measure length to the time between taps:
 				tapInterval = nowTime - lastTapTime;
+
 				// if tapInterval is closer to mL*2 than to mL, 
+				// assume we are tapping half-time (1/4 notes)
 				if (tapInterval > (1.5 * measureLen)) {
-					// assume we are tapping half-time (1/4 notes)
-					measureLen = tapInterval / 2;
-				} else {
-					// Othwerwise assume full time (1/8 notes)
-					measureLen = tapInterval;
+					tapInterval /= 2;
 				}
+				// Othwerwise assume full time (1/8 notes)
+
+				// Compute a running average over 2 or 3 intervals if available:
+				if (tapCount > 4) tapCount = 4;
+				measureLen = ( ((tapCount - 2) * measureLen ) + tapInterval) / (tapCount -1) ;
+
 				// but there has to be a minimum meaure length.
 				if (measureLen < (pulseLen * 2)) {
 					measureLen = pulseLen * 2;
 				}
+			} else {
+				tapInterval = 0;
 			}
+
 			lastTapTime = nowTime;
 
 		} else {
