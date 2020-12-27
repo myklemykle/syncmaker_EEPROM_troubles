@@ -1,4 +1,9 @@
 #include "Bounce2.h"
+#include <NXPMotionSense.h>
+#include <Wire.h>
+#include <EEPROM.h>
+
+NXPMotionSense imu;
 
 // set pin numbers:
 const int button1Pin = 2;     // the number of the pushbutton pin
@@ -35,6 +40,9 @@ Bounce btn2 = Bounce();
 
 void setup()
 {
+  Serial.begin(115200);
+  imu.begin();
+
 	// pins!
   pinMode(led1Pin, OUTPUT);       // LED
   pinMode(led2Pin, OUTPUT);       // LED
@@ -51,11 +59,25 @@ void setup()
 
 void loop()
 {
+	float ax, ay, az;
+  float gx, gy, gz;
+  float mx, my, mz;
+	float inertia = 0;
+
+	// look at the clock
   unsigned long nowTime = millis(); 
 	unsigned long tapInterval = 0; // could be fewer bits?
 
 	btn1.update();
 	btn2.update();
+
+	if (imu.available()) {
+    // Read the motion sensors
+    imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
+		// absolute amplitude of 3d vector
+		inertia = sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)); // maybe the sqrt can be left out?
+		Serial.println(inertia);
+	}
 
 	// dbT is the absolute time of the start of the current pulse.
 	// if now is at least pulseLen millis beyond the previous beat, advance the beat
