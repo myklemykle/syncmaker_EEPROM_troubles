@@ -93,13 +93,17 @@ void loop()
 					// Othwerwise assume full time (1/8 notes)
 					measureLen = tapInterval;
 				}
-
-				// TODO: enforce some minimum measureLen greater than pulseLen
+				// but there has to be a minimum meaure length.
+				if (measureLen < (pulseLen * 2)) {
+					measureLen = pulseLen * 2;
+				}
 			}
 			lastTapTime = nowTime;
+
 		} else {
 			// armed but not tapping ...
 		}
+
 	} else {
 		// not armed.
 		tapCount = 0;
