@@ -9,7 +9,6 @@ const int pulsePin = 14; 			// sending PO/Korg sync on this pin.
 const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
-const int pPM = 2; // pulses per measure
 
 // vars
 bool led1State = LOW, newLed1State = LOW;
@@ -21,7 +20,7 @@ long lastTapTime = 0;
 
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
-unsigned long measureLen = 500; 	// default MS for 120bpm (1 beat per half/second)
+unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
 unsigned int tapCount = 0;
 
 // Objects:
@@ -52,6 +51,7 @@ void setup()
 void loop()
 {
   unsigned long nowTime = millis(); 
+	unsigned long tapInterval = 0; // could be fewer bits?
 
 	btn1.update();
 	btn2.update();
@@ -59,7 +59,7 @@ void loop()
 	// dbT is the absolute time of the start of the current pulse.
 	// if now is at least pulseLen millis beyond the previous beat, advance the beat
   if (nowTime > (downbeatTime + pulseLen)) {  // TODO: handle clock wrap
-    downbeatTime += (measureLen / pPM);
+    downbeatTime += measureLen;
 	}
 
 	if (ARMED(btn1, btn2)) {
@@ -74,18 +74,27 @@ void loop()
 			// ((dbT - (mL/2)) < nT < dbT)
 				// Advance time -- shift downbeat to NOW!
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
-				// so Retard time: shift the downbeat to now plus 1 beat (measureLen/pPM)
+				// so Retard time: shift the downbeat to now plus measureLen
 
-			if (downbeatTime > (nowTime + (measureLen/(2*pPM)))) {
-				downbeatTime = nowTime + (measureLen/pPM);
+			if (downbeatTime > (nowTime + (measureLen/2))) {
+				downbeatTime = nowTime + measureLen;
 			} else {
 				downbeatTime = nowTime;
 			}
 
 			if (++tapCount > 1) {
-				// Also adjust the measure length to the time between taps
-				measureLen = nowTime - lastTapTime;
-				// TODO: make sure measureLen is greater than pulseLen!
+				// Also adjust the measure length to the time between taps:
+				tapInterval = nowTime - lastTapTime;
+				// if tapInterval is closer to mL*2 than to mL, 
+				if (tapInterval > (1.5 * measureLen)) {
+					// assume we are tapping half-time (1/4 notes)
+					measureLen = tapInterval / 2;
+				} else {
+					// Othwerwise assume full time (1/8 notes)
+					measureLen = tapInterval;
+				}
+
+				// TODO: enforce some minimum measureLen greater than pulseLen
 			}
 			lastTapTime = nowTime;
 		} else {
