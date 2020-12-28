@@ -12,10 +12,14 @@ NXPMotionSense imu;
 #include <SerialFlash.h>
 
 // GUItool: begin automatically generated code
-AudioSynthNoisePink      pink1;          //xy=355,251
-AudioAmplifier           amp1;           //xy=504,249
+//AudioSynthNoisePink      pink1;          //xy=88,242
+AudioSynthNoiseWhite      pink1;          //xy=88,242
+AudioAmplifier           amp1;           //xy=257,241
+//AudioEffectReverb        reverb1;        //xy=440,243
 AudioOutputAnalog        dac1;           //xy=628,246
 AudioConnection          patchCord1(pink1, amp1);
+//AudioConnection          patchCord2(amp1, reverb1);
+//AudioConnection          patchCord3(reverb1, dac1);
 AudioConnection          patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 
@@ -86,8 +90,11 @@ void setup()
 
 	AudioMemory(20);
 	dac1.analogReference(EXTERNAL); // 3.3v p2p
-	pink1.amplitude(1);
+	pink1.amplitude(2);
+	//reverb1.reverbTime(0.5);
 	amp1.gain(0);
+
+	EEPROM.get(2000, measureLen);
 }
 
 void loop()
@@ -165,7 +172,7 @@ void loop()
 				// Othwerwise assume full time (1/8 notes)
 
 				if (tapInterval < 100) {
-					// Ignore spurious double-taps
+					// Ignore spurious double-taps!  (This enforces a max tempo.)
 				} else {
 					// Compute a running average over 2 or 3 intervals if available:
 					if (tapCount > 4) tapCount = 4;
@@ -187,6 +194,9 @@ void loop()
 		}
 
 	} else {
+		if (btn1.rose() || btn2.rose()) 				// if we just released the buttons,
+			EEPROM.put(2000, measureLen); 	// save the tempo to NVRAM.
+
 		// not armed.
 		tapCount = 0;
 		newLed2State = LOW;
