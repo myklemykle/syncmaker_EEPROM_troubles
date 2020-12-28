@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include <EEPROM.h>
 
+// #define BENCHMARKS 1
+
 NXPMotionSense imu;
 
 // set pin numbers:
@@ -28,6 +30,12 @@ long lastTapTime = 0;
 // will quickly become a bigger number than can be stored in an int.
 unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
 unsigned int tapCount = 0;
+
+#ifdef BENCHMARKS
+// tracking performance
+unsigned int loops = 0; // # of main loop cycles between beats
+unsigned int imus = 0; // # number of inertia checks in same.
+#endif
 
 // Objects:
 Bounce btn1 = Bounce();
@@ -68,12 +76,19 @@ void loop()
   unsigned long nowTime = millis(); 
 	unsigned long tapInterval = 0; // could be fewer bits?
 
+#ifdef BENCHMARKS
+	loops++; 
+#endif
+
 	btn1.update();
 	btn2.update();
 
-	if (imu.available()) {
+	if (imu.available()) { // When IMU becomes available (every 10 ms or so)
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
+#ifdef BENCHMARKS
+		imus++;
+#endif
 		// absolute amplitude of 3d vector
 		inertia = sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)); // maybe the sqrt can be left out?
 		if (inertia > 2.0) 
@@ -168,6 +183,22 @@ void loop()
 		pulseState = newPulseState;
 		// set the LED with the pulseState of the variable:
 		digitalWrite(pulsePin, pulseState);
+
+#ifdef BENCHMARKS
+		if (pulseState == HIGH) {
+			// print benchmarks
+			Serial.print(loops);
+			Serial.print(" loops, ");
+			Serial.print(imus);
+			Serial.print(" imus in ");
+			Serial.print(measureLen);
+			Serial.println(" ms");
+
+			// reset counters
+			loops = imus = 0;
+		}
+#endif
+
 	}
 }
 
