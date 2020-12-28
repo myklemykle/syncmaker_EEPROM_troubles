@@ -3,9 +3,24 @@
 #include <Wire.h>
 #include <EEPROM.h>
 
-// #define BENCHMARKS 1
-
 NXPMotionSense imu;
+
+// GUItool reqs:
+#include <Audio.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioSynthNoisePink      pink1;          //xy=355,251
+AudioAmplifier           amp1;           //xy=504,249
+AudioOutputAnalog        dac1;           //xy=628,246
+AudioConnection          patchCord1(pink1, amp1);
+AudioConnection          patchCord2(amp1, dac1);
+// GUItool: end automatically generated code
+
+// measure speed of inner loop:
+#define BENCHMARKS 1
 
 // set pin numbers:
 const int button1Pin = 2;     // the number of the pushbutton pin
@@ -30,6 +45,11 @@ long lastTapTime = 0;
 // will quickly become a bigger number than can be stored in an int.
 unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
 unsigned int tapCount = 0;
+
+float inertia = 0;
+float prevInertia = 0;
+const int shakeThreshold = 2;
+bool shaken = LOW;
 
 #ifdef BENCHMARKS
 // tracking performance
@@ -63,6 +83,11 @@ void setup()
 	btn2.interval(debounceLen);
 
 	downbeatTime = millis(); // now!
+
+	AudioMemory(20);
+	dac1.analogReference(EXTERNAL); // 3.3v p2p
+	pink1.amplitude(1);
+	amp1.gain(0);
 }
 
 void loop()
@@ -70,11 +95,12 @@ void loop()
 	float ax, ay, az;
   float gx, gy, gz;
   float mx, my, mz;
-	float inertia = 0;
 
 	// look at the clock
   unsigned long nowTime = millis(); 
 	unsigned long tapInterval = 0; // could be fewer bits?
+
+	shaken = LOW;
 
 #ifdef BENCHMARKS
 	loops++; 
@@ -90,9 +116,15 @@ void loop()
 		imus++;
 #endif
 		// absolute amplitude of 3d vector
+		prevInertia = inertia;
 		inertia = sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)); // maybe the sqrt can be left out?
-		if (inertia > 2.0) 
+		if (inertia > shakeThreshold) 
 			Serial.println(inertia);
+		// use the inertia (minus gravity) to set the volume of the pink noise generator 
+		amp1.gain(max((inertia - shakeThreshold)/2, 0));
+		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) )
+			shaken = HIGH;
+			// TODO: also need to somehow debounce this, or auto-adjust threshold.
 	}
 
 	// dbT is the absolute time of the start of the current pulse.
@@ -103,9 +135,9 @@ void loop()
 
 	if (ARMED(btn1, btn2)) {
 		newLed2State = HIGH;
-		if (TAP(btn1, btn2)) { 
+		if (TAP(btn1, btn2) || shaken) { 
 
-			// Adjust position of downbeat based on tap:
+			// Adjust position of downbeat based on tap/shake:
 
 			// If the next beat is closer than the previous beat
 			// (dbT is greater than nowTime, but by less than mL/2))
@@ -187,6 +219,8 @@ void loop()
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks
+			Serial.print(AudioMemoryUsageMax());
+			Serial.println(" audioMem");
 			Serial.print(loops);
 			Serial.print(" loops, ");
 			Serial.print(imus);
