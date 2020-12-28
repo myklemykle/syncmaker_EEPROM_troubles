@@ -164,13 +164,17 @@ void loop()
 				}
 				// Othwerwise assume full time (1/8 notes)
 
-				// Compute a running average over 2 or 3 intervals if available:
-				if (tapCount > 4) tapCount = 4;
-				measureLen = ( ((tapCount - 2) * measureLen ) + tapInterval) / (tapCount -1) ;
+				if (tapInterval < 100) {
+					// Ignore spurious double-taps
+				} else {
+					// Compute a running average over 2 or 3 intervals if available:
+					if (tapCount > 4) tapCount = 4;
+					measureLen = ( ((tapCount - 2) * measureLen ) + tapInterval) / (tapCount -1) ;
 
-				// but there has to be a minimum meaure length.
-				if (measureLen < (pulseLen * 2)) {
-					measureLen = pulseLen * 2;
+					// but there has to be a minimum meaure length.
+					if (measureLen < (pulseLen * 2)) {
+						measureLen = pulseLen * 2;
+					}
 				}
 			} else {
 				tapInterval = 0;
