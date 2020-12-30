@@ -139,7 +139,8 @@ void loop()
 
 	if (imu.available()) { // When IMU becomes available (every 10 ms or so)
     // Read the motion sensors
-    imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
+    //imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
+    imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 #ifdef BENCHMARKS
 		imus++;
 #endif
