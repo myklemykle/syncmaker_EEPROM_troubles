@@ -36,6 +36,11 @@ const int analogOut = 14;    // 12 bit DAC on Teensy 3.2 !
 const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
+// NOTE: the prop shield calibration is stored in the EEPROM,
+// we mustn't overwrite that!  
+// It's rumored to be 68 bytes starting at address 0x60 -- 
+//    https://forum.pjrc.com/threads/33997-EEPROM-usage-table?highlight=prop+shield+eeprom
+const int eepromBase = 2000;
 
 // vars
 bool led1State = LOW, newLed1State = LOW;
@@ -94,7 +99,7 @@ void setup()
 	//reverb1.reverbTime(0.5);
 	amp1.gain(0);
 
-	EEPROM.get(2000, measureLen);
+	EEPROM.get(eepromBase, measureLen);
 }
 
 void loop()
@@ -195,7 +200,7 @@ void loop()
 
 	} else {
 		if (btn1.rose() || btn2.rose()) 				// if we just released the buttons,
-			EEPROM.put(2000, measureLen); 	// save the tempo to NVRAM.
+			EEPROM.put(eepromBase, measureLen); 	// save the tempo to NVRAM.
 
 		// not armed.
 		tapCount = 0;
