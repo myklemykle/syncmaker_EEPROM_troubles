@@ -4,6 +4,9 @@
 #include <EEPROM.h>
 
 NXPMotionSense imu;
+//#include <utility/NXPSensorRegisters.h> // can't find?
+#define FXOS8700_I2C_ADDR0 0x1E  
+#define FXOS8700_CTRL_REG_1 0x2A
 
 // GUItool reqs:
 #include <Audio.h>
@@ -75,10 +78,23 @@ Bounce btn2 = Bounce();
 #define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
 #define TAP(b1,b2) 			( (PRESSED(b1) && b2.fell()) || (PRESSED(b2) && b1.fell()) )
 
+// stolen from NXPMotionSense, where it's a private method (why?)
+bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
+{
+	Wire.beginTransmission(i2c);
+	Wire.write(addr);
+	Wire.write(val);
+	return Wire.endTransmission() == 0;
+}
+
 void setup()
 {
   Serial.begin(115200);
   imu.begin();
+	// configure imu for 400hz updates; 
+	// this is set in bits 3-5 of Control Reg 1 of the FXOS8700 accelerometer
+	// Std library sets those to 010, i'm changing them to 000
+	write_reg(FXOS8700_I2C_ADDR0, FXOS8700_CTRL_REG_1, 0x05);
 
 	// pins!
   pinMode(led1Pin, OUTPUT);       // LED
