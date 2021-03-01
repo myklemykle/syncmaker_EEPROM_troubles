@@ -1,12 +1,13 @@
+// Rev 0 Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
+
 #include "Bounce2.h"
-#include <NXPMotionSense.h>
+#include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
+														// set to higher data rate, 
+														// ignores other two IMU chips 
 #include <Wire.h>
 #include <EEPROM.h>
 
 NXPMotionSense imu;
-//#include <utility/NXPSensorRegisters.h> // can't find?
-#define FXOS8700_I2C_ADDR0 0x1E  
-#define FXOS8700_CTRL_REG_1 0x2A
 
 // GUItool reqs:
 #include <Audio.h>
@@ -30,15 +31,29 @@ AudioConnection          patchCord2(amp1, dac1);
 #define BENCHMARKS 1
 
 // set pin numbers:
-const int button1Pin = 2;     // the number of the pushbutton pin
+const int button1Pin = 9;     
 const int button2Pin = 3;     // the number of the pushbutton pin
-const int led1Pin =  13;      	// the number of the LED pin
-const int led2Pin =  15;      	// the number of the LED pin
-const int pulsePin = 16; 			// sending PO/Korg sync on this pin.
+
+//const int led1Pin =  20;     // solder fail!
+const int led1Pin =  13;      	// good thing we have a spare.
+
+const int led2Pin =  21;      	// the number of the LED pin
+
+const int pulsePin = 8; 			// sending PO/Korg sync on this pin.
+
 const int analogOut = 14;    // 12 bit DAC on Teensy 3.2 !
+
+const int PO_pled = 16; 			// goes high on PO play (runs to play LED)
+const int PO_sleep = 17;		// goes low when PO sleeps I think
+const int PO_reset = 7;
+const int PO_SWCLK = 6;
+const int PO_SWDIO = 5;
+const int PO_SWO   = 4;
+
 const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
+
 // NOTE: the prop shield calibration is stored in the EEPROM,
 // we mustn't overwrite that!  
 // It's rumored to be 68 bytes starting at address 0x60 -- 
@@ -49,6 +64,9 @@ const int eepromBase = 2000;
 bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool pulseState = LOW, newPulseState = LOW;
+bool playState = LOW; bool playPinState = LOW; 
+long playPinTimer = 0;
+bool sleepState = HIGH; bool sleepPinState = HIGH; 
 
 long downbeatTime = 0;        
 long lastTapTime = 0;        
@@ -91,10 +109,6 @@ void setup()
 {
   Serial.begin(115200);
   imu.begin();
-	// configure imu for 400hz updates; 
-	// this is set in bits 3-5 of Control Reg 1 of the FXOS8700 accelerometer
-	// Std library sets those to 010, i'm changing them to 000
-	write_reg(FXOS8700_I2C_ADDR0, FXOS8700_CTRL_REG_1, 0x05);
 
 	// pins!
   pinMode(led1Pin, OUTPUT);       // LED
@@ -102,6 +116,14 @@ void setup()
   pinMode(pulsePin, OUTPUT);       // LED
   pinMode(button1Pin, INPUT_PULLUP); // Pushbutton
   pinMode(button2Pin, INPUT_PULLUP); // Pushbutton
+
+	pinMode(PO_pled, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
+	pinMode(PO_sleep, INPUT);
+	pinMode(PO_reset, INPUT_PULLUP);
+	pinMode(PO_SWCLK, INPUT_PULLUP);
+	pinMode(PO_SWDIO, INPUT_PULLUP);
+	pinMode(PO_SWO, INPUT_PULLUP);
+
 	btn1.attach(button1Pin);
 	btn1.interval(debounceLen);
 	btn2.attach(button2Pin);
@@ -124,19 +146,26 @@ void loop()
   float gx, gy, gz;
   float mx, my, mz;
 
-	// look at the clock
-  unsigned long nowTime = millis(); 
-	unsigned long tapInterval = 0; // could be fewer bits?
+	// Check the clock:
 
-	shaken = LOW;
+  unsigned long nowTime = millis(); 
+  unsigned long awakeTime;
+	unsigned long tapInterval = 0; // could be fewer bits?
 
 #ifdef BENCHMARKS
 	loops++; 
 #endif
 
-	btn1.update();
-	btn2.update();
+	// downbeatTime is the absolute time of the start of the current pulse.
+	// if now is at least pulseLen millis beyond the previous beat, advance the beat
+  if (nowTime > (downbeatTime + pulseLen)) {  
+    downbeatTime += measureLen;
+	}
 
+
+	// Check IMU:
+
+	shaken = LOW;
 	if (imu.available()) { // When IMU becomes available (every 10 ms or so)
     // Read the motion sensors
     //imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
@@ -156,11 +185,36 @@ void loop()
 			// TODO: also need to somehow debounce this, or auto-adjust threshold.
 	}
 
-	// dbT is the absolute time of the start of the current pulse.
-	// if now is at least pulseLen millis beyond the previous beat, advance the beat
-  if (nowTime > (downbeatTime + pulseLen)) {  
-    downbeatTime += measureLen;
+	// Check the PO state:
+	// This pin is low when not playing, but when playing it's actually flickering.
+	playPinState = digitalRead(PO_pled);
+	if (playPinState) {
+		playPinTimer = nowTime;
+		//if (playPinState != playState) {
+			//Serial.println("play");
+		//}
+		playState = playPinState;
+	} else {
+		// Done flickering? Has play been stopped for 10ms or longer?
+		if (nowTime - playPinTimer > 100) {
+			//if (playPinState != playState) {
+				//Serial.println("stop");
+			//}
+			playState = playPinState;
+		}
 	}
+
+	sleepPinState = digitalRead(PO_sleep);
+	sleepState = sleepPinState;
+	// only advance this clock when awake; let's see if we ever do fall asleep?
+	if (sleepState) {
+		awakeTime = nowTime; 
+	}
+
+	// Check the buttons:
+
+	btn1.update();
+	btn2.update();
 
 	if (ARMED(btn1, btn2)) {
 		newLed2State = HIGH;
@@ -217,25 +271,31 @@ void loop()
 
 	} else {
 		if (btn1.rose() || btn2.rose()) 				// if we just released the buttons,
-			EEPROM.put(eepromBase, measureLen); 	// save the tempo to NVRAM.
+			EEPROM.put(eepromBase, measureLen); 	// save the new tempo to NVRAM.
 
 		// not armed.
 		tapCount = 0;
 		newLed2State = LOW;
 	}
 
-	// If we have good values, we can pulse.
+	// Calculate pulse and blink signals:
+
 	if ((downbeatTime > 0) && (measureLen > 0)) {
+		
 		if (nowTime - downbeatTime < blinkLen)
 			newLed1State = HIGH;
 		else
 			newLed1State = LOW;
+
 		if (nowTime - downbeatTime < pulseLen)
 			newPulseState = HIGH;
 		else
 			newPulseState = LOW;
+
 	} else {
 	}
+
+	// Update LEDs:
 
 	if (led1State != newLed1State) {
 		led1State = newLed1State;
@@ -255,14 +315,19 @@ void loop()
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks
-			Serial.print(AudioMemoryUsageMax());
-			Serial.println(" audioMem");
+			//Serial.print(AudioMemoryUsageMax());
+			//Serial.print(" audioMem");
+			Serial.print(awakeTime);
+			Serial.print(':');
+			Serial.print(sleepState ? "awake  " : "asleep  ");
+			Serial.print(playState ? "play  " : "stop  ");
 			Serial.print(loops);
 			Serial.print(" loops, ");
 			Serial.print(imus);
 			Serial.print(" imus in ");
 			Serial.print(measureLen);
-			Serial.println(" ms");
+			Serial.print(" ms");
+			Serial.println(".");
 
 			// reset counters
 			loops = imus = 0;
