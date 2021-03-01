@@ -63,7 +63,7 @@ void NXPMotionSense::update()
 		//Serial.println("accel+mag");
 		newdata = 1;
 	}
-	/*
+	/* not connected
 	if (MPL3115_read(&alt, &temperature_raw)) { // alt
 		//Serial.println("alt");
 	}
@@ -121,13 +121,17 @@ bool NXPMotionSense::FXOS8700_begin()
 	// place into standby mode
 	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0)) return false;
 	// configure magnetometer
-	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1F)) return false;
+	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1F)) return false;  // M + A (hybrid) mode
+	//if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1C)) return false;  // A only
 	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG2, 0x20)) return false;
 	// configure accelerometer
 	if (!write_reg(i2c_addr, FXOS8700_XYZ_DATA_CFG, 0x01)) return false; // 4G range
 	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG2, 0x02)) return false; // hires
-	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x15)) return false; // 100Hz A+M
-	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x0D)) return false; // 200Hz A+M
+	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x15)) return false; // 100Hz A+M, hipass, active mode.
+	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x0D)) return false; // 200Hz A+M, hipass, active mode.
+	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001101)) return false; // 200Hz A+M, hipass, active mode.
+	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001001)) return false; // 200Hz A+M, wideband, active mode.
+	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00000001)) return false; // 400Hz A+M, wideband, active mode.
 	Serial.println("FXOS8700 Configured");
 	return true;
 }

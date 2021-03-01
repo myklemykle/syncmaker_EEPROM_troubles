@@ -295,7 +295,7 @@ void loop()
 	} else {
 	}
 
-	// Update LEDs:
+	// Update LEDs and pulse pin
 
 	if (led1State != newLed1State) {
 		led1State = newLed1State;
