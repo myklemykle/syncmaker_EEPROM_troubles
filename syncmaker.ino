@@ -78,8 +78,9 @@ unsigned int tapCount = 0;
 
 float inertia = 0;
 float prevInertia = 0;
-const int shakeThreshold = 2;
+const float shakeThreshold = 1.25;
 bool shaken = LOW;
+bool tapped = LOW;
 
 #ifdef BENCHMARKS
 // tracking performance
@@ -166,22 +167,30 @@ void loop()
 	// Check IMU:
 
 	shaken = LOW;
+	tapped = LOW;
 	if (imu.available()) { // When IMU becomes available (every 10 ms or so)
     // Read the motion sensors
-    //imu.readMotionSensor(ax, ay, az, gx, gy, gz, mx, my, mz);
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 #ifdef BENCHMARKS
 		imus++;
 #endif
 		// absolute amplitude of 3d vector
 		prevInertia = inertia;
-		inertia = sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)); // maybe the sqrt can be left out?
+
+		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
 		if (inertia > shakeThreshold) 
+
 			Serial.println(inertia);
+
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		amp1.gain(max((inertia - shakeThreshold)/2, 0));
+		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
+
+		
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) )
+			// TODO: shaken should be the start of sound moment, 
+			// but try putting tapped at the apex-G moment; it may have better feel.
 			shaken = HIGH;
+			tapped = HIGH;
 			// TODO: also need to somehow debounce this, or auto-adjust threshold.
 	}
 
@@ -218,7 +227,7 @@ void loop()
 
 	if (ARMED(btn1, btn2)) {
 		newLed2State = HIGH;
-		if (TAP(btn1, btn2) || shaken) { 
+		if (TAP(btn1, btn2) || tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
 
