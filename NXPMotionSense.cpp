@@ -114,24 +114,31 @@ bool NXPMotionSense::FXOS8700_begin()
 	uint8_t b;
 
 	Serial.println("FXOS8700_begin");
+
 	// detect if chip is present
 	if (!read_regs(i2c_addr, FXOS8700_WHO_AM_I, &b, 1)) return false;
 	Serial.printf("FXOS8700 ID = %02X\n", b);
 	if (b != 0xC7) return false;
+
 	// place into standby mode
 	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0)) return false;
+
 	// configure magnetometer
 	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1F)) return false;  // M + A (hybrid) mode
 	//if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1C)) return false;  // A only
 	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG2, 0x20)) return false;
+
 	// configure accelerometer
-	if (!write_reg(i2c_addr, FXOS8700_XYZ_DATA_CFG, 0x01)) return false; // 4G range
-	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG2, 0x02)) return false; // hires
+	if (!write_reg(i2c_addr, FXOS8700_XYZ_DATA_CFG, 0x01)) return false; // 4G range, hpf off, 
+	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG2, 0x02)) return false; // hires power mode, no oversampling
+
+	// configure frequency & enable
 	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x15)) return false; // 100Hz A+M, hipass, active mode.
 	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x0D)) return false; // 200Hz A+M, hipass, active mode.
 	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001101)) return false; // 200Hz A+M, hipass, active mode.
 	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001001)) return false; // 200Hz A+M, wideband, active mode.
 	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00000001)) return false; // 400Hz A+M, wideband, active mode.
+	
 	Serial.println("FXOS8700 Configured");
 	return true;
 }
