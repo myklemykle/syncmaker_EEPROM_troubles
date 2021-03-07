@@ -79,6 +79,7 @@ unsigned int tapCount = 0;
 float inertia = 0;
 float prevInertia = 0;
 const float shakeThreshold = 1.25;
+const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
 
@@ -187,12 +188,15 @@ void loop()
 		amp1.gain(max((inertia - shakeThreshold)/4.0, 0.0));
 
 		
-		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) )
+		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
 			// TODO: shaken should be the start of sound moment, 
 			// but try putting tapped at the apex-G moment; it may have better feel.
 			shaken = HIGH;
-			tapped = HIGH;
 			// TODO: also need to somehow debounce this, or auto-adjust threshold.
+		}
+		if ( (inertia > tapThreshold) && (prevInertia <= tapThreshold) ) {
+			tapped = HIGH;
+		}
 	}
 
 	// Check the PO state:
