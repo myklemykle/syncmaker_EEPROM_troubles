@@ -1,4 +1,8 @@
-// hacked version for SyncMaster, where only the FXOS8700 is present.
+// hacked version for rev1, where the chip is actually an ICM-42605
+
+#include "ICM42605/ICM42605_LIS2MDL_LPS22HB_Dragonfly/ICM42605.h"
+#define ICM42605_I2C_ADDR0 0b1101000
+
 #include "NXPMotionSense.h"
 #include "utility/NXPSensorRegisters.h"
 #include <util/crc16.h>
@@ -14,27 +18,17 @@ bool NXPMotionSense::begin()
 	uint16_t crc;
 
 	Wire.begin();
-	Wire.setClock(400000);
+	// Wire.setClock(400000);
+	Wire.setClock(1000000); // ICM42605 supports 1mhz max i2c speed
 
 	memset(accel_mag_raw, 0, sizeof(accel_mag_raw));
 	memset(gyro_raw, 0, sizeof(gyro_raw));
 
 	//Serial.println("init hardware");
-	while (!FXOS8700_begin()) {
-		Serial.println("config error FXOS8700");
+	while (!ICM42605_begin()) {
+		Serial.println("config error ICM42605");
 		delay(1000);
 	}
-	/*
-	while (!FXAS21002_begin()) {
-		Serial.println("config error FXAS21002");
-		delay(1000);
-	}
-	while (!MPL3115_begin()) {
-		Serial.println("config error MPL3115");
-		delay(1000);
-	}
-	*/
-	//Serial.println("init done");
 
 	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
 		buf[i] = EEPROM.read(NXP_MOTION_CAL_EEADDR + i);
@@ -59,19 +53,10 @@ void NXPMotionSense::update()
 	static elapsedMillis msec;
 	int32_t alt;
 
-	if (FXOS8700_read(accel_mag_raw)) { // accel + mag
+	if (ICM42605_read(accel_mag_raw)) { // accel + mag
 		//Serial.println("accel+mag");
 		newdata = 1;
 	}
-	/* not connected
-	if (MPL3115_read(&alt, &temperature_raw)) { // alt
-		//Serial.println("alt");
-	}
-	if (FXAS21002_read(gyro_raw)) {  // gyro
-		//Serial.println("gyro");
-		newdata = 1;
-	}
-	*/
 }
 
 
@@ -105,6 +90,98 @@ static bool read_regs(uint8_t i2c, uint8_t *data, uint8_t num)
 		*data++ = Wire.read();
 		num--;
 	}
+	return true;
+}
+
+bool NXPMotionSense::ICM42605_begin()
+{
+	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
+	uint8_t b;
+
+	Serial.println("ICM42605_begin");
+
+	// detect if chip is present
+	if (!read_regs(i2c_addr, ICM42605_WHO_AM_I, &b, 1)) return false;
+	Serial.printf("ICM42605 ID = %02X\n", b);
+	if (b != 0x42) return false;
+
+	// accelerometer:
+	// set output data rate to 8khz
+	// ICM42605_ACCEL_CONFIG0 = 0b001.....
+	// set accel sensitivity to 8g
+	// ICM42605_ACCEL_CONFIG0 = 0b....0011
+	// to do both in one register:
+	if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
+	// if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
+	// if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
+	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
+	
+	// gyro: 
+	// set output data rate to 8khz
+	// GYRO_CONFIG0 = 0bxxxx0011
+	// set sensitivity to +-2000dps
+	// GYRO_CONFIG0 = 0b000.....
+	if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
+	// if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
+	// if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000101)) return false;    // 2khz
+
+	// interrupt INT2 on data ready:
+	// INT_SOURCE3 = 0b00001000
+	if (!write_reg(i2c_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
+
+	Serial.println("ICM42605 Configured");
+	return true;
+}
+
+bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
+{
+	static elapsedMicros usec_since;
+	static int32_t usec_history=5000;
+	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
+	uint8_t buf[13];
+
+	int32_t usec = usec_since;
+
+	// This seems unnnecessary now that we're interrupt driven,
+	// but when I take it out all sorts of weird shit happens:
+	// we get like 100 more "hits" (interrupts), and we also 
+	// start to see accelerometer glitches.  Maybe the interrupt
+	// is somehow double-firing?  Consider learning more about
+	// the interrupt config registers in the IMU, and the arduino
+	// pin-listening options in attachIntrrupt ...
+	// 
+	//if (usec + 100 < usec_history) return false;
+	//if (usec + 10 < usec_history) return false;
+	if (usec + 1 < usec_history) return false;
+
+	// This also shouldn't be needed when interrupt driven:
+	//
+	// I think we're looking for "data ready" here ... that's the 
+	// data_rdy_int bit from the INT_STATUS reg
+	if (!read_regs(i2c_addr, ICM42605_INT_STATUS, buf, 1)) return false;
+#define DATA_RDY_INT 0b00001000
+	if (!(buf[0] & DATA_RDY_INT )) return false;
+	// if (!buf[0]) return false;
+	// if (buf[0]!=0)
+	// 	Serial.println(buf[0]);
+
+	usec_since -= usec;
+	int diff = (usec - usec_history) >> 3;
+	if (diff < -15) diff = -15;
+	else if (diff > 15) diff = 15;
+	usec_history += diff;
+
+	// the registers for 6 bytes of acc and 6 bytes of gyro are all contiguous here:
+	if (!read_regs(i2c_addr, ICM42605_ACCEL_DATA_X1 , buf+1, 12)) return false;
+
+	//if (!read_regs(i2c_addr, buf, 13)) return false;
+
+	data[0] = (int16_t)((buf[1] << 8) | buf[2]);
+	data[1] = (int16_t)((buf[3] << 8) | buf[4]);
+	data[2] = (int16_t)((buf[5] << 8) | buf[6]);
+	data[3] = (int16_t)((buf[7] << 8) | buf[8]);
+	data[4] = (int16_t)((buf[9] << 8) | buf[10]);
+	data[5] = (int16_t)((buf[11] << 8) | buf[12]);
 	return true;
 }
 
@@ -143,137 +220,6 @@ bool NXPMotionSense::FXOS8700_begin()
 	return true;
 }
 
-bool NXPMotionSense::FXOS8700_read(int16_t *data)  // accel + mag
-{
-	static elapsedMicros usec_since;
-	static int32_t usec_history=5000;
-	const uint8_t i2c_addr=FXOS8700_I2C_ADDR0;
-	uint8_t buf[13];
-
-	int32_t usec = usec_since;
-	if (usec + 100 < usec_history) return false;
-
-	if (!read_regs(i2c_addr, FXOS8700_STATUS, buf, 1)) return false;
-	if (buf[0] == 0) return false;
-
-	usec_since -= usec;
-	int diff = (usec - usec_history) >> 3;
-	if (diff < -15) diff = -15;
-	else if (diff > 15) diff = 15;
-	usec_history += diff;
-
-	if (!read_regs(i2c_addr, FXOS8700_OUT_X_MSB, buf+1, 12)) return false;
-	//if (!read_regs(i2c_addr, buf, 13)) return false;
-
-	data[0] = (int16_t)((buf[1] << 8) | buf[2]);
-	data[1] = (int16_t)((buf[3] << 8) | buf[4]);
-	data[2] = (int16_t)((buf[5] << 8) | buf[6]);
-	data[3] = (int16_t)((buf[7] << 8) | buf[8]);
-	data[4] = (int16_t)((buf[9] << 8) | buf[10]);
-	data[5] = (int16_t)((buf[11] << 8) | buf[12]);
-	return true;
-}
-
-bool NXPMotionSense::FXAS21002_begin()
-{
-        const uint8_t i2c_addr=FXAS21002_I2C_ADDR0;
-        uint8_t b;
-
-	if (!read_regs(i2c_addr, FXAS21002_WHO_AM_I, &b, 1)) return false;
-	//Serial.printf("FXAS21002 ID = %02X\n", b);
-	if (b != 0xD7) return false;
-
-	// place into standby mode
-	if (!write_reg(i2c_addr, FXAS21002_CTRL_REG1, 0)) return false;
-	// switch to active mode, 100 Hz output rate
-	if (!write_reg(i2c_addr, FXAS21002_CTRL_REG0, 0x00)) return false;
-	if (!write_reg(i2c_addr, FXAS21002_CTRL_REG1, 0x0E)) return false;
-
-	//Serial.println("FXAS21002 Configured");
-	return true;
-}
-
-bool NXPMotionSense::FXAS21002_read(int16_t *data) // gyro
-{
-	static elapsedMicros usec_since;
-	static int32_t usec_history=10000;
-	const uint8_t i2c_addr=FXAS21002_I2C_ADDR0;
-	uint8_t buf[7];
-
-	int32_t usec = usec_since;
-	if (usec + 100 < usec_history) return false;
-
-	if (!read_regs(i2c_addr, FXAS21002_STATUS, buf, 1)) return false;
-	if (buf[0] == 0) return false;
-
-	usec_since -= usec;
-	int diff = (usec - usec_history) >> 3;
-	if (diff < -15) diff = -15;
-	else if (diff > 15) diff = 15;
-	usec_history += diff;
-	//Serial.println(usec);
-
-	if (!read_regs(i2c_addr, FXAS21002_STATUS, buf, 7)) return false;
-	//if (!read_regs(i2c_addr, buf, 7)) return false;
-
-	data[0] = (int16_t)((buf[1] << 8) | buf[2]);
-	data[1] = (int16_t)((buf[3] << 8) | buf[4]);
-	data[2] = (int16_t)((buf[5] << 8) | buf[6]);
-	return true;
-}
-
-bool NXPMotionSense::MPL3115_begin() // pressure
-{
-        const uint8_t i2c_addr=MPL3115_I2C_ADDR;
-        uint8_t b;
-
-	if (!read_regs(i2c_addr, MPL3115_WHO_AM_I, &b, 1)) return false;
-	//Serial.printf("MPL3115 ID = %02X\n", b);
-	if (b != 0xC4) return false;
-
-	// place into standby mode
-	if (!write_reg(i2c_addr, MPL3115_CTRL_REG1, 0)) return false;
-
-	// switch to active, altimeter mode, 512 ms measurement, polling mode
-	if (!write_reg(i2c_addr, MPL3115_CTRL_REG1, 0xB9)) return false;
-	// enable events
-	if (!write_reg(i2c_addr, MPL3115_PT_DATA_CFG, 0x07)) return false;
-
-	//Serial.println("MPL3115 Configured");
-	return true;
-}
-
-bool NXPMotionSense::MPL3115_read(int32_t *altitude, int16_t *temperature)
-{
-	static elapsedMicros usec_since;
-	static int32_t usec_history=980000;
-	const uint8_t i2c_addr=MPL3115_I2C_ADDR;
-	uint8_t buf[6];
-
-	int32_t usec = usec_since;
-	if (usec + 500 < usec_history) return false;
-
-	if (!read_regs(i2c_addr, FXAS21002_STATUS, buf, 1)) return false;
-	if (buf[0] == 0) return false;
-
-	if (!read_regs(i2c_addr, buf, 6)) return false;
-
-	usec_since -= usec;
-	int diff = (usec - usec_history) >> 3;
-	if (diff < -1000) diff = -1000;
-	else if (diff > 1000) diff = 1000;
-	usec_history += diff;
-
-	int32_t a = ((uint32_t)buf[1] << 12) | ((uint16_t)buf[2] << 4) | (buf[3] >> 4);
-	if (a & 0x00080000) a |= 0xFFF00000;
-	*altitude = a;
-	*temperature = (int16_t)((buf[4] << 8) | buf[5]);
-
-	//Serial.printf("%02X %d %d: ", buf[0], usec, usec_history);
-	//Serial.printf("%6d,%6d", a, *temperature);
-	//Serial.println();
-	return true;
-}
 
 bool NXPMotionSense::writeCalibration(const void *data)
 {

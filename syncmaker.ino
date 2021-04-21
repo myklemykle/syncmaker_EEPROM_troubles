@@ -1,4 +1,4 @@
-// Rev 0 Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
+// Rev 1 Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 
 #include "Bounce2.h"
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
@@ -31,25 +31,23 @@ AudioConnection          patchCord2(amp1, dac1);
 #define BENCHMARKS 1
 
 // set pin numbers:
-const int button1Pin = 9;     
-const int button2Pin = 3;     // the number of the pushbutton pin
-
-//const int led1Pin =  20;     // solder fail!
-const int led1Pin =  13;      	// good thing we have a spare.
-
-const int led2Pin =  21;      	// the number of the LED pin
-
-const int pulsePin = 8; 			// sending PO/Korg sync on this pin.
-
-const int analogOut = 14;    // 12 bit DAC on Teensy 3.2 !
-
-const int PO_pled = 16; 			// goes high on PO play (runs to play LED)
-const int PO_sleep = 17;		// goes low when PO sleeps I think
+const int button1Pin = 0;   // sw1
+const int button2Pin = 9;   // sw2
+const int led1Pin =  20;    // led1
+const int led2Pin =  21;    // led2
+const int pulsePin1 = 11; 	// j1 tip
+const int pulsePin2 = 8; 		// j2 tip
+const int analogOut = 14;   // j1/j2 ring: 12 bit DAC on Teensy 3.2 !
+const int PO_play = 16; 		// goes high on PO play (runs to play LED)
+const int PO_wake = 17;		// goes low when PO sleeps I think
 const int PO_reset = 7;
 const int PO_SWCLK = 6;
 const int PO_SWDIO = 5;
 const int PO_SWO   = 4;
+const int IMU_fsync = 1;   // need to ground this on icm-42605
+const int IMU_int = 2;
 
+// default time periods:
 const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
@@ -82,6 +80,7 @@ const float shakeThreshold = 1.25;
 const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
+bool imu_ready = false;
 
 #ifdef BENCHMARKS
 // tracking performance
@@ -107,20 +106,33 @@ bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
 	return Wire.endTransmission() == 0;
 }
 
+// IMU interrupt handler:
+void imu_int(){
+	imu_ready = true;
+}
+
 void setup()
 {
   Serial.begin(115200);
+
+	// because i changed chips, this pin (imu pin 10) is now "reserved" on the IMU:
+	pinMode(IMU_fsync, OUTPUT);
+	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
+	// imu pin 11 is also reserved but I can't get to it from software ...
+
+	attachInterrupt(IMU_int, imu_int, RISING);
   imu.begin();
 
 	// pins!
   pinMode(led1Pin, OUTPUT);       // LED
   pinMode(led2Pin, OUTPUT);       // LED
-  pinMode(pulsePin, OUTPUT);       // LED
+  pinMode(pulsePin1, OUTPUT);       // LED
+  pinMode(pulsePin2, OUTPUT);       // LED
   pinMode(button1Pin, INPUT_PULLUP); // Pushbutton
   pinMode(button2Pin, INPUT_PULLUP); // Pushbutton
 
-	pinMode(PO_pled, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
-	pinMode(PO_sleep, INPUT);
+	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
+	pinMode(PO_wake, INPUT);
 	pinMode(PO_reset, INPUT_PULLUP);
 	pinMode(PO_SWCLK, INPUT_PULLUP);
 	pinMode(PO_SWDIO, INPUT_PULLUP);
@@ -169,9 +181,11 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
-	if (imu.available()) { // When IMU becomes available (every 10 ms or so)
+	if (imu_ready) { // On IMU data ready interrupt
+		imu_ready = false;
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
+
 #ifdef BENCHMARKS
 		imus++;
 #endif
@@ -201,7 +215,7 @@ void loop()
 
 	// Check the PO state:
 	// This pin is low when not playing, but when playing it's actually flickering.
-	playPinState = digitalRead(PO_pled);
+	playPinState = digitalRead(PO_play);
 	if (playPinState) {
 		playPinTimer = nowTime;
 		//if (playPinState != playState) {
@@ -218,7 +232,7 @@ void loop()
 		}
 	}
 
-	sleepPinState = digitalRead(PO_sleep);
+	sleepPinState = digitalRead(PO_wake);
 	sleepState = sleepPinState;
 	// only advance this clock when awake; let's see if we ever do fall asleep?
 	if (sleepState) {
@@ -324,7 +338,8 @@ void loop()
 	if (pulseState != newPulseState) {
 		pulseState = newPulseState;
 		// set the LED with the pulseState of the variable:
-		digitalWrite(pulsePin, pulseState);
+		digitalWrite(pulsePin1, pulseState);
+		digitalWrite(pulsePin2, pulseState);
 
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {

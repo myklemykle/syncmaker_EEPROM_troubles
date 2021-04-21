@@ -41,16 +41,26 @@ public:
 		gy = gyro_raw[1];
 		gz = gyro_raw[2];
 	}
+
+	/////
+	// This is the one we actually use.
+	// I am hacking it because icm42605 gives us both accel and gyro data 
+	// (but not mag data) in this buffer that is still called accel_mag_raw ...
+	////
 	void readMotionSensor(float& ax, float& ay, float& az, float& gx, float& gy, float& gz) {
 		if (!newdata) update();
 		newdata = 0;
 		ax = (float)accel_mag_raw[0] * G_PER_COUNT;
 		ay = (float)accel_mag_raw[1] * G_PER_COUNT;
 		az = (float)accel_mag_raw[2] * G_PER_COUNT;
-		gx = (float)gyro_raw[0] * DEG_PER_SEC_PER_COUNT;
-		gy = (float)gyro_raw[1] * DEG_PER_SEC_PER_COUNT;
-		gz = (float)gyro_raw[2] * DEG_PER_SEC_PER_COUNT;
+		gx = (float)accel_mag_raw[3] * DEG_PER_SEC_PER_COUNT;
+		gy = (float)accel_mag_raw[4] * DEG_PER_SEC_PER_COUNT;
+		gz = (float)accel_mag_raw[5] * DEG_PER_SEC_PER_COUNT;
 	}
+	////
+	////
+	///
+
 	void readMotionSensor(float& ax, float& ay, float& az, float& gx, float& gy, float& gz, float& mx, float& my, float& mz) {
 		if (!newdata) update();
 		newdata = 0;
@@ -89,9 +99,11 @@ public:
 private:
 	void update();
 	bool FXOS8700_begin();
+	bool ICM42605_begin();
 	bool FXAS21002_begin();
 	bool MPL3115_begin();
 	bool FXOS8700_read(int16_t *data);
+	bool ICM42605_read(int16_t *data);
 	bool FXAS21002_read(int16_t *data);
 	bool MPL3115_read(int32_t *altitude, int16_t *temperature);
 	float cal[16]; // 0-8=offsets, 9=field strength, 10-15=soft iron map
