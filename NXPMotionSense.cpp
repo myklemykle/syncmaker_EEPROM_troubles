@@ -18,8 +18,8 @@ bool NXPMotionSense::begin()
 	uint16_t crc;
 
 	Wire.begin();
-	// Wire.setClock(400000);
-	Wire.setClock(1000000); // ICM42605 supports 1mhz max i2c speed
+	Wire.setClock(400000);
+	//Wire.setClock(1000000); // ICM42605 supports 1mhz max i2c speed
 
 	memset(accel_mag_raw, 0, sizeof(accel_mag_raw));
 	memset(gyro_raw, 0, sizeof(gyro_raw));
@@ -97,6 +97,8 @@ bool NXPMotionSense::ICM42605_begin()
 {
 	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
 	uint8_t b;
+	uint8_t t[2];
+	uint8_t reg;
 
 	Serial.println("ICM42605_begin");
 
@@ -105,29 +107,98 @@ bool NXPMotionSense::ICM42605_begin()
 	Serial.printf("ICM42605 ID = %02X\n", b);
 	if (b != 0x42) return false;
 
-	// accelerometer:
+	// // reset the device:
+	// if (!write_reg(i2c_addr, ICM42605_DEVICE_CONFIG, 0b00000001)) return false;    // 8khz
+	// // wait 1ms for reset to complete
+	// delay(2);
+	// // detect if chip is still with us
+	// if (!read_regs(i2c_addr, ICM42605_WHO_AM_I, &b, 1)) return false;
+	// if (b != 0x42) {
+	// 	Serial.println("gone after reset!");
+	// 	return false;
+	// } else {
+	// 	Serial.println("reset unit");
+	// }
+	
+	// interrupt electrical stuff: INT_CONFIG
+	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG, &reg, 1)) return false;
+	// Serial.printf("INT_CONFIG: %x\n", reg);
+	// int2 push pull
+	// reg = reg | 0b00010000;
+	// int2 pulse mode
+	//reg = reg | 0b00100000;
+	// both:
+	//reg = reg | 0b00110000;
+	// if (!write_reg(i2c_addr, ICM42605_INT_CONFIG, reg)) return false;  
+	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG, &reg, 1)) return false;
+	// Serial.printf("INT_CONFIG: %x\n", reg);
+	
+	// report temperature: TEMP_DATA1/0
+	// Temperature in Degrees Centigrade = (TEMP_DATA / 132.48) + 25
+	if (!read_regs(i2c_addr, ICM42605_TEMP_DATA1, t, 2)) return false;
+	Serial.printf("temperature raw %i / %i\n", t[0], t[1]);
+	Serial.printf("temperature %f\n", ((t[0]<<8 + t[1]) / 132.48) + 25.0);
+
+	// PWR_MGMT0: power up gyro and acc? manual says default is off ...
+	// 0b00001111
+	if (!write_reg(i2c_addr, ICM42605_PWR_MGMT0, 0b00001111)) return false;    
+	
+	// gyro: GYRO_CONFIG0
+	// set output data rate to 8khz
+	// GYRO_CONFIG0 = 0bxxxx0011
+	// set sensitivity to +-2000dps
+	// GYRO_CONFIG0 = 0b000.....
+	// if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
+	//if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
+	if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000101)) return false;    // 2khz
+	
+	// accelerometer: ACCEL_CONFIG0
 	// set output data rate to 8khz
 	// ICM42605_ACCEL_CONFIG0 = 0b001.....
 	// set accel sensitivity to 8g
 	// ICM42605_ACCEL_CONFIG0 = 0b....0011
 	// to do both in one register:
-	if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
-	// if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
-	// if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
+	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
+	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
+	if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
-	
-	// gyro: 
-	// set output data rate to 8khz
-	// GYRO_CONFIG0 = 0bxxxx0011
-	// set sensitivity to +-2000dps
-	// GYRO_CONFIG0 = 0b000.....
-	if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
-	// if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
-	// if (!write_reg(i2c_addr, ICM42605_GYRO_CONFIG0, 0b00000101)) return false;    // 2khz
 
+	// GYRO_ACCEL_CONFIG0: is this where you can get the full 8k rate?
+	// 0b11101110
+	//if (!write_reg(i2c_addr, ICM42605_GYRO_ACCEL_CONFIG0, 0b11101110)) return false;    
+	
+	// Interrupt stuff:
+	//
+	// INT_CONFIG0:
+	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG0, &reg, 1)) return false;
+	// Serial.printf("INT_CONFIG0: %x\n", reg);
+	//
+	// INT_CONFIG1:
+	// interrupt pulse duration stuff for higher data rates
+	// "1: Interrupt pulse duration is 8 μs. Required if ODR ≥ 4kHz, optional for ODR < 4kHz."
+	// "0: User should change setting to 0 from default setting of 1, for proper INT1 and INT2 pin operation"
+	// INT_CONFIG1 = 0b01100000
+	// // if (!write_reg(i2c_addr, ICM42605_INT_CONFIG1, 0b01100000)) return false;     // 8us
+	// if (!write_reg(i2c_addr, ICM42605_INT_CONFIG1, 0b00000000)) return false;     // 100us
+	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG1, &reg, 1)) return false;
+	// Serial.printf("INT_CONFIG1: %x\n", reg);
+	
 	// interrupt INT2 on data ready:
 	// INT_SOURCE3 = 0b00001000
 	if (!write_reg(i2c_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
+	if (!read_regs(i2c_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
+	Serial.printf("INT_SOURCE3: %x\n", reg);
+
+	// // make sure we're not self-testing ...
+	// if (!read_regs(i2c_addr, ICM42605_SELF_TEST_CONFIG, &reg, 1)) return false;
+	// Serial.printf("SELF_TEST_CONFIG: %x\n", reg);
+	// we're not.
+	
+	// // signal path reset?
+	// if (!read_regs(i2c_addr, ICM42605_SIGNAL_PATH_RESET, &reg, 1)) return false;
+	// Serial.printf("SIGNAL_PATH_RESET: %x\n", reg);
+	// if (!write_reg(i2c_addr, ICM42605_SIGNAL_PATH_RESET, 0b00001000)) return false;   
+
 
 	Serial.println("ICM42605 Configured");
 	return true;
@@ -142,6 +213,15 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 
 	int32_t usec = usec_since;
 
+
+	// LATEST THEORY is that we need to first read the 
+	// data registers, then read the INT_STATUS in order
+	// to reset the interrupt flag and arm the next interrupt.
+	// Otherwise we might get a second interrupt during the read;
+	// that might explain glitches .
+	// TODO: try swapping those two read_regs.
+	
+	
 	// This seems unnnecessary now that we're interrupt driven,
 	// but when I take it out all sorts of weird shit happens:
 	// we get like 100 more "hits" (interrupts), and we also 
@@ -150,9 +230,9 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	// the interrupt config registers in the IMU, and the arduino
 	// pin-listening options in attachIntrrupt ...
 	// 
-	//if (usec + 100 < usec_history) return false;
+	if (usec + 100 < usec_history) return false;
 	//if (usec + 10 < usec_history) return false;
-	if (usec + 1 < usec_history) return false;
+	//if (usec + 1 < usec_history) return false;
 
 	// This also shouldn't be needed when interrupt driven:
 	//
@@ -161,9 +241,6 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	if (!read_regs(i2c_addr, ICM42605_INT_STATUS, buf, 1)) return false;
 #define DATA_RDY_INT 0b00001000
 	if (!(buf[0] & DATA_RDY_INT )) return false;
-	// if (!buf[0]) return false;
-	// if (buf[0]!=0)
-	// 	Serial.println(buf[0]);
 
 	usec_since -= usec;
 	int diff = (usec - usec_history) >> 3;
@@ -182,41 +259,6 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	data[3] = (int16_t)((buf[7] << 8) | buf[8]);
 	data[4] = (int16_t)((buf[9] << 8) | buf[10]);
 	data[5] = (int16_t)((buf[11] << 8) | buf[12]);
-	return true;
-}
-
-bool NXPMotionSense::FXOS8700_begin()
-{
-	const uint8_t i2c_addr=FXOS8700_I2C_ADDR0;
-	uint8_t b;
-
-	Serial.println("FXOS8700_begin");
-
-	// detect if chip is present
-	if (!read_regs(i2c_addr, FXOS8700_WHO_AM_I, &b, 1)) return false;
-	Serial.printf("FXOS8700 ID = %02X\n", b);
-	if (b != 0xC7) return false;
-
-	// place into standby mode
-	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0)) return false;
-
-	// configure magnetometer
-	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1F)) return false;  // M + A (hybrid) mode
-	//if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG1, 0x1C)) return false;  // A only
-	if (!write_reg(i2c_addr, FXOS8700_M_CTRL_REG2, 0x20)) return false;
-
-	// configure accelerometer
-	if (!write_reg(i2c_addr, FXOS8700_XYZ_DATA_CFG, 0x01)) return false; // 4G range, hpf off, 
-	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG2, 0x02)) return false; // hires power mode, no oversampling
-
-	// configure frequency & enable
-	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x15)) return false; // 100Hz A+M, hipass, active mode.
-	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0x0D)) return false; // 200Hz A+M, hipass, active mode.
-	if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001101)) return false; // 200Hz A+M, hipass, active mode.
-	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00001001)) return false; // 200Hz A+M, wideband, active mode.
-	//if (!write_reg(i2c_addr, FXOS8700_CTRL_REG1, 0b00000001)) return false; // 400Hz A+M, wideband, active mode.
-	
-	Serial.println("FXOS8700 Configured");
 	return true;
 }
 

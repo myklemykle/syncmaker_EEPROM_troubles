@@ -80,12 +80,12 @@ const float shakeThreshold = 1.25;
 const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
-bool imu_ready = false;
+volatile bool imu_ready = false;
 
 #ifdef BENCHMARKS
 // tracking performance
 unsigned int loops = 0; // # of main loop cycles between beats
-unsigned int imus = 0; // # number of inertia checks in same.
+volatile unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
 // Objects:
@@ -109,6 +109,9 @@ bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
+#ifdef BENCHMARKS
+		imus++;
+#endif
 }
 
 void setup()
@@ -120,7 +123,9 @@ void setup()
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 	// imu pin 11 is also reserved but I can't get to it from software ...
 
-	attachInterrupt(IMU_int, imu_int, RISING);
+	// IMU int2 pin is open-collector mode
+	pinMode(IMU_int, INPUT_PULLUP);
+	attachInterrupt(IMU_int, imu_int, FALLING);
   imu.begin();
 
 	// pins!
@@ -181,14 +186,15 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
-	if (imu_ready) { // On IMU data ready interrupt
+	//if (imu.available()) { // When IMU becomes available (every 10 ms or so)
+	if (imu_ready) { // on interrupt
 		imu_ready = false;
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
-#ifdef BENCHMARKS
-		imus++;
-#endif
+/* #ifdef BENCHMARKS */
+/* 		imus++; */
+/* #endif */
 		// absolute amplitude of 3d vector
 		prevInertia = inertia;
 
