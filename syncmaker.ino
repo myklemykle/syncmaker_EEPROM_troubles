@@ -85,7 +85,8 @@ volatile bool imu_ready = false;
 #ifdef BENCHMARKS
 // tracking performance
 unsigned int loops = 0; // # of main loop cycles between beats
-volatile unsigned int imus = 0; // # number of inertia checks in same.
+//volatile unsigned int imus = 0; // # number of inertia checks in same.
+unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
 // Objects:
@@ -109,14 +110,13 @@ bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
-#ifdef BENCHMARKS
-		imus++;
-#endif
 }
 
 void setup()
 {
   Serial.begin(115200);
+
+	// pins!
 
 	// because i changed chips, this pin (imu pin 10) is now "reserved" on the IMU:
 	pinMode(IMU_fsync, OUTPUT);
@@ -128,7 +128,6 @@ void setup()
 	attachInterrupt(IMU_int, imu_int, FALLING);
   imu.begin();
 
-	// pins!
   pinMode(led1Pin, OUTPUT);       // LED
   pinMode(led2Pin, OUTPUT);       // LED
   pinMode(pulsePin1, OUTPUT);       // LED
@@ -186,15 +185,12 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
-	//if (imu.available()) { // When IMU becomes available (every 10 ms or so)
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
+		imus++;
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
-/* #ifdef BENCHMARKS */
-/* 		imus++; */
-/* #endif */
 		// absolute amplitude of 3d vector
 		prevInertia = inertia;
 
