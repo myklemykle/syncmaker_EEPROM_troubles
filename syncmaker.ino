@@ -14,7 +14,7 @@
 #define MICROS microsmothafuckka!!!   
 
 // measure speed of inner loop:
-/* #define BENCHMARKS youmarkityouboughtit */ 								
+#define BENCHMARKS youmarkityouboughtit 
 
 NXPMotionSense imu;
 
@@ -385,8 +385,8 @@ void loop()
 
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
+		pulseState = newPulseState;
 		if (playState) { 
-			pulseState = newPulseState;
 			// send sync pulse on both pins
 			digitalWrite(pulsePin1, pulseState);
 			digitalWrite(pulsePin2, pulseState);
@@ -397,14 +397,21 @@ void loop()
 			// print benchmarks when pulse goes high.
 			Serial.print(awakeTime);
 			Serial.print(':');
-			Serial.print(sleepState ? "awake  " : "asleep  ");
-			Serial.print(playState ? "play  " : "stop  ");
+			if (sleepState) { 
+				Serial.print(playState ? "play  " : "stop  ");
+			} else { 
+				Serial.print("asleep  ");
+			}
 			Serial.print(loops);
 			Serial.print(" loops, ");
 			Serial.print(imus);
 			Serial.print(" imus in ");
 			Serial.print(measureLen);
+#ifdef MICROS
+			Serial.print(" us, ");
+#else
 			Serial.print(" ms, ");
+#endif
 			Serial.print(AudioMemoryUsageMax());
 			Serial.print(" audioMem, ");
 			Serial.print(AudioProcessorUsageMax());
