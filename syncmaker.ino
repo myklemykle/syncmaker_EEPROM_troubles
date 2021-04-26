@@ -127,6 +127,7 @@ void setup()
 
 	// pins!
 
+	// slight hack:
 	// because i changed chips, this pin (imu pin 10) is now "reserved" on the IMU:
 	pinMode(IMU_fsync, OUTPUT);
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
@@ -140,16 +141,16 @@ void setup()
 	
   imu.begin();
 
-  pinMode(led1Pin, OUTPUT);       // LED
-  pinMode(led2Pin, OUTPUT);       // LED
-  pinMode(pulsePin1, OUTPUT);       // LED
-  pinMode(pulsePin2, OUTPUT);       // LED
-  pinMode(button1Pin, INPUT_PULLUP); // Pushbutton
-  pinMode(button2Pin, INPUT_PULLUP); // Pushbutton
+  pinMode(led1Pin, OUTPUT);       // led1
+  pinMode(led2Pin, OUTPUT);       // led2
+  pinMode(pulsePin1, OUTPUT);       // j1 tip
+  pinMode(pulsePin2, OUTPUT);       // j2 tip
+  pinMode(button1Pin, INPUT_PULLUP); // sw1
+  pinMode(button2Pin, INPUT_PULLUP); // sw2
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
 	pinMode(PO_wake, INPUT);
-	pinMode(PO_reset, INPUT_PULLUP);
+	pinMode(PO_reset, INPUT_PULLUP); // TODO: really we want this pulled down, not up.
 	pinMode(PO_SWCLK, INPUT_PULLUP);
 	pinMode(PO_SWDIO, INPUT_PULLUP);
 	pinMode(PO_SWO, INPUT_PULLUP);
@@ -367,10 +368,6 @@ void loop()
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks
-			Serial.print(AudioMemoryUsageMax());
-			Serial.print(" audioMem, ");
-			Serial.print(AudioProcessorUsageMax());
-			Serial.print(" audioCPU, ");
 			Serial.print(awakeTime);
 			Serial.print(':');
 			Serial.print(sleepState ? "awake  " : "asleep  ");
@@ -380,14 +377,17 @@ void loop()
 			Serial.print(imus);
 			Serial.print(" imus in ");
 			Serial.print(measureLen);
-			Serial.print(" ms");
+			Serial.print(" ms, ");
+			Serial.print(AudioMemoryUsageMax());
+			Serial.print(" audioMem, ");
+			Serial.print(AudioProcessorUsageMax());
+			Serial.print(" audioCPU");
 			Serial.println(".");
 
 			// reset counters
 			loops = imus = 0;
 		}
 #endif
-
 	}
 }
 
