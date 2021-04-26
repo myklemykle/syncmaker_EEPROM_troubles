@@ -63,12 +63,18 @@ const long pulseLen = 5000; 		// uS
 const long minTapInterval = 100000; //uS // Ignore spurious double-taps!  (This enforces a max tempo.)
 unsigned long measureLen = 250000; 	// default uS for 120bpm (1 beat per half/second)
 const long playFlickerTime = 100000; // uS
+elapsedMicros loopClock;
+elapsedMicros playPinTimer;
+elapsedMicros awakeTime;
 #else
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
 const int minTapInterval = 100; //mS // Ignore spurious double-taps!  (This enforces a max tempo.)
 unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
 const long playFlickerTime = 100; // MS
+elapsedMillis loopClock;
+elapsedMillis playPinTimer;
+elapsedMillis awakeTime;
 #endif
 
 #ifdef INTERRUPTS
@@ -90,7 +96,7 @@ bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playState = LOW; bool playPinState = LOW; 
-long playPinTimer = 0;
+
 bool sleepState = HIGH; bool sleepPinState = HIGH; 
 
 long downbeatTime = 0;        
@@ -189,6 +195,8 @@ void setup()
 #ifndef INTERRUPTS
 	imuClock = 0;
 #endif
+
+	loopClock = 0;
 }
 
 void loop()
@@ -197,16 +205,8 @@ void loop()
   float gx, gy, gz;
   float mx, my, mz;
 
-	// Check the clock:
-
-#ifdef MICROS
-  unsigned long nowTime = micros(); 
-#else
-  unsigned long nowTime = millis(); 
-#endif
-
-  unsigned long awakeTime;
 	unsigned long tapInterval = 0; // could be fewer bits?
+	unsigned long nowTime = loopClock;
 
 #ifdef BENCHMARKS
 	loops++; 
@@ -265,11 +265,11 @@ void loop()
 	// This pin is low when not playing, but when playing it's actually flickering.
 	playPinState = digitalRead(PO_play);
 	if (playPinState) {
-		playPinTimer = nowTime;
+		playPinTimer = 0;
 		playState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
-		if (nowTime - playPinTimer > playFlickerTime) {
+		if (playPinTimer > playFlickerTime) {
 			playState = playPinState;
 		}
 	}
@@ -279,9 +279,9 @@ void loop()
 	sleepState = sleepPinState;
 	// only advance this clock when awake; let's see if we ever do fall asleep?
 	if (sleepState) {
-		awakeTime = nowTime; 
 	} else {	
 		// TODO: power management code, to sleep until this pin wakes us.
+		awakeTime = 0;
 	}
 
 	// Check the buttons:
@@ -422,6 +422,14 @@ void loop()
 			loops = imus = 0;
 		}
 #endif
+	}
+
+	// protect against overflow of loopClock;
+	if (loopClock > 10 * measureLen) { 
+		Serial.println("PROTECTION!");//DEBUG
+		loopClock -= 9*measureLen;
+		downbeatTime -= 9*measureLen;
+		lastTapTime -= 9*measureLen;
 	}
 }
 
