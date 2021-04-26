@@ -8,7 +8,8 @@
 #include <EEPROM.h>
 
 #define INTERRUPTS yeasurewelikeinterrupts.
-#define MICROS microsmothafuckka!!!
+/* #define MICROS microsmothafuckka!!! */  // micros is still buggy.
+/* #define BENCHMARKS 1 */
 
 NXPMotionSense imu;
 
@@ -31,13 +32,12 @@ AudioConnection          patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 
 // measure speed of inner loop:
-/* #define BENCHMARKS 1 */
 
 // set pin numbers:
 const int button1Pin = 0;   // sw1
 const int button2Pin = 9;   // sw2
-const int led1Pin =  20;    // led1
-const int led2Pin =  21;    // led2
+const int led1Pin =  21;    // led1
+const int led2Pin =  20;    // led2
 const int pulsePin1 = 11; 	// j1 tip
 const int pulsePin2 = 8; 		// j2 tip
 const int analogOut = 14;   // j1/j2 ring: 12 bit DAC on Teensy 3.2 !
@@ -81,6 +81,7 @@ const int eepromBase = 2000;
 // vars
 bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
+bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playState = LOW; bool playPinState = LOW; 
 long playPinTimer = 0;
@@ -355,9 +356,13 @@ void loop()
 	if ((downbeatTime > 0) && (measureLen > 0)) {
 		
 		if (nowTime - downbeatTime < blinkLen)
-			newLed1State = HIGH;
+			newBlinkState = HIGH;
 		else
-			newLed1State = LOW;
+			newBlinkState = LOW;
+
+		newLed1State = PRESSED(btn1) ? !newBlinkState : newBlinkState;
+		newLed2State = PRESSED(btn2) ? !newBlinkState : newBlinkState;
+
 
 		if (nowTime - downbeatTime < pulseLen)
 			newPulseState = HIGH;
