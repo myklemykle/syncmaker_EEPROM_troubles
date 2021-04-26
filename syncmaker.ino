@@ -8,6 +8,7 @@
 #include <EEPROM.h>
 
 #define INTERRUPTS yeasurewelikeinterrupts.
+#define MICROS microsmothafuckka!!!
 
 NXPMotionSense imu;
 
@@ -30,7 +31,7 @@ AudioConnection          patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 
 // measure speed of inner loop:
-#define BENCHMARKS 1
+/* #define BENCHMARKS 1 */
 
 // set pin numbers:
 const int button1Pin = 0;   // sw1
@@ -50,13 +51,25 @@ const int IMU_fsync = 1;   // need to ground this on icm-42605
 const int IMU_int = 2;
 
 // default time periods:
-const int debounceLen = 2;
+const int debounceLen = 2; // must be in MS as required by bounce2 lib
+
+#ifdef MICROS
+const int blinkLen = 50000; 		// uS
+const int pulseLen = 5000; 		// uS
+const int minTapInterval = 1000000; //uS // Ignore spurious double-taps!  (This enforces a max tempo.)
+unsigned long measureLen = 250000; 	// default uS for 120bpm (1 beat per half/second)
+const unsigned long playFlickerTime = 1000000; // uS
+#else
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
+const int minTapInterval = 100; //mS // Ignore spurious double-taps!  (This enforces a max tempo.)
+unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
+const unsigned long playFlickerTime = 100; // MS
+#endif
 
 #ifndef INTERRUPTS
 elapsedMicros imuClock;
-const int clockTick = 500;
+const int clockTick = 500; //uS
 #endif
 
 // NOTE: the prop shield calibration is stored in the EEPROM,
@@ -76,9 +89,6 @@ bool sleepState = HIGH; bool sleepPinState = HIGH;
 long downbeatTime = 0;        
 long lastTapTime = 0;        
 
-// the follow variables is a long because the time, measured in miliseconds,
-// will quickly become a bigger number than can be stored in an int.
-unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
 unsigned int tapCount = 0;
 
 float inertia = 0;
@@ -92,7 +102,6 @@ volatile bool imu_ready = false;
 #ifdef BENCHMARKS
 // tracking performance
 unsigned int loops = 0; // # of main loop cycles between beats
-//volatile unsigned int imus = 0; // # number of inertia checks in same.
 unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
@@ -160,7 +169,11 @@ void setup()
 	btn2.attach(button2Pin);
 	btn2.interval(debounceLen);
 
+#ifdef MICROS
+	downbeatTime = micros(); // now!
+#else
 	downbeatTime = millis(); // now!
+#endif
 
 	AudioMemory(2);
 	dac1.analogReference(EXTERNAL); // 3.3v p2p
@@ -168,7 +181,7 @@ void setup()
 	//reverb1.reverbTime(0.5);
 	amp1.gain(0);
 
-	EEPROM.get(eepromBase, measureLen);
+	//EEPROM.get(eepromBase, measureLen);
 
 #ifndef INTERRUPTS
 	imuClock = 0;
@@ -183,7 +196,12 @@ void loop()
 
 	// Check the clock:
 
+#ifdef MICROS
+  unsigned long nowTime = micros(); 
+#else
   unsigned long nowTime = millis(); 
+#endif
+
   unsigned long awakeTime;
 	unsigned long tapInterval = 0; // could be fewer bits?
 
@@ -210,7 +228,9 @@ void loop()
 		imuClock -= clockTick;
 #endif
 
+#ifdef BENCHMARKS
 		imus++;
+#endif
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
@@ -248,7 +268,7 @@ void loop()
 		playState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
-		if (nowTime - playPinTimer > 100) {
+		if (nowTime - playPinTimer > playFlickerTime) {
 			//if (playPinState != playState) {
 				//Serial.println("stop");
 			//}
@@ -299,7 +319,7 @@ void loop()
 				}
 				// Othwerwise assume full time (1/8 notes)
 
-				if (tapInterval < 100) {
+				if (tapInterval < minTapInterval) {
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
 				} else {
 					// Compute a running average over 2 or 3 intervals if available:
@@ -347,22 +367,22 @@ void loop()
 	} else {
 	}
 
-	// Update LEDs and pulse pin
+	// Update LEDs
 
 	if (led1State != newLed1State) {
 		led1State = newLed1State;
-		// set the LED with the led1State of the variable:
 		digitalWrite(led1Pin, led1State);
 	}
 	if (led2State != newLed2State) {
 		led2State = newLed2State;
-		// set the LED with the led2State of the variable:
 		digitalWrite(led2Pin, led2State);
 	}
+
+	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
 		if (playState) { 
 			pulseState = newPulseState;
-			// set the LED with the pulseState of the variable:
+			// send sync pulse on both pins
 			digitalWrite(pulsePin1, pulseState);
 			digitalWrite(pulsePin2, pulseState);
 		}
@@ -391,5 +411,5 @@ void loop()
 		}
 #endif
 	}
-}
+	}
 
