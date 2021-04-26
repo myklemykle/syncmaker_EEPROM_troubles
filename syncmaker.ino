@@ -52,6 +52,9 @@ const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
 
+elapsedMicros imuClock;
+const int clockTick = 500;
+
 // NOTE: the prop shield calibration is stored in the EEPROM,
 // we mustn't overwrite that!  
 // It's rumored to be 68 bytes starting at address 0x60 -- 
@@ -123,9 +126,10 @@ void setup()
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 	// imu pin 11 is also reserved but I can't get to it from software ...
 
-	// IMU int2 pin is open-collector mode
-	pinMode(IMU_int, INPUT_PULLUP);
-	attachInterrupt(IMU_int, imu_int, FALLING);
+	/* // IMU int2 pin is open-collector mode */
+	/* pinMode(IMU_int, INPUT_PULLUP); */
+	/* attachInterrupt(IMU_int, imu_int, FALLING); */
+	
   imu.begin();
 
   pinMode(led1Pin, OUTPUT);       // LED
@@ -156,6 +160,8 @@ void setup()
 	amp1.gain(0);
 
 	EEPROM.get(eepromBase, measureLen);
+
+	imuClock = 0;
 }
 
 void loop()
@@ -185,8 +191,11 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
-	if (imu_ready) { // on interrupt
-		imu_ready = false;
+	/* if (imu_ready) { // on interrupt */
+	if (imuClock > clockTick) {
+		imuClock -= clockTick;
+
+		/* imu_ready = false; */
 		imus++;
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);

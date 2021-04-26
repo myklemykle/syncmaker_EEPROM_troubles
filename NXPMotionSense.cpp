@@ -121,17 +121,9 @@ bool NXPMotionSense::ICM42605_begin()
 	// }
 	
 	// interrupt electrical stuff: INT_CONFIG
-	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG, &reg, 1)) return false;
-	// Serial.printf("INT_CONFIG: %x\n", reg);
 	// int2 push pull
 	reg = reg | 0b00010000;
-	// int2 pulse mode
-	//reg = reg | 0b00100000;
-	// both:
-	//reg = reg | 0b00110000;
 	if (!write_reg(i2c_addr, ICM42605_INT_CONFIG, reg)) return false;  
-	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG, &reg, 1)) return false;
-	// Serial.printf("INT_CONFIG: %x\n", reg);
 	
 	// report temperature: TEMP_DATA1/0
 	// Temperature in Degrees Centigrade = (TEMP_DATA / 132.48) + 25
@@ -163,17 +155,8 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
 
-	// GYRO_ACCEL_CONFIG0: can adjust latency of low pas filters ... are they even enabled?
-	// 7-4: 14 Low Latency option: Trivial decimation @ ODR of Dec2 filter output. Dec2 runs at max(400Hz, ODR)
-	// 3-0: 14 Low Latency option: Trivial decimation @ ODR of Dec2 filter output. Dec2 runs at max(400Hz, ODR)
-	// 0b11101110
-	//if (!write_reg(i2c_addr, ICM42605_GYRO_ACCEL_CONFIG0, 0b11101110)) return false;    
-	
+	/*
 	// Interrupt stuff:
-	//
-	// INT_CONFIG0:
-	// if (!read_regs(i2c_addr, ICM42605_INT_CONFIG0, &reg, 1)) return false;
-	// Serial.printf("INT_CONFIG0: %x\n", reg);
 	//
 	// INT_CONFIG1:
 	// interrupt pulse duration stuff for higher data rates
@@ -191,6 +174,7 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(i2c_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(i2c_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
 	Serial.printf("INT_SOURCE3: %x\n", reg);
+	*/
 
 	// // make sure we're not self-testing ...
 	// if (!read_regs(i2c_addr, ICM42605_SELF_TEST_CONFIG, &reg, 1)) return false;
@@ -214,7 +198,43 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	// static int32_t usec_history=5000;
 	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
 	uint8_t buf[13];
+  //
+	// int32_t usec = usec_since;
 
+
+	// LATEST THEORY is that we need to first read the 
+	// data registers, then read the INT_STATUS in order
+	// to reset the interrupt flag and arm the next interrupt.
+	// Otherwise we might get a second interrupt during the read;
+	// that might explain glitches .
+	// TODO: try swapping those two read_regs.
+	
+	
+	// This seems unnnecessary now that we're interrupt driven,
+	// but when I take it out all sorts of weird shit happens:
+	// we get like 100 more "hits" (interrupts), and we also 
+	// start to see accelerometer glitches.  Maybe the interrupt
+	// is somehow double-firing?  Consider learning more about
+	// the interrupt config registers in the IMU, and the arduino
+	// pin-listening options in attachIntrrupt ...
+	// 
+	//if (usec + 100 < usec_history) return false;
+	//if (usec + 10 < usec_history) return false;
+	//if (usec + 1 < usec_history) return false;
+
+	// This also shouldn't be needed when interrupt driven:
+	//
+	// I think we're looking for "data ready" here ... that's the 
+	// data_rdy_int bit from the INT_STATUS reg
+// 	if (!read_regs(i2c_addr, ICM42605_INT_STATUS, buf, 1)) return false;
+// #define DATA_RDY_INT 0b00001000
+// 	if (!(buf[0] & DATA_RDY_INT )) return false;
+
+	// usec_since -= usec;
+	// int diff = (usec - usec_history) >> 3;
+	// if (diff < -15) diff = -15;
+	// else if (diff > 15) diff = 15;
+	// usec_history += diff;
 
 	// the registers for 6 bytes of acc and 6 bytes of gyro are all contiguous here:
 	if (!read_regs(i2c_addr, ICM42605_ACCEL_DATA_X1 , buf+1, 12)) return false;
@@ -227,9 +247,9 @@ bool NXPMotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	data[3] = (int16_t)((buf[7] << 8) | buf[8]);
 	data[4] = (int16_t)((buf[9] << 8) | buf[10]);
 	data[5] = (int16_t)((buf[11] << 8) | buf[12]);
-	// clear flags
-	if (!read_regs(i2c_addr, ICM42605_INT_STATUS, buf, 1)) return false;
-	return true;
+	// // clear flags
+	// if (!read_regs(i2c_addr, ICM42605_INT_STATUS, buf, 1)) return false;
+	// return true;
 }
 
 
