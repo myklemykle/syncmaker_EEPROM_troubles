@@ -360,10 +360,12 @@ void loop()
 		digitalWrite(led2Pin, led2State);
 	}
 	if (pulseState != newPulseState) {
-		pulseState = newPulseState;
-		// set the LED with the pulseState of the variable:
-		digitalWrite(pulsePin1, pulseState);
-		digitalWrite(pulsePin2, pulseState);
+		if (playState) { 
+			pulseState = newPulseState;
+			// set the LED with the pulseState of the variable:
+			digitalWrite(pulsePin1, pulseState);
+			digitalWrite(pulsePin2, pulseState);
+		}
 
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
