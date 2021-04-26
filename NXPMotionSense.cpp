@@ -146,16 +146,15 @@ bool NXPMotionSense::ICM42605_begin()
 	
 	// accelerometer: ACCEL_CONFIG0
 	// set output data rate to 8khz
-	// ICM42605_ACCEL_CONFIG0 = 0b001.....
-	// set accel sensitivity to 8g
 	// ICM42605_ACCEL_CONFIG0 = 0b....0011
+	// set accel sensitivity to 8g
+	// ICM42605_ACCEL_CONFIG0 = 0b001.....
 	// to do both in one register:
 	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
 	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
 	if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 	//if (!write_reg(i2c_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
 
-	/*
 	// Interrupt stuff:
 	//
 	// INT_CONFIG1:
@@ -174,7 +173,6 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(i2c_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(i2c_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
 	Serial.printf("INT_SOURCE3: %x\n", reg);
-	*/
 
 	// // make sure we're not self-testing ...
 	// if (!read_regs(i2c_addr, ICM42605_SELF_TEST_CONFIG, &reg, 1)) return false;

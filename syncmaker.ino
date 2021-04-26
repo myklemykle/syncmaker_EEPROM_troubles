@@ -7,6 +7,8 @@
 #include <Wire.h>
 #include <EEPROM.h>
 
+#define INTERRUPTS yeasurewelikeinterrupts.
+
 NXPMotionSense imu;
 
 // GUItool reqs:
@@ -52,8 +54,10 @@ const int debounceLen = 2;
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
 
+#ifndef INTERRUPTS
 elapsedMicros imuClock;
 const int clockTick = 500;
+#endif
 
 // NOTE: the prop shield calibration is stored in the EEPROM,
 // we mustn't overwrite that!  
@@ -110,10 +114,12 @@ bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
 	return Wire.endTransmission() == 0;
 }
 
+#ifdef INTERRUPTS
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
 }
+#endif
 
 void setup()
 {
@@ -126,9 +132,11 @@ void setup()
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 	// imu pin 11 is also reserved but I can't get to it from software ...
 
-	/* // IMU int2 pin is open-collector mode */
-	/* pinMode(IMU_int, INPUT_PULLUP); */
-	/* attachInterrupt(IMU_int, imu_int, FALLING); */
+#ifdef INTERRUPTS
+	// IMU int2 pin is open-collector mode
+	pinMode(IMU_int, INPUT_PULLUP);
+	attachInterrupt(IMU_int, imu_int, FALLING);
+#endif
 	
   imu.begin();
 
@@ -153,7 +161,7 @@ void setup()
 
 	downbeatTime = millis(); // now!
 
-	AudioMemory(20);
+	AudioMemory(2);
 	dac1.analogReference(EXTERNAL); // 3.3v p2p
 	pink1.amplitude(2);
 	//reverb1.reverbTime(0.5);
@@ -161,7 +169,9 @@ void setup()
 
 	EEPROM.get(eepromBase, measureLen);
 
+#ifndef INTERRUPTS
 	imuClock = 0;
+#endif
 }
 
 void loop()
@@ -191,11 +201,14 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
-	/* if (imu_ready) { // on interrupt */
-	if (imuClock > clockTick) {
+#ifdef INTERRUPTS
+	if (imu_ready) { // on interrupt
+		imu_ready = false;
+#else
+	if (imuClock > clockTick) { // on interval
 		imuClock -= clockTick;
+#endif
 
-		/* imu_ready = false; */
 		imus++;
     // Read the motion sensors
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
@@ -209,6 +222,7 @@ void loop()
 			Serial.println(inertia);
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
+		/* amp1.gain(max((inertia - shakeThreshold), 0.0)); */
 		//amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
 		amp1.gain(max((inertia - shakeThreshold)/4.0, 0.0));
 
@@ -355,8 +369,10 @@ void loop()
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks
-			//Serial.print(AudioMemoryUsageMax());
-			//Serial.print(" audioMem");
+			Serial.print(AudioMemoryUsageMax());
+			Serial.print(" audioMem, ");
+			Serial.print(AudioProcessorUsageMax());
+			Serial.print(" audioCPU, ");
 			Serial.print(awakeTime);
 			Serial.print(':');
 			Serial.print(sleepState ? "awake  " : "asleep  ");
