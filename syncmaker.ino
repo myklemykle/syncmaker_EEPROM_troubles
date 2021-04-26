@@ -7,9 +7,14 @@
 #include <Wire.h>
 #include <EEPROM.h>
 
-#define INTERRUPTS yeasurewelikeinterrupts.
-/* #define MICROS microsmothafuckka!!! */  // micros is still buggy.
-/* #define BENCHMARKS 1 */
+// use interrupts or poll?
+#define INTERRUPTS yeasurewelikeinterrupts  
+
+// micros is still buggy.
+#define MICROS microsmothafuckka!!!   
+
+// measure speed of inner loop:
+/* #define BENCHMARKS youmarkityouboughtit */ 								
 
 NXPMotionSense imu;
 
@@ -31,7 +36,6 @@ AudioConnection          patchCord1(pink1, amp1);
 AudioConnection          patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 
-// measure speed of inner loop:
 
 // set pin numbers:
 const int button1Pin = 0;   // sw1
@@ -54,22 +58,24 @@ const int IMU_int = 2;
 const int debounceLen = 2; // must be in MS as required by bounce2 lib
 
 #ifdef MICROS
-const int blinkLen = 50000; 		// uS
-const int pulseLen = 5000; 		// uS
-const int minTapInterval = 1000000; //uS // Ignore spurious double-taps!  (This enforces a max tempo.)
+const long blinkLen = 50000; 		// uS
+const long pulseLen = 5000; 		// uS
+const long minTapInterval = 100000; //uS // Ignore spurious double-taps!  (This enforces a max tempo.)
 unsigned long measureLen = 250000; 	// default uS for 120bpm (1 beat per half/second)
-const unsigned long playFlickerTime = 1000000; // uS
+const long playFlickerTime = 100000; // uS
 #else
 const int blinkLen = 50; 		// MS
 const int pulseLen = 5; 		// MS
 const int minTapInterval = 100; //mS // Ignore spurious double-taps!  (This enforces a max tempo.)
 unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
-const unsigned long playFlickerTime = 100; // MS
+const long playFlickerTime = 100; // MS
 #endif
 
-#ifndef INTERRUPTS
+#ifdef INTERRUPTS
+volatile bool imu_ready = false;
+#else
 elapsedMicros imuClock;
-const int clockTick = 500; //uS
+const int clockTick = 500; // 2khz data rate (match what's set in NXPMotionSense
 #endif
 
 // NOTE: the prop shield calibration is stored in the EEPROM,
@@ -98,7 +104,6 @@ const float shakeThreshold = 1.25;
 const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
-volatile bool imu_ready = false;
 
 #ifdef BENCHMARKS
 // tracking performance
@@ -112,17 +117,9 @@ Bounce btn2 = Bounce();
 
 // Macros
 #define PRESSED(btn) 				(btn.read() == LOW)
+#define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
 #define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
 #define TAP(b1,b2) 			( (PRESSED(b1) && b2.fell()) || (PRESSED(b2) && b1.fell()) )
-
-// stolen from NXPMotionSense, where it's a private method (why?)
-bool write_reg(uint8_t i2c, uint8_t addr, uint8_t val)
-{
-	Wire.beginTransmission(i2c);
-	Wire.write(addr);
-	Wire.write(val);
-	return Wire.endTransmission() == 0;
-}
 
 #ifdef INTERRUPTS
 // IMU interrupt handler:
@@ -176,13 +173,18 @@ void setup()
 	downbeatTime = millis(); // now!
 #endif
 
+	// teensy audio setup
 	AudioMemory(2);
 	dac1.analogReference(EXTERNAL); // 3.3v p2p
 	pink1.amplitude(2);
 	//reverb1.reverbTime(0.5);
 	amp1.gain(0);
 
-	//EEPROM.get(eepromBase, measureLen);
+	// If buttons are held down when we boot, reset the default measure length
+	if (BOTHPRESSED(btn1, btn2)) {
+	} else {
+		EEPROM.get(eepromBase, measureLen);
+	}
 
 #ifndef INTERRUPTS
 	imuClock = 0;
@@ -221,6 +223,7 @@ void loop()
 
 	shaken = LOW;
 	tapped = LOW;
+
 #ifdef INTERRUPTS
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
@@ -258,30 +261,27 @@ void loop()
 		}
 	}
 
-	// Check the PO state:
+	// Check the PO play/stop state
 	// This pin is low when not playing, but when playing it's actually flickering.
 	playPinState = digitalRead(PO_play);
 	if (playPinState) {
 		playPinTimer = nowTime;
-		//if (playPinState != playState) {
-			//Serial.println("play");
-		//}
 		playState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
 		if (nowTime - playPinTimer > playFlickerTime) {
-			//if (playPinState != playState) {
-				//Serial.println("stop");
-			//}
 			playState = playPinState;
 		}
 	}
 
+	// Check if the PO is asleep
 	sleepPinState = digitalRead(PO_wake);
 	sleepState = sleepPinState;
 	// only advance this clock when awake; let's see if we ever do fall asleep?
 	if (sleepState) {
 		awakeTime = nowTime; 
+	} else {	
+		// TODO: power management code, to sleep until this pin wakes us.
 	}
 
 	// Check the buttons:
@@ -394,7 +394,7 @@ void loop()
 
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
-			// print benchmarks
+			// print benchmarks when pulse goes high.
 			Serial.print(awakeTime);
 			Serial.print(':');
 			Serial.print(sleepState ? "awake  " : "asleep  ");
@@ -416,5 +416,5 @@ void loop()
 		}
 #endif
 	}
-	}
+}
 
