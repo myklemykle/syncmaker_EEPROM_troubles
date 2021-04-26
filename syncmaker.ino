@@ -222,9 +222,7 @@ void loop()
 			Serial.println(inertia);
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		/* amp1.gain(max((inertia - shakeThreshold), 0.0)); */
-		//amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
-		amp1.gain(max((inertia - shakeThreshold)/4.0, 0.0));
+		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
 
 		
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
