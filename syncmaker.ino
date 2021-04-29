@@ -6,6 +6,7 @@
 														// ignores other two IMU chips 
 #include <Wire.h>
 #include <EEPROM.h>
+#include <Snooze.h>
 
 // use interrupts or poll?
 #define INTERRUPTS yeasurewelikeinterrupts  
@@ -13,10 +14,14 @@
 // micros is still buggy.
 #define MICROS microsmothafuckka!!!   
 
-// measure speed of inner loop:
-#define BENCHMARKS youmarkityouboughtit 
+// output debug info to serial
+#define BENCHMARKS youmarkityouboughtit  
 
 NXPMotionSense imu;
+SnoozeDigital s_digital;
+SnoozeUSBSerial s_usbserial;
+SnoozeAudio s_audio;
+SnoozeBlock s_config(s_digital, s_usbserial, s_audio);
 
 // GUItool reqs:
 #include <Audio.h>
@@ -163,6 +168,7 @@ void setup()
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
 	pinMode(PO_wake, INPUT);
+	s_digital.pinMode(PO_wake, INPUT, RISING); 
 	pinMode(PO_reset, INPUT_PULLUP); // TODO: really we want this pulled down, not up.
 	pinMode(PO_SWCLK, INPUT_PULLUP);
 	pinMode(PO_SWDIO, INPUT_PULLUP);
@@ -244,7 +250,9 @@ void loop()
 		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
 		if (inertia > shakeThreshold) 
 
+#ifdef BENCHMARKS
 			Serial.println(inertia);
+#endif
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
@@ -280,7 +288,14 @@ void loop()
 	// only advance this clock when awake; let's see if we ever do fall asleep?
 	if (sleepState) {
 	} else {	
-		// TODO: power management code, to sleep until this pin wakes us.
+#ifdef BENCHMARKS
+		Serial.println("zzzzz.");
+#endif
+		// sleep until PO_WAKE pin wakes us.
+		Snooze.deepSleep(s_config);
+#ifdef BENCHMARKS
+		Serial.println("good morning!");
+#endif
 		awakeTime = 0;
 	}
 
@@ -426,7 +441,9 @@ void loop()
 
 	// protect against overflow of loopClock;
 	if (loopClock > 10 * measureLen) { 
+#ifdef BENCHMARKS
 		Serial.println("PROTECTION!");//DEBUG
+#endif
 		loopClock -= 9*measureLen;
 		downbeatTime -= 9*measureLen;
 		lastTapTime -= 9*measureLen;
