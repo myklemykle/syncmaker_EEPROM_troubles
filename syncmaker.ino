@@ -14,13 +14,18 @@
 // high-resolution timers.
 #define MICROS microsmothafuckka!!!   
 
-// measure speed of inner loop:
-#define BENCHMARKS youmarkityouboughtit 
+// Debug output on usb serial
+#define SDEBUG crittersbuggin 
 
+#ifdef SDEBUG
 // Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.
 // is there some more normal solution for this?  Seems like this would be a common problem.
 #define Dbg_print(X) if(Serial) Serial.print(X)
 #define Dbg_println(X) if(Serial) Serial.println(X)
+#else
+#define Dbg_print(X) {}
+#define Dbg_println(X) {}
+#endif
 
 NXPMotionSense imu;
 
@@ -64,20 +69,23 @@ const int IMU_int = 2;
 const int debounceLen = 2; // must be in MS as required by bounce2 lib
 
 #ifdef MICROS
-const long blinkLen = 50000; 		// uS
-const long pulseLen = 5000; 		// uS
-const long minTapInterval = 100000; //uS // Ignore spurious double-taps!  (This enforces a max tempo.)
-unsigned long measureLen = 250000; 	// default uS for 120bpm (1 beat per half/second)
-const long playFlickerTime = 100000; // uS
+const unsigned int TIMESCALE = 1000; // uS
+# else 
+const unsigned int TIMESCALE = 1;		// mS
+#endif
+
+const unsigned long strobeOnLen = 1 * TIMESCALE; 		
+const unsigned long strobeOffLen = 100 * TIMESCALE;
+const unsigned long pulseLen = 5 * TIMESCALE; 		
+const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
+const unsigned long playFlickerTime = 100 * TIMESCALE; 
+unsigned long measureLen = 250 * TIMESCALE; 	// default for 120bpm (1 beat per half/second)
+
+#ifdef MICROS
 elapsedMicros loopClock;
 elapsedMicros playPinTimer;
 elapsedMicros awakeTime;
 #else
-const int blinkLen = 50; 		// MS
-const int pulseLen = 5; 		// MS
-const int minTapInterval = 100; //mS // Ignore spurious double-taps!  (This enforces a max tempo.)
-unsigned long measureLen = 250; 	// default MS for 120bpm (1 beat per half/second)
-const long playFlickerTime = 100; // MS
 elapsedMillis loopClock;
 elapsedMillis playPinTimer;
 elapsedMillis awakeTime;
@@ -104,8 +112,8 @@ bool pulseState = LOW, newPulseState = LOW;
 bool playState = LOW; bool playPinState = LOW; 
 bool sleepState = HIGH; bool sleepPinState = HIGH; 
 
-long downbeatTime = 0;        
-long lastTapTime = 0;        
+unsigned long downbeatTime = 0;        
+unsigned long lastTapTime = 0;        
 
 unsigned int tapCount = 0;
 
@@ -116,7 +124,7 @@ const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
 
-#ifdef BENCHMARKS
+#ifdef SDEBUG
 // tracking performance
 unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
@@ -213,7 +221,7 @@ void loop()
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopClock;
 
-#ifdef BENCHMARKS
+#ifdef SDEBUG
 	loops++; 
 #endif
 
@@ -238,7 +246,7 @@ void loop()
 		imuClock -= clockTick;
 #endif
 
-#ifdef BENCHMARKS
+#ifdef SDEBUG
 		imus++;
 #endif
 
@@ -246,7 +254,7 @@ void loop()
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
 
-/* #ifdef BENCHMARKS */
+/* #ifdef SDEBUG */
 /* 		if (inertia > shakeThreshold)  */
 /* 			Dbg_println(inertia); */
 /* #endif */
@@ -262,10 +270,8 @@ void loop()
 			// TODO: shaken should be the start of sound moment, 
 			// but try putting tapped at the apex-G moment; it may have better feel.
 			tapped = HIGH;
-#ifdef BENCHMARKS
 		if (inertia > shakeThreshold) 
 			Dbg_println(inertia);
-#endif
 		}
 	}
 
@@ -331,9 +337,7 @@ void loop()
 
 				if (tapInterval < minTapInterval) {
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
-#ifdef BENCHMARKS
 					Dbg_println("ignoring bounce");
-#endif
 				} else {
 					// Compute a running average over 2 or 3 intervals if available:
 					if (tapCount > 4) tapCount = 4;
@@ -362,13 +366,41 @@ void loop()
 		tapCount = 0;
 	}
 
-	// Calculate blink
-	if (nowTime - downbeatTime < blinkLen)
-		newBlinkState = HIGH;
-	else
-		newBlinkState = LOW;
-	newLed1State = PRESSED(btn1) ? !newBlinkState : newBlinkState;
-	newLed2State = PRESSED(btn2) ? !newBlinkState : newBlinkState;
+	// Calculate blinkage.
+	// (Strobe-off times need to be much longer than strobe-on times
+	// in order to be clearly visible to the human eye.)
+	if (PRESSED(btn1)) {
+		if (nowTime - downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
+			newLed1State = LOW;
+		else
+			newLed1State = HIGH;
+	} else {
+		if (nowTime - downbeatTime < strobeOnLen)
+			newLed1State = HIGH;
+		else
+			newLed1State = LOW;
+	}
+
+	if (PRESSED(btn2)) {
+		if (nowTime - downbeatTime < strobeOffLen)
+			newLed2State = LOW;
+		else
+			newLed2State = HIGH;
+	} else {
+		if (nowTime - downbeatTime < strobeOnLen)
+			newLed2State = HIGH;
+		else
+			newLed2State = LOW;
+	}
+	// Update LEDs
+	if (led1State != newLed1State) {
+		led1State = newLed1State;
+		digitalWrite(led1Pin, led1State);
+	}
+	if (led2State != newLed2State) {
+		led2State = newLed2State;
+		digitalWrite(led2Pin, led2State);
+	}
 
 	// Calculate pulse
 	if (BOTHPRESSED(btn1, btn2)) { 
@@ -383,16 +415,6 @@ void loop()
 			newPulseState = LOW;
 	}
 
-	// Update LEDs
-
-	if (led1State != newLed1State) {
-		led1State = newLed1State;
-		digitalWrite(led1Pin, led1State);
-	}
-	if (led2State != newLed2State) {
-		led2State = newLed2State;
-		digitalWrite(led2Pin, led2State);
-	}
 
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
@@ -403,7 +425,6 @@ void loop()
 			digitalWrite(pulsePin2, pulseState);
 		}
 
-#ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks when pulse goes high.
 			Dbg_print(awakeTime);
@@ -429,10 +450,11 @@ void loop()
 			Dbg_print(" audioCPU");
 			Dbg_println(".");
 
+#ifdef SDEBUG
 			// reset counters
 			loops = imus = 0;
-		}
 #endif
+		}
 	}
 
 	// protect against overflow of loopClock;
