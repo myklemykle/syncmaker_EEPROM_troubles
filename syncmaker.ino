@@ -16,6 +16,11 @@
 // measure speed of inner loop:
 #define BENCHMARKS youmarkityouboughtit 
 
+// Teensy will eventually hang on a clogged output buffer if we don't do this ...
+// is there some more normal solution for this?
+#define Dbg_print(X) if(Serial) Serial.print(X)
+#define Dbg_println(X) if(Serial) Serial.println(X)
+
 NXPMotionSense imu;
 
 // GUItool reqs:
@@ -244,7 +249,7 @@ void loop()
 		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
 		if (inertia > shakeThreshold) 
 
-			Serial.println(inertia);
+			Dbg_println(inertia);
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
@@ -290,8 +295,9 @@ void loop()
 	btn2.update();
 
 	if (ARMED(btn1, btn2)) {
-		newLed2State = HIGH;
-		if (TAP(btn1, btn2) || tapped) { 
+		/* newLed2State = HIGH; */
+		//if (TAP(btn1, btn2) || tapped) { 
+		if (tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
 
@@ -348,7 +354,7 @@ void loop()
 
 		// not armed.
 		tapCount = 0;
-		newLed2State = LOW;
+		/* newLed2State = LOW; */
 	}
 
 	// Calculate pulse and blink signals:
@@ -395,28 +401,28 @@ void loop()
 #ifdef BENCHMARKS
 		if (pulseState == HIGH) {
 			// print benchmarks when pulse goes high.
-			Serial.print(awakeTime);
-			Serial.print(':');
+			Dbg_print(awakeTime);
+			Dbg_print(':');
 			if (sleepState) { 
-				Serial.print(playState ? "play  " : "stop  ");
+				Dbg_print(playState ? "play  " : "stop  ");
 			} else { 
-				Serial.print("asleep  ");
+				Dbg_print("asleep  ");
 			}
-			Serial.print(loops);
-			Serial.print(" loops, ");
-			Serial.print(imus);
-			Serial.print(" imus in ");
-			Serial.print(measureLen);
+			Dbg_print(loops);
+			Dbg_print(" loops, ");
+			Dbg_print(imus);
+			Dbg_print(" imus in ");
+			Dbg_print(measureLen);
 #ifdef MICROS
-			Serial.print(" us, ");
+			Dbg_print(" us, ");
 #else
-			Serial.print(" ms, ");
+			Dbg_print(" ms, ");
 #endif
-			Serial.print(AudioMemoryUsageMax());
-			Serial.print(" audioMem, ");
-			Serial.print(AudioProcessorUsageMax());
-			Serial.print(" audioCPU");
-			Serial.println(".");
+			Dbg_print(AudioMemoryUsageMax());
+			Dbg_print(" audioMem, ");
+			Dbg_print(AudioProcessorUsageMax());
+			Dbg_print(" audioCPU");
+			Dbg_println(".");
 
 			// reset counters
 			loops = imus = 0;
@@ -426,7 +432,7 @@ void loop()
 
 	// protect against overflow of loopClock;
 	if (loopClock > 10 * measureLen) { 
-		Serial.println("PROTECTION!");//DEBUG
+		Dbg_println("PROTECTION!");//DEBUG
 		loopClock -= 9*measureLen;
 		downbeatTime -= 9*measureLen;
 		lastTapTime -= 9*measureLen;
