@@ -4,20 +4,21 @@
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
 														// set to higher data rate, 
 														// ignores other two IMU chips 
+														// Should be renamed, refactored, etc.
 #include <Wire.h>
 #include <EEPROM.h>
 
 // use interrupts or poll?
 #define INTERRUPTS yeasurewelikeinterrupts  
 
-// micros is still buggy.
+// high-resolution timers.
 #define MICROS microsmothafuckka!!!   
 
 // measure speed of inner loop:
 #define BENCHMARKS youmarkityouboughtit 
 
-// Teensy will eventually hang on a clogged output buffer if we don't do this ...
-// is there some more normal solution for this?
+// Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.
+// is there some more normal solution for this?  Seems like this would be a common problem.
 #define Dbg_print(X) if(Serial) Serial.print(X)
 #define Dbg_println(X) if(Serial) Serial.println(X)
 
@@ -101,7 +102,6 @@ bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playState = LOW; bool playPinState = LOW; 
-
 bool sleepState = HIGH; bool sleepPinState = HIGH; 
 
 long downbeatTime = 0;        
@@ -130,7 +130,7 @@ Bounce btn2 = Bounce();
 #define PRESSED(btn) 				(btn.read() == LOW)
 #define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
 #define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
-#define TAP(b1,b2) 			( (PRESSED(b1) && b2.fell()) || (PRESSED(b2) && b1.fell()) )
+/* #define TAP(b1,b2) 			( (PRESSED(b1) && b2.fell()) || (PRESSED(b2) && b1.fell()) ) */
 
 #ifdef INTERRUPTS
 // IMU interrupt handler:
@@ -229,6 +229,7 @@ void loop()
 	shaken = LOW;
 	tapped = LOW;
 
+	// Read IMU data if ready:
 #ifdef INTERRUPTS
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
@@ -240,29 +241,31 @@ void loop()
 #ifdef BENCHMARKS
 		imus++;
 #endif
-    // Read the motion sensors
-    imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
-		// absolute amplitude of 3d vector
 		prevInertia = inertia;
-
+    imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
-		if (inertia > shakeThreshold) 
 
-			Dbg_println(inertia);
+/* #ifdef BENCHMARKS */
+/* 		if (inertia > shakeThreshold)  */
+/* 			Dbg_println(inertia); */
+/* #endif */
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
 
 		
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
-			// TODO: shaken should be the start of sound moment, 
-			// but try putting tapped at the apex-G moment; it may have better feel.
 			shaken = HIGH;
-			// TODO: also need to somehow debounce this, or auto-adjust threshold.
 		}
 		if ( (inertia > tapThreshold) && (prevInertia <= tapThreshold) ) {
+			// TODO: shaken should be the start of sound moment, 
+			// but try putting tapped at the apex-G moment; it may have better feel.
 			tapped = HIGH;
+#ifdef BENCHMARKS
+		if (inertia > shakeThreshold) 
+			Dbg_println(inertia);
+#endif
 		}
 	}
 
@@ -295,8 +298,6 @@ void loop()
 	btn2.update();
 
 	if (ARMED(btn1, btn2)) {
-		/* newLed2State = HIGH; */
-		//if (TAP(btn1, btn2) || tapped) { 
 		if (tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
@@ -319,15 +320,20 @@ void loop()
 				// Also adjust the measure length to the time between taps:
 				tapInterval = nowTime - lastTapTime;
 
-				// if tapInterval is closer to mL*2 than to mL, 
-				// assume we are tapping half-time (1/4 notes)
-				if (tapInterval > (1.5 * measureLen)) {
-					tapInterval /= 2;
+				if (! BOTHPRESSED(btn1, btn2)) {
+					// if tapInterval is closer to mL*2 than to mL, 
+					// assume we are tapping half-time (1/4 notes)
+					if (tapInterval > (1.5 * measureLen)) {
+						tapInterval /= 2;
+					}
 				}
 				// Othwerwise assume full time (1/8 notes)
 
 				if (tapInterval < minTapInterval) {
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
+#ifdef BENCHMARKS
+					Dbg_println("ignoring bounce");
+#endif
 				} else {
 					// Compute a running average over 2 or 3 intervals if available:
 					if (tapCount > 4) tapCount = 4;
@@ -354,28 +360,27 @@ void loop()
 
 		// not armed.
 		tapCount = 0;
-		/* newLed2State = LOW; */
 	}
 
-	// Calculate pulse and blink signals:
+	// Calculate blink
+	if (nowTime - downbeatTime < blinkLen)
+		newBlinkState = HIGH;
+	else
+		newBlinkState = LOW;
+	newLed1State = PRESSED(btn1) ? !newBlinkState : newBlinkState;
+	newLed2State = PRESSED(btn2) ? !newBlinkState : newBlinkState;
 
-	if ((downbeatTime > 0) && (measureLen > 0)) {
-		
-		if (nowTime - downbeatTime < blinkLen)
-			newBlinkState = HIGH;
-		else
-			newBlinkState = LOW;
-
-		newLed1State = PRESSED(btn1) ? !newBlinkState : newBlinkState;
-		newLed2State = PRESSED(btn2) ? !newBlinkState : newBlinkState;
-
-
+	// Calculate pulse
+	if (BOTHPRESSED(btn1, btn2)) { 
+		if (tapped)
+			newPulseState = HIGH;
+		else if (nowTime - downbeatTime >= pulseLen) 
+			newPulseState = LOW;
+	} else {
 		if (nowTime - downbeatTime < pulseLen)
 			newPulseState = HIGH;
-		else
+		else if (nowTime - downbeatTime >= pulseLen) 
 			newPulseState = LOW;
-
-	} else {
 	}
 
 	// Update LEDs
