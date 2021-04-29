@@ -21,7 +21,9 @@ NXPMotionSense imu;
 SnoozeDigital s_digital;
 SnoozeUSBSerial s_usbserial;
 SnoozeAudio s_audio;
-SnoozeBlock s_config(s_digital, s_usbserial, s_audio);
+SnoozeTimer s_timer;
+//SnoozeBlock s_config(s_digital, s_usbserial, s_audio);
+SnoozeBlock s_config(s_digital, s_usbserial, s_audio, s_timer);
 
 // GUItool reqs:
 #include <Audio.h>
@@ -115,8 +117,8 @@ const float shakeThreshold = 1.25;
 const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
-
 #ifdef BENCHMARKS
+
 // tracking performance
 unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
@@ -164,6 +166,7 @@ void setup()
   pinMode(pulsePin1, OUTPUT);       // j1 tip
   pinMode(pulsePin2, OUTPUT);       // j2 tip
   pinMode(button1Pin, INPUT_PULLUP); // sw1
+	//s_digital.pinMode(button1Pin, INPUT_PULLUP, RISING);  // DEBUG
   pinMode(button2Pin, INPUT_PULLUP); // sw2
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
@@ -197,6 +200,9 @@ void setup()
 	} else {
 		EEPROM.get(eepromBase, measureLen);
 	}
+
+	// sleep stuff:
+	s_timer.setTimer(3000);
 
 #ifndef INTERRUPTS
 	imuClock = 0;
@@ -286,13 +292,21 @@ void loop()
 	sleepPinState = digitalRead(PO_wake);
 	sleepState = sleepPinState;
 	// only advance this clock when awake; let's see if we ever do fall asleep?
-	if (sleepState) {
+	/* if (sleepState) { */
+	if (!PRESSED(btn2)) { // DEBUG
 	} else {	
 #ifdef BENCHMARKS
 		Serial.println("zzzzz.");
+		delay(1);
 #endif
+		// turn off LEDs.
+		// disable interrupts from accelerometer
+		// sleep accelerometer.
 		// sleep until PO_WAKE pin wakes us.
-		Snooze.deepSleep(s_config);
+		Snooze.sleep(s_config);
+		// wake accelerometer
+		// reset some counters
+		// restore LEDs.
 #ifdef BENCHMARKS
 		Serial.println("good morning!");
 #endif
