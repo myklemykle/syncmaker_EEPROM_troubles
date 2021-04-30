@@ -119,7 +119,7 @@ unsigned int tapCount = 0;
 
 float inertia = 0;
 float prevInertia = 0;
-const float shakeThreshold = 1.25;
+const float shakeThreshold = 0.65;
 const float tapThreshold = 2.0;
 bool shaken = LOW;
 bool tapped = LOW;
@@ -260,7 +260,7 @@ void loop()
 /* #endif */
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		amp1.gain(max((inertia - shakeThreshold)/2.0, 0.0));
+		amp1.gain(max((inertia - shakeThreshold)/3.0, 0.0));
 
 		
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
