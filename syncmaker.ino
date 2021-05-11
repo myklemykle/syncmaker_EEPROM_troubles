@@ -19,17 +19,21 @@
 
 NXPMotionSense imu;
 SnoozeDigital s_digital;
-SnoozeUSBSerial s_usbserial;
+SnoozeCompare s_compare;
+SnoozeUSBSerial s_erial;
 SnoozeAudio s_audio;
 SnoozeTimer s_timer;
-//SnoozeBlock s_config(s_digital, s_usbserial, s_audio);
-SnoozeBlock s_config(s_digital, s_usbserial, s_audio, s_timer);
+//SnoozeBlock s_config(s_digital, s_erial, s_audio);
+//SnoozeBlock s_config(s_digital, s_erial, s_audio, s_timer);
+SnoozeBlock s_config(s_erial, s_digital, s_timer, s_compare );
 
 // GUItool reqs:
 #include <Audio.h>
 #include <SPI.h>
 #include <SD.h>
 #include <SerialFlash.h>
+
+#define Serial s_erial
 
 // GUItool: begin automatically generated code
 //AudioSynthNoisePink      pink1;          //xy=88,242
@@ -143,7 +147,7 @@ void imu_int(){
 
 void setup()
 {
-  Serial.begin(115200);
+  /* Serial.begin(115200); */
 
 	// pins!
 
@@ -166,12 +170,11 @@ void setup()
   pinMode(pulsePin1, OUTPUT);       // j1 tip
   pinMode(pulsePin2, OUTPUT);       // j2 tip
   pinMode(button1Pin, INPUT_PULLUP); // sw1
-	//s_digital.pinMode(button1Pin, INPUT_PULLUP, RISING);  // DEBUG
+	s_digital.pinMode(button1Pin, INPUT_PULLUP, RISING);  // DEBUG
   pinMode(button2Pin, INPUT_PULLUP); // sw2
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
 	pinMode(PO_wake, INPUT);
-	s_digital.pinMode(PO_wake, INPUT, RISING); 
 	pinMode(PO_reset, INPUT_PULLUP); // TODO: really we want this pulled down, not up.
 	pinMode(PO_SWCLK, INPUT_PULLUP);
 	pinMode(PO_SWDIO, INPUT_PULLUP);
@@ -202,7 +205,8 @@ void setup()
 	}
 
 	// sleep stuff:
-	s_timer.setTimer(3000);
+	s_timer.setTimer(1000);
+	s_compare.pinMode(PO_wake, HIGH, 1.65);
 
 #ifndef INTERRUPTS
 	imuClock = 0;
@@ -219,6 +223,7 @@ void loop()
 
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopClock;
+	unsigned long thenTime;
 
 #ifdef BENCHMARKS
 	loops++; 
@@ -230,6 +235,32 @@ void loop()
     downbeatTime += measureLen;
 	}
 
+	// maybe go to sleep?
+	/* if (sleepState) { */
+	if (!PRESSED(btn2)) { // DEBUG
+		// only advance this clock when awake; let's see if we ever do fall asleep?
+	} else {	
+#ifdef BENCHMARKS
+		Serial.println("zzzzz.");
+#endif
+		Serial.flush();
+		delay(100);
+		// turn off LEDs.
+		// disable interrupts from accelerometer
+		// sleep accelerometer.
+		// sleep until PO_WAKE pin wakes us.
+		Snooze.deepSleep(s_config);
+		// wake accelerometer
+		// reset some counters
+		//downbeatTime += (nowTime - thenTime);
+		// restore LEDs.
+		while (!Serial) { delay(100); }
+#ifdef BENCHMARKS
+		Serial.println("good morning!");
+#endif
+		awakeTime = 0;
+		return; // loop again!
+	}
 
 	// Check IMU:
 
@@ -291,27 +322,6 @@ void loop()
 	// Check if the PO is asleep
 	sleepPinState = digitalRead(PO_wake);
 	sleepState = sleepPinState;
-	// only advance this clock when awake; let's see if we ever do fall asleep?
-	/* if (sleepState) { */
-	if (!PRESSED(btn2)) { // DEBUG
-	} else {	
-#ifdef BENCHMARKS
-		Serial.println("zzzzz.");
-		delay(1);
-#endif
-		// turn off LEDs.
-		// disable interrupts from accelerometer
-		// sleep accelerometer.
-		// sleep until PO_WAKE pin wakes us.
-		Snooze.sleep(s_config);
-		// wake accelerometer
-		// reset some counters
-		// restore LEDs.
-#ifdef BENCHMARKS
-		Serial.println("good morning!");
-#endif
-		awakeTime = 0;
-	}
 
 	// Check the buttons:
 
