@@ -93,6 +93,19 @@ static bool read_regs(uint8_t i2c, uint8_t *data, uint8_t num)
 	return true;
 }
 
+
+bool NXPMotionSense::ICM42605_sleep(){
+	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
+	// 0b00100000
+	if (!write_reg(i2c_addr, ICM42605_PWR_MGMT0, 0b00100000)) return false;    
+	return true;
+}
+bool NXPMotionSense::ICM42605_wake(){
+	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
+	// PWR_MGMT0: power up gyro and acc. 
+	if (!write_reg(i2c_addr, ICM42605_PWR_MGMT0, 0b00001111)) return false;    
+	return true;
+}
 bool NXPMotionSense::ICM42605_begin()
 {
 	const uint8_t i2c_addr=ICM42605_I2C_ADDR0;
@@ -131,7 +144,7 @@ bool NXPMotionSense::ICM42605_begin()
 	Serial.printf("temperature raw %i / %i\n", t[0], t[1]);
 	Serial.printf("temperature %f\n", ((t[0]<<8 + t[1]) / 132.48) + 25.0);
 
-	// PWR_MGMT0: power up gyro and acc? manual says default is off ...
+	// PWR_MGMT0: power up gyro and acc. Leave temperature sensor off.
 	// 0b00001111
 	if (!write_reg(i2c_addr, ICM42605_PWR_MGMT0, 0b00001111)) return false;    
 	
