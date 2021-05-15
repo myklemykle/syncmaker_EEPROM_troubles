@@ -19,21 +19,15 @@
 
 NXPMotionSense imu;
 SnoozeDigital s_digital;
-SnoozeCompare s_compare;
-SnoozeUSBSerial s_erial;
-SnoozeAudio s_audio;
+//SnoozeCompare s_compare;
 SnoozeTimer s_timer;
-//SnoozeBlock s_config(s_digital, s_erial, s_audio);
-//SnoozeBlock s_config(s_digital, s_erial, s_audio, s_timer);
-SnoozeBlock s_config(s_erial, s_digital, s_timer, s_compare );
+/* SnoozeAlarm s_alarm; */
+SnoozeBlock s_config(s_timer);
 
 // GUItool reqs:
 #include <Audio.h>
-#include <SPI.h>
-#include <SD.h>
-#include <SerialFlash.h>
 
-#define Serial s_erial
+/* #define Serial s_erial */
 
 // GUItool: begin automatically generated code
 //AudioSynthNoisePink      pink1;          //xy=88,242
@@ -147,15 +141,15 @@ void imu_int(){
 
 void setup()
 {
-  /* Serial.begin(115200); */
+  Serial.begin(115200);
 
 	// pins!
 
 	// slight hack:
 	// because i changed chips, this pin (imu pin 10) is now "reserved" on the IMU:
 	pinMode(IMU_fsync, OUTPUT);
-	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 	// imu pin 11 is also reserved but I can't get to it from software ...
+	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 
 #ifdef INTERRUPTS
 	// IMU int2 pin is open-collector mode
@@ -170,7 +164,6 @@ void setup()
   pinMode(pulsePin1, OUTPUT);       // j1 tip
   pinMode(pulsePin2, OUTPUT);       // j2 tip
   pinMode(button1Pin, INPUT_PULLUP); // sw1
-	s_digital.pinMode(button1Pin, INPUT_PULLUP, RISING);  // DEBUG
   pinMode(button2Pin, INPUT_PULLUP); // sw2
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
@@ -205,8 +198,10 @@ void setup()
 	}
 
 	// sleep stuff:
-	s_timer.setTimer(1000);
-	s_compare.pinMode(PO_wake, HIGH, 1.65);
+	s_digital.pinMode(button2Pin, INPUT_PULLUP, FALLING);  // DEBUG
+	/* s_alarm.setRtcTimer(0, 0, 10);// hour, min, sec */
+	s_timer.setTimer(5000); // not working wtf?
+	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // rev1 uses wrong pin for this.
 
 #ifndef INTERRUPTS
 	imuClock = 0;
@@ -231,33 +226,61 @@ void loop()
 
 	// downbeatTime is the absolute time of the start of the current pulse.
 	// if now is at least pulseLen millis beyond the previous beat, advance the beat
-  if (nowTime > (downbeatTime + pulseLen)) {  
+  while (nowTime > (downbeatTime + pulseLen)) {  
     downbeatTime += measureLen;
 	}
 
 	// maybe go to sleep?
-	/* if (sleepState) { */
-	if (!PRESSED(btn2)) { // DEBUG
+	if (sleepState) {
+	/* if (!PRESSED(btn1)) { // DEBUG */
 		// only advance this clock when awake; let's see if we ever do fall asleep?
 	} else {	
+		// Head towards bed:
+
 #ifdef BENCHMARKS
 		Serial.println("zzzzz.");
+		delay(10);
 #endif
-		Serial.flush();
-		delay(100);
-		// turn off LEDs.
+
+		// turn off LEDs
+		digitalWrite(led1Pin, LOW);
+		digitalWrite(led2Pin, LOW);
+
 		// disable interrupts from accelerometer
-		// sleep accelerometer.
-		// sleep until PO_WAKE pin wakes us.
+		/* detachInterrupt(IMU_int); */
+		delay(100);
+		// sleep accelerometer
+		imu.sleep();
+
+		// attach to buttons for button wakeup
+		s_config += s_digital;
+
+		// sleep until right button wakes us
 		Snooze.deepSleep(s_config);
+
+		// detach from buttons
+		s_config -= s_digital;
+
 		// wake accelerometer
+		imu.wake();
+
+		// reattach interrupts
+		/* attachInterrupt(IMU_int, imu_int, FALLING); */
+
 		// reset some counters
 		//downbeatTime += (nowTime - thenTime);
-		// restore LEDs.
+
+		// update button state for next loop
+		btn1.update();
+		btn2.update();
+
 		while (!Serial) { delay(100); }
 #ifdef BENCHMARKS
 		Serial.println("good morning!");
 #endif
+
+		// LEDs will be restored on next loop.
+
 		awakeTime = 0;
 		return; // loop again!
 	}

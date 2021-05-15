@@ -13,6 +13,12 @@
 class NXPMotionSense {
 public:
 	bool begin();
+	bool sleep() {
+		return ICM42605_sleep();
+	}
+	bool wake() {
+		return ICM42605_wake();
+	}
 	bool available() {
 		update();
 		if (newdata) return true;
@@ -100,6 +106,8 @@ private:
 	void update();
 	bool FXOS8700_begin();
 	bool ICM42605_begin();
+	bool ICM42605_sleep();
+	bool ICM42605_wake();
 	bool FXAS21002_begin();
 	bool MPL3115_begin();
 	bool FXOS8700_read(int16_t *data);
