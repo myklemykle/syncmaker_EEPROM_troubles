@@ -114,7 +114,7 @@ bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playState = LOW; bool playPinState = LOW; 
-bool sleepState = HIGH; bool sleepPinState = HIGH; 
+bool awakePinState = HIGH; 
 
 unsigned long downbeatTime = 0;        
 unsigned long lastTapTime = 0;        
@@ -242,59 +242,12 @@ void loop()
     downbeatTime += measureLen;
 	}
 
-	// maybe go to sleep?
-	if (sleepState) {
-	/* if (!PRESSED(btn1)) { // DEBUG */
-		// only advance this clock when awake; let's see if we ever do fall asleep?
-	} else {	
-		// Head towards bed:
+	// go to sleep if the PO_wake pin is low:
+	awakePinState = digitalRead(PO_wake);
 
-#ifdef SDEBUG
-		Dbg_println("zzzzz.");
-		delay(10);
-#endif
-
-		// turn off LEDs
-		digitalWrite(led1Pin, LOW);
-		digitalWrite(led2Pin, LOW);
-
-		// disable interrupts from accelerometer
-		/* detachInterrupt(IMU_int); */
-		delay(100);
-		// sleep accelerometer
-		imu.sleep();
-
-		// attach to buttons for button wakeup
-		s_config += s_digital;
-
-		// sleep until right button wakes us
-		Snooze.deepSleep(s_config);
-
-		// detach from buttons
-		s_config -= s_digital;
-
-		// wake accelerometer
-		imu.wake();
-
-		// reattach interrupts
-		/* attachInterrupt(IMU_int, imu_int, FALLING); */
-
-		// reset some counters
-		//downbeatTime += (nowTime - thenTime);
-
-		// update button state for next loop
-		btn1.update();
-		btn2.update();
-
-		while (!Serial) { delay(100); }
-#ifdef SDEBUG
-		Dbg_println("good morning!");
-#endif
-
-		// LEDs will be restored on next loop.
-
-		awakeTime = 0;
-		return; // loop again!
+	if (! awakePinState) {
+		powerNap();
+		return;
 	}
 
 	// Check IMU:
@@ -353,9 +306,6 @@ void loop()
 		}
 	}
 
-	// Check if the PO is asleep
-	sleepPinState = digitalRead(PO_wake);
-	sleepState = sleepPinState;
 
 	// Check the buttons:
 
@@ -488,7 +438,7 @@ void loop()
 			// print benchmarks when pulse goes high.
 			Dbg_print(awakeTime);
 			Dbg_print(':');
-			if (sleepState) { 
+			if (awakePinState) { 
 				Dbg_print(playState ? "play  " : "stop  ");
 			} else { 
 				Dbg_print("asleep  ");
@@ -523,5 +473,60 @@ void loop()
 		downbeatTime -= 9*measureLen;
 		lastTapTime -= 9*measureLen;
 	}
+}
+
+uint powerNap(){
+	uint who = 0;
+	// Head towards deep sleep:
+
+#ifdef SDEBUG
+	Dbg_println("zzzzz.");
+	delay(10);
+#endif
+
+	// turn off LEDs
+	digitalWrite(led1Pin, LOW);
+	digitalWrite(led2Pin, LOW);
+
+	// disable interrupts from accelerometer
+	/* detachInterrupt(IMU_int); */
+	delay(100);
+	// sleep accelerometer
+	imu.sleep();
+
+	// attach to buttons for button wakeup
+	s_config += s_digital;
+
+	do {
+		// sleep N seconds or until right button wakes us
+		who = Snooze.deepSleep(s_config);
+		awakePinState = digitalRead(PO_wake);
+	} while (awakePinState == LOW);
+
+	// detach from buttons
+	s_config -= s_digital;
+
+	// wake accelerometer
+	imu.wake();
+
+	// reattach interrupts
+	/* attachInterrupt(IMU_int, imu_int, FALLING); */
+
+	// reset some counters
+	//downbeatTime += (nowTime - thenTime);
+
+	// update button state for next loop
+	btn1.update();
+	btn2.update();
+
+	while (!Serial) { delay(100); }
+#ifdef SDEBUG
+	Dbg_println("good morning!");
+#endif
+
+	// LEDs will be restored on next loop.
+
+	awakeTime = 0;
+	return who; // loop again!
 }
 
