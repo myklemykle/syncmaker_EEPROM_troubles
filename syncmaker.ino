@@ -220,6 +220,12 @@ void setup()
 #endif
 
 	loopClock = 0;
+
+	//https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
+	// Initialize the DAC output pins
+  analogWriteResolution(12);
+  analogWrite(A14, 0);  //Set the DAC output to 0.
+  DAC0_C0 &= 0b10111111;  //uses 1.2V reference for DAC instead of 3.3V
 }
 
 void loop()
@@ -231,6 +237,9 @@ void loop()
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopClock;
 	unsigned long thenTime;
+
+	btn1.update();
+	btn2.update();
 
 #ifdef SDEBUG
 	loops++; 
@@ -246,6 +255,7 @@ void loop()
 	awakePinState = digitalRead(PO_wake);
 
 	if (! awakePinState) {
+	/* if (PRESSED(btn1)) { //DEBUG */
 		powerNap();
 		return;
 	}
@@ -308,9 +318,6 @@ void loop()
 
 
 	// Check the buttons:
-
-	btn1.update();
-	btn2.update();
 
 	if (ARMED(btn1, btn2)) {
 		if (tapped) { 
@@ -501,7 +508,8 @@ uint powerNap(){
 		// sleep N seconds or until right button wakes us
 		who = Snooze.deepSleep(s_config);
 		awakePinState = digitalRead(PO_wake);
-	} while (awakePinState == LOW);
+		btn2.update();
+	} while (awakePinState == LOW && (! PRESSED(btn2)));
 
 	// detach from buttons
 	s_config -= s_digital;
