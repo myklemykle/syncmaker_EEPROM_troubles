@@ -37,8 +37,6 @@ SnoozeBlock s_config(s_timer);
 // GUItool reqs:
 #include <Audio.h>
 
-/* #define Serial s_erial */
-
 // GUItool: begin automatically generated code
 //AudioSynthNoisePink      pink1;          //xy=88,242
 AudioSynthNoiseWhite      pink1;          //xy=88,242
@@ -55,6 +53,7 @@ AudioConnection          patchCord2(amp1, dac1);
 // set pin numbers:
 const int button1Pin = 0;   // sw1
 const int button2Pin = 9;   // sw2
+const int boardLedPin = 13;
 const int led1Pin =  21;    // led1
 const int led2Pin =  20;    // led2
 const int pulsePin1 = 11; 	// j1 tip
@@ -408,6 +407,7 @@ void loop()
 		else
 			newLed2State = LOW;
 	}
+	
 	// Update LEDs
 	if (led1State != newLed1State) {
 		led1State = newLed1State;
@@ -430,7 +430,6 @@ void loop()
 		else if (nowTime - downbeatTime >= pulseLen) 
 			newPulseState = LOW;
 	}
-
 
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
@@ -494,6 +493,7 @@ uint powerNap(){
 	// turn off LEDs
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
+	digitalWrite(boardLedPin, LOW);
 
 	// disable interrupts from accelerometer
 	/* detachInterrupt(IMU_int); */
@@ -527,8 +527,10 @@ uint powerNap(){
 	btn1.update();
 	btn2.update();
 
-	while (!Serial) { delay(100); }
 #ifdef SDEBUG
+	if (!Serial) { 
+		delay(100); 
+	}
 	Dbg_println("good morning!");
 #endif
 
