@@ -73,11 +73,12 @@ const int debounceLen = 2; // must be in MS as required by bounce2 lib
 
 #ifdef MICROS
 const unsigned int TIMESCALE = 1000; // uS
+const unsigned long strobeOnLen = 500;
 # else 
 const unsigned int TIMESCALE = 1;		// mS
+const unsigned long strobeOnLen = 1;
 #endif
 
-const unsigned long strobeOnLen = 1 * TIMESCALE; 		
 const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
