@@ -22,9 +22,11 @@
 // is there some more normal solution for this?  Seems like this would be a common problem.
 #define Dbg_print(X) if(Serial) Serial.print(X)
 #define Dbg_println(X) if(Serial) Serial.println(X)
+#define Dbg_flush(X) if(Serial) Serial.flush()
 #else
 #define Dbg_print(X) {}
 #define Dbg_println(X) {}
+#define Dbg_flush(X) {}
 #endif
 
 NXPMotionSense imu;
@@ -134,6 +136,11 @@ unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
+// circular clock:
+float circlePos = 0.0, prevCirclePos = 0.0;
+float circleMinFwd = 1.0/1000000.0; 
+/* int midis = 0; */
+
 // Objects:
 Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
@@ -237,6 +244,12 @@ void loop()
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopClock;
 	unsigned long thenTime;
+
+	bool targetNear, targetAhead;
+
+	float instantPos; 
+	float circleOffset;
+	int measureIdx;
 
 	btn1.update();
 	btn2.update();
@@ -432,6 +445,64 @@ void loop()
 			newPulseState = LOW;
 	}
 
+	// advance circular clock:
+	// User can make discontinuous changes in measure length & downbeat.
+	// the circular clock attempts to sync up with the current measure length & downbeat, 
+	// but it never skips or moves backwards, only slows down or speeds up.
+	// (It still gets incrememented discretely, but the increments can never
+	// be larger than the width of a single MIDI clock interval.
+
+	prevCirclePos = circlePos;
+
+	// the instantaneous position of our moment in the current measure is:
+	measureIdx = downbeatTime - nowTime;
+	if (measureIdx < 0) 
+		measureIdx += measureLen;
+
+	// Expressed as a float btwn 0 & 1:
+	instantPos = 1.0 - ( (float)measureIdx / (float)measureLen ) ;
+
+	// the difference between that position & the current circular position
+	circleOffset = abs(circlePos - instantPos);
+	
+	// Is the current position ahead & needing to slow down, or behind & needing to speed up?
+	targetNear = (circleOffset < 0.5);
+	targetAhead = (instantPos > circlePos);
+
+	// TODO: what if we're paused (both buttons held)?
+
+	if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
+		// speed up!
+		// but if we advance any faster than this, we could skip a MIDI clock beat
+		circlePos += min(circleOffset, 0.08333); // 1/12 to 5 places.
+	} else {
+		// slow down!
+		circlePos += circleMinFwd;
+	}
+
+	// if we've crossed a 1/12 boundary, send a MIDI clock.
+	if ((int)(circlePos * 12.0) > (int)(prevCirclePos * 12.0)) {
+		if (playState) { 
+			// emit MIDI clock!
+			Dbg_print("MC ");
+			Dbg_print((int)(circlePos * 12.0));
+			Dbg_print(", ");
+			if (circlePos >= 1.0) {
+				Dbg_println(".");
+			}
+			/* midis++; */
+		}
+	}
+
+	// wrap!
+	if (circlePos > 1.0) {
+		circlePos -= 1.0;
+		/* //midis -= 12; */
+	}
+
+
+
+
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
 		pulseState = newPulseState;
@@ -441,8 +512,8 @@ void loop()
 			digitalWrite(pulsePin2, pulseState);
 		}
 
+		// print benchmarks when pulse goes high.
 		if (pulseState == HIGH) {
-			// print benchmarks when pulse goes high.
 			Dbg_print(awakeTime);
 			Dbg_print(':');
 			if (awakePinState) { 
@@ -463,7 +534,13 @@ void loop()
 			Dbg_print(AudioMemoryUsageMax());
 			Dbg_print(" audioMem, ");
 			Dbg_print(AudioProcessorUsageMax());
-			Dbg_print(" audioCPU");
+			Dbg_print(" audioCPU, ");
+			/* Dbg_print(instantPos); */
+			/* Dbg_print(" instant, "); */
+			/* Dbg_print(circlePos); */
+			/* Dbg_print(" circular, "); */
+			/* Dbg_print(midis); */
+			/* Dbg_print(" midis"); */
 			Dbg_println(".");
 
 #ifdef SDEBUG
@@ -473,9 +550,12 @@ void loop()
 		}
 	}
 
-	// protect against overflow of loopClock;
+	// Protect against overflow of loopClock.
+	// We could do this only every 1000 (or more!) measures,
+	// but we choose every 10,
+	//	so that if it causes any audible bug, it'll be heard often!
 	if (loopClock > 10 * measureLen) { 
-		Dbg_println("PROTECTION!");//DEBUG
+		//Dbg_println("PROTECTION!");//DEBUG
 		loopClock -= 9*measureLen;
 		downbeatTime -= 9*measureLen;
 		lastTapTime -= 9*measureLen;
