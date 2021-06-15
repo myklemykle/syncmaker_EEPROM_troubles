@@ -1,3 +1,6 @@
 [submodule "ICM42605"]
 	path = ICM42605
 	url = https://github.com/kriswiner/ICM42605
+[submodule "CircularBuffer"]
+	path = CircularBuffer
+	url = https://github.com/rlogiacco/CircularBuffer

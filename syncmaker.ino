@@ -8,6 +8,7 @@
 #include <Wire.h>
 #include <EEPROM.h>
 #include <Snooze.h>
+#include <CircularBuffer.h>
 
 // use interrupts or poll?
 #define INTERRUPTS yeasurewelikeinterrupts  
@@ -84,6 +85,8 @@ const unsigned long pulseLen = 5 * TIMESCALE;
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
 const unsigned long playFlickerTime = 100 * TIMESCALE; 
 unsigned long measureLen = 250 * TIMESCALE; 	// default for 120bpm (1 beat per half/second)
+
+CircularBuffer<long, 3> tapIntervals;
 
 #ifdef MICROS
 elapsedMicros loopClock;
@@ -226,6 +229,10 @@ void setup()
   analogWriteResolution(12);
   analogWrite(A14, 0);  //Set the DAC output to 0.
   DAC0_C0 &= 0b10111111;  //uses 1.2V reference for DAC instead of 3.3V
+
+	tapIntervals.push(0);
+	tapIntervals.push(0);
+	tapIntervals.push(0);
 }
 
 void loop()
@@ -370,9 +377,14 @@ void loop()
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
 					Dbg_println("ignoring bounce");
 				} else {
-					// Compute a running average over 2 or 3 intervals if available:
-					if (tapCount > 4) tapCount = 4;
-					measureLen = ( ((tapCount - 2) * measureLen ) + tapInterval) / (tapCount -1) ;
+					tapIntervals.unshift(tapInterval);
+					if (tapCount == 2) {
+						measureLen = tapInterval;
+					} else if (tapCount == 3) {
+						measureLen = (tapIntervals[1] + tapIntervals[0]) / 2;
+					} else if (tapCount >= 4) {
+						measureLen = (tapIntervals[2] + tapIntervals[1] + tapIntervals[0]) / 3;
+					}
 
 					// but there has to be a minimum meaure length.
 					if (measureLen < (pulseLen * 2)) {
