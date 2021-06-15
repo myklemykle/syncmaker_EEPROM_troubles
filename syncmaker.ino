@@ -250,6 +250,7 @@ void loop()
 	float instantPos; 
 	float circleOffset;
 	int measureIdx;
+	static int midiBeatsRemaining = 0;
 
 	btn1.update();
 	btn2.update();
@@ -469,7 +470,20 @@ void loop()
 	targetNear = (circleOffset < 0.5);
 	targetAhead = (instantPos > circlePos);
 
-	// TODO: what if we're paused (both buttons held)?
+	if (BOTHPRESSED(btn1, btn2)) {
+		// Special handling for two-button mode:
+		// Once BOTHPRESSED, midi can only emit 12 clock beats.  Then it pauses.
+		// (However, every user tap resets that 12 beat counter.)
+		if (tapped) {
+			// We reload this before zero, to handle the case where tapping has sped up.
+			if (midiBeatsRemaining < 12) 
+				midiBeatsRemaining += 12;
+		}
+	} else { 
+		// reload this when it hits zero.
+			if (midiBeatsRemaining == 0) 
+				midiBeatsRemaining += 12;
+	}
 
 	if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
 		// speed up!
@@ -483,14 +497,21 @@ void loop()
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
 	if ((int)(circlePos * 12.0) > (int)(prevCirclePos * 12.0)) {
 		if (playState) { 
-			// emit MIDI clock!
-			Dbg_print("MC ");
-			Dbg_print((int)(circlePos * 12.0));
-			Dbg_print(", ");
-			if (circlePos >= 1.0) {
-				Dbg_println(".");
+			if (midiBeatsRemaining > 0) {
+				// emit MIDI clock!
+				if (tapped) { 
+					Dbg_print("TMC ");
+				} else { 
+					Dbg_print("MC ");
+				}
+				//Dbg_print((int)(circlePos * 12.0));
+				Dbg_print(midiBeatsRemaining);
+				Dbg_print(", ");
+				if (circlePos >= 1.0) {
+					Dbg_println(".");
+				}
+				midiBeatsRemaining--;
 			}
-			/* midis++; */
 		}
 	}
 
