@@ -113,7 +113,7 @@ bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
-bool playState = LOW; bool playPinState = LOW; 
+bool playState = LOW, prevPlayState = LOW, playPinState = LOW; 
 bool awakePinState = HIGH; 
 
 unsigned long downbeatTime = 0;        
@@ -305,6 +305,7 @@ void loop()
 
 	// Check the PO play/stop state
 	// This pin is low when not playing, but when playing it's actually flickering.
+	prevPlayState = playState;
 	playPinState = digitalRead(PO_play);
 	if (playPinState) {
 		playPinTimer = 0;
@@ -316,6 +317,17 @@ void loop()
 		}
 	}
 
+	// This bit is aspirational.  It works, but we still only can read the
+	// PLAY led, which still is flickered on/off by other PO buttons during play
+	// thereby causing a hectic mess if we enable this feature.
+	// A "nonstop" button is a possible solution to this. 
+	// (Wouldn't it be wonderful if we could just query the PO over stlink/jtag?)
+
+	/* if (playState && !prevPlayState) { */
+	/* 	// user just pressed play; */
+	/* 	// move downbeat to now! */
+	/* 	downbeatTime = nowTime; */
+	/* } */
 
 	// Check the buttons:
 
@@ -332,11 +344,14 @@ void loop()
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
 				// Retard downbeat to now + measureLen
 
-			// solved for simplicity:
-			downbeatTime = nowTime;
-			if (downbeatTime > (nowTime + (measureLen/2))) {
-				downbeatTime += measureLen;
+			if (BOTHPRESSED(btn1, btn2)) {
+				downbeatTime = nowTime;
+			} else if (downbeatTime > (nowTime + (measureLen/2))) {
+				downbeatTime = nowTime + measureLen;
+			} else {
+				downbeatTime = nowTime;
 			}
+
 
 			if (++tapCount > 1) {
 				// Also adjust the measure length to the time between taps:
