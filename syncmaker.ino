@@ -116,7 +116,8 @@ bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
-bool playState = LOW, prevPlayState = LOW, playPinState = LOW; 
+bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
+bool nonstop = LOW, nonstopStarted = LOW;
 bool awakePinState = HIGH; 
 
 unsigned long downbeatTime = 0;        
@@ -144,7 +145,10 @@ Bounce btn2 = Bounce();
 // Macros
 #define PRESSED(btn) 				(btn.read() == LOW)
 #define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
-#define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
+// useful for preventing two-button mode right after having entered NONSTOP with both buttons pressed.
+#define TWOBUTTONMODE(b1,b2) 	(PRESSED(b1) && PRESSED(b2) && (! nonstopStarted))
+#define EITHERPRESSED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
+#define EITHERNOTPRESSED(b1,b2) 		(!PRESSED(b1) || !PRESSED(b2))
 /* #define TAP(b1,b2) 			( (PRESSED(b1) && b2.fell()) || (PRESSED(b2) && b1.fell()) ) */
 
 #ifdef INTERRUPTS
@@ -248,6 +252,13 @@ void loop()
 	btn1.update();
 	btn2.update();
 
+	if (EITHERNOTPRESSED(btn1, btn2)){
+		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,
+		// and cleared as soon as both buttons aren't pressed.  It exists to prevent conflict
+		// between these two meanings/uses of both-buttons-pressed.
+		nonstopStarted = false;
+	}
+
 #ifdef SDEBUG
 	loops++; 
 #endif
@@ -310,35 +321,67 @@ void loop()
 		}
 	}
 
-	// Check the PO play/stop state
-	// This pin is low when not playing, but when playing it's actually flickering.
-	prevPlayState = playState;
+	// Decode the state of the PO Play LED from the pin signal:
+	// This pin is low when not playing, but when playing it's actually flickering,
+	// so we can't just read it as logic.
+	prevPlayLedState = playLedState;
 	playPinState = digitalRead(PO_play);
 	if (playPinState) {
 		playPinTimer = 0;
-		playState = playPinState;
+		playLedState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
 		if (playPinTimer > playFlickerTime) {
-			playState = playPinState;
+			playLedState = playPinState;
 		}
 	}
 
+	prevPlaying = playing;
+	
+	// Now calculate if we're playing or not, based on playLedState,
+	// buttons and NONSTOP flag:
+
+	// If the play light just lit,
+	if (playLedState && (!prevPlayLedState)) {
+		// set PLAYING
+		playing = true;
+		// if both buttons are held down, 
+		if (BOTHPRESSED(btn1, btn2)) {
+			// set NONSTOP and NONSTOP-STARTED.
+			nonstop = nonstopStarted = true;
+		}
+
+	// else If the play light just unlit
+	} else if (prevPlayLedState && (! playLedState)) {
+		// if both buttons were held down,
+		if (BOTHPRESSED(btn1, btn2)) {
+			// clear PLAYING, NONSTOP and NONSTOP-STARTED
+			playing = nonstop = nonstopStarted = false;
+		// else 
+			// if NONSTOP
+				// ignore
+			// else
+				// clear PLAYING.
+		} else if (!nonstop) { 
+			playing = false;
+		}
+	}
+	
 	// This bit is aspirational.  It works, but we still only can read the
 	// PLAY led, which still is flickered on/off by other PO buttons during play
 	// thereby causing a hectic mess if we enable this feature.
 	// A "nonstop" button is a possible solution to this. 
 	// (Wouldn't it be wonderful if we could just query the PO over stlink/jtag?)
 
-	/* if (playState && !prevPlayState) { */
-	/* 	// user just pressed play; */
-	/* 	// move downbeat to now! */
-	/* 	downbeatTime = nowTime; */
-	/* } */
+	if (playing && !prevPlaying) {
+		// user just pressed play;
+		// move downbeat to now!
+		downbeatTime = nowTime;
+	}
 
 	// Check the buttons:
 
-	if (ARMED(btn1, btn2)) {
+	if (EITHERPRESSED(btn1, btn2)) {
 		if (tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
@@ -351,7 +394,7 @@ void loop()
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
 				// Retard downbeat to now + measureLen
 
-			if (BOTHPRESSED(btn1, btn2)) {
+			if (TWOBUTTONMODE(btn1, btn2)) {
 				downbeatTime = nowTime;
 			} else if (downbeatTime > (nowTime + (measureLen/2))) {
 				downbeatTime = nowTime + measureLen;
@@ -364,7 +407,7 @@ void loop()
 				// Also adjust the measure length to the time between taps:
 				tapInterval = nowTime - lastTapTime;
 
-				if (! BOTHPRESSED(btn1, btn2)) {
+				if (! TWOBUTTONMODE(btn1, btn2)) {
 					// if tapInterval is closer to mL*2 than to mL, 
 					// assume we are tapping half-time (1/4 notes)
 					if (tapInterval > (1.5 * measureLen)) {
@@ -410,31 +453,40 @@ void loop()
 	}
 
 	// Calculate blinkage.
-	// (Strobe-off times need to be much longer than strobe-on times
-	// in order to be clearly visible to the human eye.)
-	if (PRESSED(btn1)) {
-		if (nowTime - downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
-			newLed1State = LOW;
-		else
-			newLed1State = HIGH;
-	} else {
-		if (nowTime - downbeatTime < strobeOnLen)
-			newLed1State = HIGH;
-		else
-			newLed1State = LOW;
+	if (playing ) { 
+
+		// (Strobe-off times need to be much longer than strobe-on times
+		// in order to be clearly visible to the human eye.)
+		if (PRESSED(btn1)) {
+			if (nowTime - downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
+				newLed1State = LOW;
+			else
+				newLed1State = HIGH;
+		} else {
+			if (nowTime - downbeatTime < strobeOnLen)
+				newLed1State = HIGH;
+			else
+				newLed1State = LOW;
+		}
+
+		if (PRESSED(btn2)) {
+			if (nowTime - downbeatTime < strobeOffLen)
+				newLed2State = LOW;
+			else
+				newLed2State = HIGH;
+		} else {
+			if (nowTime - downbeatTime < strobeOnLen)
+				newLed2State = HIGH;
+			else
+				newLed2State = LOW;
+		}
+
+	} else { 
+		// don't blink when not playing, just indicate buttons
+		newLed1State = PRESSED(btn1);
+		newLed2State = PRESSED(btn2);
 	}
 
-	if (PRESSED(btn2)) {
-		if (nowTime - downbeatTime < strobeOffLen)
-			newLed2State = LOW;
-		else
-			newLed2State = HIGH;
-	} else {
-		if (nowTime - downbeatTime < strobeOnLen)
-			newLed2State = HIGH;
-		else
-			newLed2State = LOW;
-	}
 	
 	// Update LEDs
 	if (led1State != newLed1State) {
@@ -447,8 +499,8 @@ void loop()
 	}
 
 	// Calculate pulse
-	if (BOTHPRESSED(btn1, btn2)) { 
-		if (tapped)
+	if (TWOBUTTONMODE(btn1, btn2)) { 
+		if (tapped) // TODO: simplify? i think tapped is always true if the following if-clause is false:
 			newPulseState = HIGH;
 		else if (nowTime - downbeatTime >= pulseLen) 
 			newPulseState = LOW;
@@ -462,7 +514,7 @@ void loop()
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
 		pulseState = newPulseState;
-		if (playState) { 
+		if (playing) { 
 			// send sync pulse on both pins
 			digitalWrite(pulsePin1, pulseState);
 			digitalWrite(pulsePin2, pulseState);
@@ -473,7 +525,9 @@ void loop()
 			Dbg_print(awakeTime);
 			Dbg_print(':');
 			if (awakePinState) { 
-				Dbg_print(playState ? "play  " : "stop  ");
+				Dbg_print(playing ? "play  " : "stop  ");
+				if (nonstop) 
+					Dbg_print("NONSTOP ");
 			} else { 
 				Dbg_print("asleep  ");
 			}
