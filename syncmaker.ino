@@ -394,7 +394,7 @@ void loop()
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
 				// Retard downbeat to now + measureLen
 
-			if (TWOBUTTONMODE(btn1, btn2)) {
+			if (BOTHPRESSED(btn1, btn2)) {
 				downbeatTime = nowTime;
 			} else if (downbeatTime > (nowTime + (measureLen/2))) {
 				downbeatTime = nowTime + measureLen;
@@ -407,7 +407,7 @@ void loop()
 				// Also adjust the measure length to the time between taps:
 				tapInterval = nowTime - lastTapTime;
 
-				if (! TWOBUTTONMODE(btn1, btn2)) {
+				if (! BOTHPRESSED(btn1, btn2)) {
 					// if tapInterval is closer to mL*2 than to mL, 
 					// assume we are tapping half-time (1/4 notes)
 					if (tapInterval > (1.5 * measureLen)) {
@@ -499,7 +499,7 @@ void loop()
 	}
 
 	// Calculate pulse
-	if (TWOBUTTONMODE(btn1, btn2)) { 
+	if (BOTHPRESSED(btn1, btn2)) { 
 		if (tapped) // TODO: simplify? i think tapped is always true if the following if-clause is false:
 			newPulseState = HIGH;
 		else if (nowTime - downbeatTime >= pulseLen) 
