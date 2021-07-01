@@ -336,14 +336,14 @@ void loop()
 		}
 	}
 
-	prevPlaying = playing;
-	
 	// Now calculate if we're playing or not, based on playLedState,
 	// buttons and NONSTOP flag:
 
+	prevPlaying = playing;
+
 	// If the play light just lit,
 	if (playLedState && (!prevPlayLedState)) {
-		// set PLAYING
+		// set PLAYING.
 		playing = true;
 		// if both buttons are held down, 
 		if (BOTHPRESSED(btn1, btn2)) {
@@ -351,15 +351,15 @@ void loop()
 			nonstop = nonstopStarted = true;
 		}
 
-	// else If the play light just unlit
+	// otherwise, if the play light just unlit,
 	} else if (prevPlayLedState && (! playLedState)) {
-		// if both buttons were held down,
+		// if both buttons are held down,
 		if (BOTHPRESSED(btn1, btn2)) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
 			playing = nonstop = nonstopStarted = false;
 		// else 
 			// if NONSTOP
-				// ignore
+				// don't stop!
 			// else
 				// clear PLAYING.
 		} else if (!nonstop) { 
@@ -367,12 +367,6 @@ void loop()
 		}
 	}
 	
-	// This bit is aspirational.  It works, but we still only can read the
-	// PLAY led, which still is flickered on/off by other PO buttons during play
-	// thereby causing a hectic mess if we enable this feature.
-	// A "nonstop" button is a possible solution to this. 
-	// (Wouldn't it be wonderful if we could just query the PO over stlink/jtag?)
-
 	if (playing && !prevPlaying) {
 		// user just pressed play;
 		// move downbeat to now!
