@@ -215,7 +215,7 @@ void setup()
 	// sleep stuff:
 	s_digital.pinMode(button2Pin, INPUT_PULLUP, FALLING);  // DEBUG
 	/* s_alarm.setRtcTimer(0, 0, 10);// hour, min, sec */
-	s_timer.setTimer(5000); // not working wtf?
+	s_timer.setTimer(2000); // not working wtf?
 	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // rev1 uses wrong pin for this.
 
 #ifndef INTERRUPTS
