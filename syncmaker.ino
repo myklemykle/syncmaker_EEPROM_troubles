@@ -291,7 +291,7 @@ void loop()
 	int measureIdx;
 	bool targetNear, targetAhead;
 
-	static int midiBeatsRemaining = 0;
+	static int midiMeasuresRemaining = 0;
 
 	btn1.update();
 	btn2.update();
@@ -331,10 +331,10 @@ void loop()
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
 
-/* #ifdef SDEBUG */
-/* 		if (inertia > shakeThreshold)  */
-/* 			Dbg_println(inertia); */
-/* #endif */
+#ifdef SDEBUG
+		/* if (inertia > shakeThreshold)  */
+		/* 	Dbg_println(inertia); */
+#endif
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		amp1.gain(max((inertia - shakeThreshold)/3.0, 0.0));
@@ -346,8 +346,6 @@ void loop()
 			// TODO: shaken should be the start of sound moment, 
 			// but try putting tapped at the apex-G moment; it may have better feel.
 			tapped = HIGH;
-		if (inertia > shakeThreshold) 
-			Dbg_println(inertia);
 		}
 	}
 
@@ -539,7 +537,10 @@ void loop()
 	// Is the cc ahead of the hc & needing to slow down, or behind it & needing to speed up?
 	targetNear = (circleOffset < 0.5);
 	targetAhead = (instantPos > cc.circlePos);
-	if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
+	if (BOTHPRESSED(btn1, btn2) && midiMeasuresRemaining == 0) {
+		// slow down!
+		cc.circlePos += circleMinFwd;
+	} else if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
 		// speed up!
 		cc.circlePos += min(circleOffset, circleMaxFwd); 
 	} else {
@@ -548,24 +549,19 @@ void loop()
 	}
 
 	if (BOTHPRESSED(btn1, btn2)) {
-		// Special handling for two-button mode:
-		// Once BOTHPRESSED, midi can only emit 12 clock beats.  Then it pauses.
-		// (However, every user tap resets that 12 beat counter.)
-		if (tapped) {
-			// We reload this before zero, to handle the case where tapping has sped up.
-			if (midiBeatsRemaining < 12) 
-				midiBeatsRemaining += 12;
+		if (btn1.fell() || btn2.fell()) { // If we just pressed now entered 2-button mode
+			midiMeasuresRemaining = 1;  	 // midi only to the end of this measure.
+		} else if (tapped) {						// but if we tapped a beat,
+			midiMeasuresRemaining++;		// add a measure to that.
+			Dbg_print(midiMeasuresRemaining);//DEBUG obv
+			Dbg_println("!");//DEBUG obv
 		}
-	} else { 
-		// reload this when it hits zero.
-			if (midiBeatsRemaining == 0) 
-				midiBeatsRemaining += 12;
 	}
 
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
 	if ((int)(cc.circlePos * 12.0) > (int)(cc.prevCirclePos * 12.0)) {
 		if (playState) { 
-			if (midiBeatsRemaining > 0) {
+			if (midiMeasuresRemaining > 0) {
 				// emit MIDI clock!
 				if (tapped) { 
 					Dbg_print("TMC ");
@@ -573,12 +569,10 @@ void loop()
 					Dbg_print("MC ");
 				}
 				Dbg_print((int)(cc.circlePos * 12.0));
-				/* Dbg_print(midiBeatsRemaining); */
 				Dbg_print(", ");
 				if (cc.circlePos >= 1.0) {
 					Dbg_println(".");
 				}
-				midiBeatsRemaining--;
 			}
 		}
 	}
@@ -586,6 +580,12 @@ void loop()
 	// wrap!
 	if (cc.circlePos > 1.0) {
 		cc.circlePos -= 1.0;
+		if (BOTHPRESSED(btn1, btn2)) {
+			if (midiMeasuresRemaining>0)
+				midiMeasuresRemaining--;
+		} else {
+			midiMeasuresRemaining = 1;
+		}
 	}
 
 
@@ -621,6 +621,8 @@ void loop()
 			Dbg_print(" audioMem, ");
 			Dbg_print(AudioProcessorUsageMax());
 			Dbg_print(" audioCPU, ");
+			Dbg_print(midiMeasuresRemaining);
+			Dbg_print(" MMR, ");
 			/* Dbg_print(instantPos); */
 			/* Dbg_print(" instant, "); */
 			/* Dbg_print(cc.circlePos); */
