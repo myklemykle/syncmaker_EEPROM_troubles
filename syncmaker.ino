@@ -377,11 +377,15 @@ void loop()
 	// A "nonstop" button is a possible solution to this. 
 	// (Wouldn't it be wonderful if we could just query the PO over stlink/jtag?)
 
-	/* if (playState && !prevPlayState) { */
-	/* 	// user just pressed play; */
-	/* 	// move downbeat to now! */
-	/* 	hc.downbeatTime = nowTime; */
-	/* } */
+	if (playState && !prevPlayState) {
+		// user just pressed play button to start PO
+		// move downbeat to now!
+		hc.downbeatTime = nowTime;
+		usbMIDI.sendRealTime(usbMIDI.Start);
+	} else if (!playState && prevPlayState) {
+		// user just pressed play button to stop PO.
+		usbMIDI.sendRealTime(usbMIDI.Stop);
+	}
 
 
 	// downbeatTime is the absolute time of the start of the current pulse.
@@ -547,17 +551,26 @@ void loop()
 			midiMeasuresRemaining = 1;  	 // midi only to the end of this measure.
 		} else if (tapped) {						// but if we tapped a beat,
 			midiMeasuresRemaining++;		// add a measure to that,
-			cc.frozen = false; 					// then unfreeze for just that one measure.
+				// then unfreeze for just that one measure:
+			if (cc.frozen) {
+				Dbg_println("@");//DEBUG obv
+				usbMIDI.sendRealTime(usbMIDI.Continue);
+				cc.frozen = false; 					
+			}
 			Dbg_print(midiMeasuresRemaining);//DEBUG obv
 			Dbg_println("!");//DEBUG obv
 		}
 		if (midiMeasuresRemaining == 0) {
+			if (!cc.frozen) 
+				usbMIDI.sendRealTime(usbMIDI.Stop);
 			cc.frozen = true;
 		}
 	} else if ((pulseState != newPulseState) && (newPulseState == HIGH) ) {
-		if (cc.frozen)
+		if (cc.frozen) {
 			Dbg_println("@");//DEBUG obv
-		cc.frozen = false;
+			usbMIDI.sendRealTime(usbMIDI.Continue);
+			cc.frozen = false; 					
+		}
 	}
 
 	// Is the cc ahead of the hc & needing to slow down, or behind it & needing to speed up?
@@ -578,6 +591,7 @@ void loop()
 		if (playState) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
+				usbMIDI.sendRealTime(usbMIDI.Clock);
 				if (tapped) { 
 					Dbg_print("TMC ");
 				} else { 
