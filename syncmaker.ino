@@ -64,6 +64,10 @@ Bounce btn2 = Bounce();
 #define PRESSED(btn) 				(btn.read() == LOW)
 #define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
 #define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
+// useful for preventing two-button mode right after having entered NONSTOP with both buttons pressed.
+#define TWOBUTTONMODE(b1,b2) 	(PRESSED(b1) && PRESSED(b2) && (! nonstopStarted))
+#define EITHERPRESSED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
+#define EITHERNOTPRESSED(b1,b2) 		(!PRESSED(b1) || !PRESSED(b2))
 
 
 // Pins:
@@ -171,7 +175,8 @@ bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
-bool playState = LOW, prevPlayState = LOW, playPinState = LOW; 
+bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
+bool nonstop = LOW, nonstopStarted = LOW;
 bool awakePinState = HIGH; 
 
 
@@ -181,7 +186,6 @@ bool awakePinState = HIGH;
 unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
 #endif
-
 
 
 #ifdef INTERRUPTS
@@ -300,6 +304,13 @@ void loop()
 	btn1.update();
 	btn2.update();
 
+	if (EITHERNOTPRESSED(btn1, btn2)){
+		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,
+		// and cleared as soon as both buttons aren't pressed.  It exists to prevent conflict
+		// between these two meanings/uses of both-buttons-pressed.
+		nonstopStarted = false;
+	}
+
 #ifdef SDEBUG
 	loops++; 
 #endif
@@ -353,40 +364,63 @@ void loop()
 		}
 	}
 
-	// Check the PO play/stop state
-	// This pin is low when not playing, but when playing it's actually flickering.
-	prevPlayState = playState;
+	// Decode the state of the PO Play LED from the pin signal:
+	// This pin is low when not playing, but when playing it's actually flickering,
+	// so we can't just read it as logic.
+	prevPlayLedState = playLedState;
 	playPinState = digitalRead(PO_play);
 	if (playPinState) {
 		playPinTimer = 0;
-		playState = playPinState;
+		playLedState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
 		if (playPinTimer > playFlickerTime) {
-			playState = playPinState;
+			playLedState = playPinState;
 		}
 	}
 
+	// calculate if we're playing or not, based on playLedState,
+	// buttons and NONSTOP flag:
+	prevPlaying = playing;
+
+	// If the play light just lit,
+	if (playLedState && (!prevPlayLedState)) {
+		// set PLAYING.
+		playing = true;
+		// if both buttons are held down, 
+		if (BOTHPRESSED(btn1, btn2)) {
+			// set NONSTOP and NONSTOP-STARTED.
+			nonstop = nonstopStarted = true;
+		}
+
+	// otherwise, if the play light just unlit,
+	} else if (prevPlayLedState && (! playLedState)) {
+		// if both buttons are held down,
+		if (BOTHPRESSED(btn1, btn2)) {
+			// clear PLAYING, NONSTOP and NONSTOP-STARTED
+			playing = nonstop = nonstopStarted = false;
+		// else 
+			// if NONSTOP
+				// don't stop!
+			// else
+				// clear PLAYING.
+		} else if (!nonstop) { 
+			playing = false;
+		}
+	}
+	
 	/////////
-	// Update the Human Clock:
+	// Update the Human Clock & MIDI transport
 	//
-
-	// This bit is aspirational.  It works, but we still only can read the
-	// PLAY led, which still is flickered on/off by other PO buttons during play
-	// thereby causing a hectic mess if we enable this feature.
-	// A "nonstop" button is a possible solution to this. 
-	// (Wouldn't it be wonderful if we could just query the PO over stlink/jtag?)
-
-	if (playState && !prevPlayState) {
+	if (playing && !prevPlaying) {
 		// user just pressed play button to start PO
 		// move downbeat to now!
 		hc.downbeatTime = nowTime;
 		usbMIDI.sendRealTime(usbMIDI.Start);
-	} else if (!playState && prevPlayState) {
+	} else if (!playing && prevPlaying) {
 		// user just pressed play button to stop PO.
 		usbMIDI.sendRealTime(usbMIDI.Stop);
 	}
-
 
 	// downbeatTime is the absolute time of the start of the current pulse.
 	// if now is at least pulseLen millis beyond the previous beat, advance the beat
@@ -396,7 +430,7 @@ void loop()
 
 	// Check the buttons:
 	//
-	if (ARMED(btn1, btn2)) {  // if either is pressed
+	if (EITHERPRESSED(btn1, btn2)) {
 		if (tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
@@ -466,35 +500,41 @@ void loop()
 		hc.tapCount = 0;
 	}
 
-
 	///////////
 	// Calculate & update LEDs.
 	// (Strobe-off times need to be much longer than strobe-on times
 	// in order to be clearly visible to the human eye.)
 	//
-	if (PRESSED(btn1)) {
-		if (nowTime - hc.downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
-			newLed1State = LOW;
-		else
-			newLed1State = HIGH;
-	} else {
-		if (nowTime - hc.downbeatTime < strobeOnLen)
-			newLed1State = HIGH;
-		else
-			newLed1State = LOW;
+	if (playing ) { 
+		if (PRESSED(btn1)) {
+			if (nowTime - hc.downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
+				newLed1State = LOW;
+			else
+				newLed1State = HIGH;
+		} else {
+			if (nowTime - hc.downbeatTime < strobeOnLen)
+				newLed1State = HIGH;
+			else
+				newLed1State = LOW;
+		}
+
+		if (PRESSED(btn2)) {
+			if (nowTime - hc.downbeatTime < strobeOffLen)
+				newLed2State = LOW;
+			else
+				newLed2State = HIGH;
+		} else {
+			if (nowTime - hc.downbeatTime < strobeOnLen)
+				newLed2State = HIGH;
+			else
+				newLed2State = LOW;
+		}
+	} else {  // !playing
+		// don't blink when not playing, just indicate buttons
+		newLed1State = PRESSED(btn1);
+		newLed2State = PRESSED(btn2);
 	}
 
-	if (PRESSED(btn2)) {
-		if (nowTime - hc.downbeatTime < strobeOffLen)
-			newLed2State = LOW;
-		else
-			newLed2State = HIGH;
-	} else {
-		if (nowTime - hc.downbeatTime < strobeOnLen)
-			newLed2State = HIGH;
-		else
-			newLed2State = LOW;
-	}
 	
 	if (led1State != newLed1State) {
 		led1State = newLed1State;
@@ -509,7 +549,7 @@ void loop()
 	// Calculate & update the sync pulse
 	//
 	if (BOTHPRESSED(btn1, btn2)) { 
-		if (tapped)
+		if (tapped) // TODO: simplify? i think tapped is always true if the following if-clause is false:
 			newPulseState = HIGH;
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
 			newPulseState = LOW;
@@ -588,7 +628,7 @@ void loop()
 
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
 	if ((int)(cc.circlePos * 12.0) > (int)(cc.prevCirclePos * 12.0)) {
-		if (playState) { 
+		if (playing) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
 				usbMIDI.sendRealTime(usbMIDI.Clock);
@@ -618,7 +658,7 @@ void loop()
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
 		pulseState = newPulseState;
-		if (playState) { 
+		if (playing) { 
 			// send sync pulse on both pins
 			digitalWrite(pulsePin1, pulseState);
 			digitalWrite(pulsePin2, pulseState);
@@ -626,34 +666,36 @@ void loop()
 
 		// print benchmarks when pulse goes high.
 		if (pulseState == HIGH) {
-//			Dbg_print(awakeTimer);
-//			Dbg_print(':');
-//			if (awakePinState) { 
-//				Dbg_print(playState ? "play  " : "stop  ");
-//			} else { 
-//				Dbg_print("asleep  ");
-//			}
-//			Dbg_print(loops);
-//			Dbg_print(" loops, ");
-//			Dbg_print(imus);
-//			Dbg_print(" imus in ");
-//			Dbg_print(hc.measureLen);
+			Dbg_print(awakeTimer);
+			Dbg_print(':');
+			if (awakePinState) { 
+				Dbg_print(playing ? "play  " : "stop  ");
+				if (nonstop) 
+					Dbg_print("NONSTOP ");
+			} else { 
+				Dbg_print("asleep  ");
+			}
+			Dbg_print(loops);
+			Dbg_print(" loops, ");
+			Dbg_print(imus);
+			Dbg_print(" imus in ");
+			Dbg_print(hc.measureLen);
 #ifdef MICROS
-//			Dbg_print(" us, ");
+			Dbg_print(" us, ");
 #else
-//			Dbg_print(" ms, ");
+			Dbg_print(" ms, ");
 #endif
-//			Dbg_print(AudioMemoryUsageMax());
-//			Dbg_print(" audioMem, ");
-//			Dbg_print(AudioProcessorUsageMax());
-//			Dbg_print(" audioCPU, ");
-//			Dbg_print(midiMeasuresRemaining);
-//			Dbg_print(" MMR, ");
+			Dbg_print(AudioMemoryUsageMax());
+			Dbg_print(" audioMem, ");
+			Dbg_print(AudioProcessorUsageMax());
+			Dbg_print(" audioCPU, ");
+			Dbg_print(midiMeasuresRemaining);
+			Dbg_print(" MMR, ");
 			/* Dbg_print(instantPos); */
 			/* Dbg_print(" instant, "); */
 			/* Dbg_print(cc.circlePos); */
 			/* Dbg_print(" circular, "); */
-//			Dbg_println(".");
+			Dbg_println(".");
 
 #ifdef SDEBUG
 			// reset counters
