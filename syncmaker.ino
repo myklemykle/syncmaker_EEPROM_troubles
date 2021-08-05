@@ -159,6 +159,9 @@ typedef struct {
 	// Clock position is a float value between 0 and 1.
 	// TODO: refactor to ints.
 	float circlePos = 0.0, prevCirclePos = 0.0;
+	// Freeze when both buttons pressed & end of MMR reached;
+	// unfreeze on the next downbeat after a button is released.
+	bool frozen = false;
 } CircularClock;
 CircularClock cc;
 
@@ -288,7 +291,8 @@ void loop()
 
 	float instantPos; 
 	float circleOffset;
-	int measureIdx;
+	//int measureIdx;
+	long measureIdx;
 	bool targetNear, targetAhead;
 
 	static int midiMeasuresRemaining = 0;
@@ -534,34 +538,45 @@ void loop()
 	// the difference between that position & the current circular position:
 	circleOffset = abs(cc.circlePos - instantPos);
 	
-	// Is the cc ahead of the hc & needing to slow down, or behind it & needing to speed up?
-	targetNear = (circleOffset < 0.5);
-	targetAhead = (instantPos > cc.circlePos);
-	if (BOTHPRESSED(btn1, btn2) && midiMeasuresRemaining == 0) {
-		// slow down!
-		cc.circlePos += circleMinFwd;
-	} else if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
-		// speed up!
-		cc.circlePos += min(circleOffset, circleMaxFwd); 
-	} else {
-		// slow down!
-		cc.circlePos += circleMinFwd;
-	}
+	// Freeze the circular clock when both buttons pressed & end of MMR reached;
+	// unfreeze on the next pulse after a button is released.
+	// also unfreeze for 1 measureLen if tapped while bothbuttons pressed
 
 	if (BOTHPRESSED(btn1, btn2)) {
 		if (btn1.fell() || btn2.fell()) { // If we just pressed now entered 2-button mode
 			midiMeasuresRemaining = 1;  	 // midi only to the end of this measure.
 		} else if (tapped) {						// but if we tapped a beat,
-			midiMeasuresRemaining++;		// add a measure to that.
+			midiMeasuresRemaining++;		// add a measure to that,
+			cc.frozen = false; 					// then unfreeze for just that one measure.
 			Dbg_print(midiMeasuresRemaining);//DEBUG obv
 			Dbg_println("!");//DEBUG obv
+		}
+		if (midiMeasuresRemaining == 0) {
+			cc.frozen = true;
+		}
+	} else if ((pulseState != newPulseState) && (newPulseState == HIGH) ) {
+		if (cc.frozen)
+			Dbg_println("@");//DEBUG obv
+		cc.frozen = false;
+	}
+
+	// Is the cc ahead of the hc & needing to slow down, or behind it & needing to speed up?
+	targetNear = (circleOffset < 0.5);
+	targetAhead = (instantPos > cc.circlePos);
+	if (!cc.frozen) {
+		if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
+			// speed up!
+			cc.circlePos += min(circleOffset, circleMaxFwd); 
+		} else {
+			// slow down!
+			cc.circlePos += circleMinFwd;
 		}
 	}
 
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
 	if ((int)(cc.circlePos * 12.0) > (int)(cc.prevCirclePos * 12.0)) {
 		if (playState) { 
-			if (midiMeasuresRemaining > 0) {
+			if (!cc.frozen) {
 				// emit MIDI clock!
 				if (tapped) { 
 					Dbg_print("TMC ");
@@ -583,11 +598,8 @@ void loop()
 		if (BOTHPRESSED(btn1, btn2)) {
 			if (midiMeasuresRemaining>0)
 				midiMeasuresRemaining--;
-		} else {
-			midiMeasuresRemaining = 1;
 		}
 	}
-
 
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
@@ -600,34 +612,34 @@ void loop()
 
 		// print benchmarks when pulse goes high.
 		if (pulseState == HIGH) {
-			Dbg_print(awakeTimer);
-			Dbg_print(':');
-			if (awakePinState) { 
-				Dbg_print(playState ? "play  " : "stop  ");
-			} else { 
-				Dbg_print("asleep  ");
-			}
-			Dbg_print(loops);
-			Dbg_print(" loops, ");
-			Dbg_print(imus);
-			Dbg_print(" imus in ");
-			Dbg_print(hc.measureLen);
+//			Dbg_print(awakeTimer);
+//			Dbg_print(':');
+//			if (awakePinState) { 
+//				Dbg_print(playState ? "play  " : "stop  ");
+//			} else { 
+//				Dbg_print("asleep  ");
+//			}
+//			Dbg_print(loops);
+//			Dbg_print(" loops, ");
+//			Dbg_print(imus);
+//			Dbg_print(" imus in ");
+//			Dbg_print(hc.measureLen);
 #ifdef MICROS
-			Dbg_print(" us, ");
+//			Dbg_print(" us, ");
 #else
-			Dbg_print(" ms, ");
+//			Dbg_print(" ms, ");
 #endif
-			Dbg_print(AudioMemoryUsageMax());
-			Dbg_print(" audioMem, ");
-			Dbg_print(AudioProcessorUsageMax());
-			Dbg_print(" audioCPU, ");
-			Dbg_print(midiMeasuresRemaining);
-			Dbg_print(" MMR, ");
+//			Dbg_print(AudioMemoryUsageMax());
+//			Dbg_print(" audioMem, ");
+//			Dbg_print(AudioProcessorUsageMax());
+//			Dbg_print(" audioCPU, ");
+//			Dbg_print(midiMeasuresRemaining);
+//			Dbg_print(" MMR, ");
 			/* Dbg_print(instantPos); */
 			/* Dbg_print(" instant, "); */
 			/* Dbg_print(cc.circlePos); */
 			/* Dbg_print(" circular, "); */
-			Dbg_println(".");
+//			Dbg_println(".");
 
 #ifdef SDEBUG
 			// reset counters
