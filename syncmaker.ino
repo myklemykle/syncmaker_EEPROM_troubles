@@ -125,7 +125,19 @@ elapsedMillis awakeTimer;
 volatile bool imu_ready = false;
 #else
 elapsedMicros imuClock;
-const int clockTick = 500; // 2khz data rate (match what's set in NXPMotionSense
+const int imuClockTick = 500; // 2khz data rate (match what's set in NXPMotionSense
+#endif
+
+#ifdef MIDITIMECODE
+elapsedMillis mtcClock;
+byte mtcFrame;
+const int mtcClockTick = 40; // 25 frames/second is the PAL SMPTE/MTC standard, more int-friendly than the other options.
+typedef struct {
+	byte pos[4] = {0,0,0,0}; // hhmmssff
+	byte framePos[4] = {0,0,0,0}; // hhmmssff
+	int nextBits = 0;
+} MTC;
+MTC mtc;
 #endif
 
 
@@ -259,6 +271,11 @@ void setup()
 	imuClock = 0;
 #endif
 
+#ifdef MIDITIMECODE
+	mtcClock = 0;
+	mtcFrame = 0;
+#endif
+
 	loopTimer = 0; // why?
 
 	// init this buffer:
@@ -290,6 +307,92 @@ void setup()
 	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // comparison wake from deepSleep not supported on this pin.
 
 }
+
+#ifdef MIDITIMECODE
+	// send the next frame in the running "time"
+	void sendMtcQuarterFrame(){
+		if (mtcFrame == 0){
+			// all 8 pieces of a 2-frame message describe the moment of the start of the first frame
+			// so copy that moment for the next 7 4/frames to use
+			mtc.framePos[0] = mtc.pos[0];
+			mtc.framePos[1] = mtc.pos[1];
+			mtc.framePos[2] = mtc.pos[2];
+			mtc.framePos[3] = mtc.pos[3];
+		}
+
+		// which piece of the timestamp?
+		byte timepiece = mtc.framePos[3 - (mtcFrame >> 1)]; // hh, mm, ss or ff
+
+		byte fragment;
+		if (mtcFrame & 1) { // if odd send MSBs
+			fragment = (timepiece >> 4) ;
+		} else { // if even send LSBs
+			fragment = (timepiece & 0b00001111) ;
+		}
+		/* Dbg_print(mtcFrame >> 1); */
+		/* Dbg_print("="); */
+		/* Dbg_print(timepiece); */
+		/* Dbg_print("; "); */
+		/* Dbg_print(mtcFrame); */
+		/* Dbg_print("/"); */
+		/* Dbg_println(fragment); */
+
+		usbMIDI.sendTimeCodeQuarterFrame(mtcFrame, fragment);
+		// advance frame.
+		mtcFrame = (mtcFrame + 1) % 8;
+	}
+
+	// send absolute time position (for restarting, etc.)
+	void sendMtcStamp() {
+		byte buf[10] = {0xF0, 0x7F, 0x7F, 0x01, 0x01, 0,0,0,0, 0xF7};
+		buf[5] = mtc.pos[0];
+		buf[6] = mtc.pos[1];
+		buf[7] = mtc.pos[2];
+		buf[8] = mtc.pos[3];
+		usbMIDI.sendSysEx(10, buf);
+		mtcFrame = 0;
+	}
+
+	void mtcSetPosition(int hh, int mm, int ss, int ff){
+		mtc.pos[0] = (hh & 0x00011111) | (0x00100000);  // 001 in leftmost bits indicates 25FPS frame rate
+		mtc.pos[1] = mm;
+		mtc.pos[2] = ss;
+		mtc.pos[3] = ff;
+	}
+
+	void mtcIncFrame() {
+		if (++mtc.pos[3] >= 25) {
+			mtc.pos[3] = 0;
+			if (++mtc.pos[2] >= 60) {
+				mtc.pos[2] = 0;
+				if (++mtc.pos[1] >= 60) {
+					mtc.pos[1] = 0;
+					if ((++mtc.pos[0] & 0x00011111) >= 24) {
+						mtc.pos[0] = 0x00100000;								// 001 in leftmost bits indicates 25FPS frame rate
+					}
+				}
+			}
+		}
+		/* Dbg_print(mtc.pos[0]); */
+		/* Dbg_print(":"); */
+		/* Dbg_print(mtc.pos[1]); */
+		/* Dbg_print(":"); */
+		/* Dbg_print(mtc.pos[2]); */
+		/* Dbg_print(":"); */
+		/* Dbg_println(mtc.pos[3]); */
+	}
+
+	void mtcGoto(int hh, int mm, int ss, int ff){
+		mtcSetPosition(hh,mm,ss,ff);
+		return sendMtcStamp();
+	}
+
+	// return to the dawn of time
+	void rewindMtc(){
+		return mtcGoto(0,0,0,0);
+	}
+
+#endif
 
 void loop()
 {
@@ -340,8 +443,8 @@ void loop()
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
 #else
-	if (imuClock > clockTick) { // on interval
-		imuClock -= clockTick;
+	if (imuClock > imuClockTick) { // on interval
+		imuClock -= imuClockTick;
 #endif
 
 #ifdef SDEBUG
@@ -369,6 +472,15 @@ void loop()
 			tapped = HIGH;
 		}
 	}
+
+#ifdef MIDITIMECODE
+	// send MTC frame if ready:
+	if (mtcClock > mtcClockTick) { // on interval
+		mtcClock -= mtcClockTick;
+
+		sendMtcQuarterFrame();
+	}
+#endif
 
 	// Decode the state of the PO Play LED from the pin signal:
 	// This pin is low when not playing, but when playing it's actually flickering,
@@ -424,8 +536,14 @@ void loop()
 		hc.downbeatTime = nowTime;
 #ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Start);
+#endif
+#ifdef MIDITIMECODE
+		// rewind time to zero
+		rewindMtc();
+#endif
 	} else if (!playing && prevPlaying) {
 		// user just pressed play button to stop PO.
+#ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
 	}
@@ -602,6 +720,9 @@ void loop()
 #ifdef MIDICLOCK
 				usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
+#ifdef MIDITIMECODE
+			sendMtcStamp();
+#endif
 			}
 		}
 		if (midiMeasuresRemaining == 0) {
@@ -617,6 +738,9 @@ void loop()
 			cc.frozen = false; 					
 #ifdef MIDICLOCK
 			usbMIDI.sendRealTime(usbMIDI.Continue);
+#endif
+#ifdef MIDITIMECODE
+			sendMtcStamp();
 #endif
 		}
 	}
@@ -642,7 +766,6 @@ void loop()
 		// dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
 		// dc1.amplitude(0, 1); // DEBUG
 
-
 		if (playing) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
@@ -661,6 +784,22 @@ void loop()
 				if (cc.circlePos >= 1.0) {
 					Dbg_println(".");
 				}
+			}
+		}
+	}
+#endif
+#ifdef MIDITIMECODE
+	// how often to increment the MTC frame?
+	// 25 frames == 1 second of MTC time.
+	// if we say that equals 1 second of PO time at 120bpm, aka 2 beats per second,
+	// then that's 12.5 frames per beat, which is awkward.
+	// Since this mapping is not about "real" time, we can just define 12 frames per beat
+
+	// if we've crossed a 1/12 boundary, increment the frame.
+	if ((int)((1+cc.circlePos) * 12.0) > (int)((1+cc.prevCirclePos) * 12.0)) {
+		if (playing) { 
+			if (!cc.frozen) {
+				mtcIncFrame();
 			}
 		}
 	}
