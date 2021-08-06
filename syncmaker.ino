@@ -13,6 +13,7 @@
 // Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.
 // is there some more normal solution for this?  Seems like this would be a common problem.
 #define Dbg_print(X) if(Serial) Serial.print(X)
+#define Dbg_print2(X, Y) if(Serial) Serial.print(X, Y)
 #define Dbg_println(X) if(Serial) Serial.println(X)
 #define Dbg_flush(X) if(Serial) Serial.flush()
 #else
@@ -40,19 +41,17 @@ SnoozeDigital s_digital;
 SnoozeTimer s_timer;
 SnoozeBlock s_config(s_timer);
 
-
-// Teensy Audio:
 #include <Audio.h>
-// GUItool: begin automatically generated code
-//AudioSynthNoisePink      pink1;          //xy=88,242
-AudioSynthNoiseWhite      pink1;          //xy=88,242
-AudioAmplifier           amp1;           //xy=257,241
-//AudioEffectReverb        reverb1;        //xy=440,243
-AudioOutputAnalog        dac1;           //xy=628,246
-AudioConnection          patchCord1(pink1, amp1);
-//AudioConnection          patchCord2(amp1, reverb1);
-//AudioConnection          patchCord3(reverb1, dac1);
-AudioConnection          patchCord2(amp1, dac1);
+// GUItool: end automatically generated code
+AudioSynthNoiseWhite     noise1;         //xy=110,301
+AudioAmplifier           amp1;           //xy=231,298
+AudioSynthWaveformDc     dc1;            //xy=262,375
+AudioMixer4              mixer1;         //xy=470,359
+AudioOutputAnalog        dac1;           //xy=603,359
+AudioConnection          patchCord1(noise1, amp1);
+AudioConnection          patchCord2(amp1, 0, mixer1, 0);
+AudioConnection          patchCord3(dc1, 0, mixer1, 1);
+AudioConnection          patchCord4(mixer1, dac1);
 // GUItool: end automatically generated code
 
 
@@ -266,16 +265,19 @@ void setup()
 	////////
 	// Teensy Audio setup:
 	AudioMemory(2);
-	dac1.analogReference(EXTERNAL); // 3.3v p2p
-	pink1.amplitude(2);
-	//reverb1.reverbTime(0.5);
+	dac1.analogReference(EXTERNAL); // 3.3v p2p (but see below)
+	noise1.amplitude(2);
 	amp1.gain(0);
+	dc1.amplitude(0);
+	mixer1.gain(0, 1); // noise1 -> amp1
+	mixer1.gain(1, 1); // dc1
 
 	//https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
 	// Initialize the DAC output pins
   analogWriteResolution(12);
   analogWrite(A14, 0);  //Set the DAC output to 0.
   DAC0_C0 &= 0b10111111;  //uses 1.2V reference for DAC instead of 3.3V
+												// does this clash with analogReference() above?
 
 	////////////
 	// Sleep setup:
@@ -560,7 +562,6 @@ void loop()
 			newPulseState = LOW;
 	}
 
-
 	//////////
 	// Update the circular clock:
 	// User can make discontinuous changes in the human clock;
@@ -573,8 +574,6 @@ void loop()
 
 	// the instantaneous position of our moment in the current measure is:
 	measureIdx = hc.downbeatTime - nowTime;
-	if (measureIdx < 0) 
-		measureIdx += hc.measureLen;
 
 	// Expressed as a float btwn 0 & 1:
 	instantPos = 1.0 - ( (float)measureIdx / (float)hc.measureLen ) ;
@@ -627,17 +626,29 @@ void loop()
 	}
 
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
-	if ((int)(cc.circlePos * 12.0) > (int)(cc.prevCirclePos * 12.0)) {
+	if ((int)((1+cc.circlePos) * 12.0) > (int)((1+cc.prevCirclePos) * 12.0)) {
+		/*
+		// debugging noise:
+		// send a triangle pulse to audio out
+		dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
+		dc1.amplitude(0, 1); // DEBUG
+		*/
+
+
 		if (playing) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
 				usbMIDI.sendRealTime(usbMIDI.Clock);
+
 				if (tapped) { 
 					Dbg_print("TMC ");
 				} else { 
 					Dbg_print("MC ");
 				}
 				Dbg_print((int)(cc.circlePos * 12.0));
+				/* Dbg_print2(cc.circlePos, 7); */
+				/* Dbg_print(">"); */
+				/* Dbg_print2(cc.prevCirclePos, 7); */
 				Dbg_print(", ");
 				if (cc.circlePos >= 1.0) {
 					Dbg_println(".");
@@ -649,6 +660,7 @@ void loop()
 	// wrap!
 	if (cc.circlePos > 1.0) {
 		cc.circlePos -= 1.0;
+		cc.prevCirclePos -= 1.0;
 		if (BOTHPRESSED(btn1, btn2)) {
 			if (midiMeasuresRemaining>0)
 				midiMeasuresRemaining--;
