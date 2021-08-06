@@ -7,6 +7,10 @@
 #define INTERRUPTS yeasurewelikeinterrupts  
 // use high-resolution timers?
 #define MICROS microsmothafuckka!!!   
+// send MIDI clock?
+//#define MIDICLOCK timex
+// send MIDI timecode?
+#define MIDITIMECODE rolex
 // send debug output to usb serial?
 #define SDEBUG crittersbuggin 
 #ifdef SDEBUG
@@ -418,10 +422,12 @@ void loop()
 		// user just pressed play button to start PO
 		// move downbeat to now!
 		hc.downbeatTime = nowTime;
+#ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Start);
 	} else if (!playing && prevPlaying) {
 		// user just pressed play button to stop PO.
 		usbMIDI.sendRealTime(usbMIDI.Stop);
+#endif
 	}
 
 	// downbeatTime is the absolute time of the start of the current pulse.
@@ -592,23 +598,26 @@ void loop()
 			midiMeasuresRemaining++;		// add a measure to that,
 				// then unfreeze for just that one measure:
 			if (cc.frozen) {
-				Dbg_println("@");//DEBUG obv
-				usbMIDI.sendRealTime(usbMIDI.Continue);
 				cc.frozen = false; 					
+#ifdef MIDICLOCK
+				usbMIDI.sendRealTime(usbMIDI.Continue);
+#endif
 			}
-			Dbg_print(midiMeasuresRemaining);//DEBUG obv
-			Dbg_println("!");//DEBUG obv
 		}
 		if (midiMeasuresRemaining == 0) {
-			if (!cc.frozen) 
+			if (!cc.frozen) {
+				cc.frozen = true;
+#ifdef MIDICLOCK
 				usbMIDI.sendRealTime(usbMIDI.Stop);
-			cc.frozen = true;
+#endif
+			}
 		}
 	} else if ((pulseState != newPulseState) && (newPulseState == HIGH) ) {
 		if (cc.frozen) {
-			Dbg_println("@");//DEBUG obv
-			usbMIDI.sendRealTime(usbMIDI.Continue);
 			cc.frozen = false; 					
+#ifdef MIDICLOCK
+			usbMIDI.sendRealTime(usbMIDI.Continue);
+#endif
 		}
 	}
 
@@ -625,14 +634,13 @@ void loop()
 		}
 	}
 
+#ifdef MIDICLOCK
 	// if we've crossed a 1/12 boundary, send a MIDI clock.
 	if ((int)((1+cc.circlePos) * 12.0) > (int)((1+cc.prevCirclePos) * 12.0)) {
-		/*
 		// debugging noise:
 		// send a triangle pulse to audio out
-		dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
-		dc1.amplitude(0, 1); // DEBUG
-		*/
+		// dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
+		// dc1.amplitude(0, 1); // DEBUG
 
 
 		if (playing) { 
@@ -656,6 +664,7 @@ void loop()
 			}
 		}
 	}
+#endif
 
 	// wrap!
 	if (cc.circlePos > 1.0) {
