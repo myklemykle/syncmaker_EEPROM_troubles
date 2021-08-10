@@ -5,8 +5,6 @@
 //
 // use interrupts, or poll?
 #define INTERRUPTS yeasurewelikeinterrupts  
-// use high-resolution timers?
-#define MICROS microsmothafuckka!!!   
 // send MIDI clock?
 #define MIDICLOCK timex
 // send MIDI timecode?
@@ -94,13 +92,8 @@ const int IMU_int = 2;
 
 
 // Important time intervals:
-#ifdef MICROS
 const unsigned int TIMESCALE = 1000; // uS
 const unsigned long strobeOnLen = 500;
-# else 
-const unsigned int TIMESCALE = 1;		// mS
-const unsigned long strobeOnLen = 1;
-#endif
 
 const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
@@ -110,15 +103,9 @@ const unsigned long playFlickerTime = 100 * TIMESCALE;
 
 
 // Timers:
-#ifdef MICROS
 elapsedMicros loopTimer;
 elapsedMicros playPinTimer;
 elapsedMicros awakeTimer;
-#else
-elapsedMillis loopTimer;
-elapsedMillis playPinTimer;
-elapsedMillis awakeTimer;
-#endif
 
 
 #ifdef INTERRUPTS
@@ -255,11 +242,7 @@ void setup()
 	////////
 	// Clock setup:
 	//
-#ifdef MICROS
 	hc.downbeatTime = micros(); // now!
-#else
-	hc.downbeatTime = millis(); // now!
-#endif
 	// If buttons are held down when we boot, reset the default measure length
 	if (BOTHPRESSED(btn1, btn2)) {
 		hc.measureLen = 250 * TIMESCALE; 	// default for 120bpm (1 beat per half/second) */
@@ -841,11 +824,7 @@ void loop()
 			Dbg_print(imus);
 			Dbg_print(" imus in ");
 			Dbg_print(hc.measureLen);
-#ifdef MICROS
 			Dbg_print(" us, ");
-#else
-			Dbg_print(" ms, ");
-#endif
 			Dbg_print(AudioMemoryUsageMax());
 			Dbg_print(" audioMem, ");
 			Dbg_print(AudioProcessorUsageMax());
