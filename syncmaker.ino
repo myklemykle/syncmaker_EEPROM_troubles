@@ -47,13 +47,14 @@ SnoozeBlock s_config(s_timer);
 // GUItool: end automatically generated code
 AudioSynthNoiseWhite     noise1;         //xy=110,301
 AudioAmplifier           amp1;           //xy=231,298
-AudioSynthWaveformDc     dc1;            //xy=262,375
-AudioMixer4              mixer1;         //xy=470,359
-AudioOutputAnalog        dac1;           //xy=603,359
+//AudioSynthWaveformDc     dc1;            //xy=262,375 //DEBUG
+//AudioMixer4              mixer1;         //xy=470,359
+AudioOutputAnalog        dac1;           //xy=603,359 //DEBUG
 AudioConnection          patchCord1(noise1, amp1);
-AudioConnection          patchCord2(amp1, 0, mixer1, 0);
-AudioConnection          patchCord3(dc1, 0, mixer1, 1);
-AudioConnection          patchCord4(mixer1, dac1);
+/* AudioConnection          patchCord2(amp1, 0, mixer1, 0); */ //DEBUG
+/* AudioConnection          patchCord3(dc1, 0, mixer1, 1); */ //DEBUG
+/* AudioConnection          patchCord4(mixer1, dac1); */ //DEBUG
+AudioConnection          patchCord2(amp1, dac1); 
 // GUItool: end automatically generated code
 
 
@@ -251,9 +252,9 @@ void setup()
 	dac1.analogReference(EXTERNAL); // 3.3v p2p (but see below)
 	noise1.amplitude(2);
 	amp1.gain(0);
-	dc1.amplitude(0);
-	mixer1.gain(0, 1); // noise1 -> amp1
-	mixer1.gain(1, 1); // dc1
+	/* dc1.amplitude(0); */ //DEBUG
+	/* mixer1.gain(0, 1); // noise1 -> amp1 */ //DEBUG
+	/* mixer1.gain(1, 1); // dc1 */ //DEBUG
 
 	//https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
 	// Initialize the DAC output pins
