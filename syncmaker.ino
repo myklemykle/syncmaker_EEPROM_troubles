@@ -8,9 +8,9 @@
 // use high-resolution timers?
 #define MICROS microsmothafuckka!!!   
 // send MIDI clock?
-//#define MIDICLOCK timex
+#define MIDICLOCK timex
 // send MIDI timecode?
-#define MIDITIMECODE rolex
+//#define MIDITIMECODE rolex
 // send debug output to usb serial?
 #define SDEBUG crittersbuggin 
 #ifdef SDEBUG
@@ -344,17 +344,15 @@ void setup()
 
 	// send absolute time position (for restarting, etc.)
 	void sendMtcStamp() {
-		byte buf[10] = {0xF0, 0x7F, 0x7F, 0x01, 0x01, 0,0,0,0, 0xF7};
-		buf[5] = mtc.pos[0];
-		buf[6] = mtc.pos[1];
-		buf[7] = mtc.pos[2];
-		buf[8] = mtc.pos[3];
-		usbMIDI.sendSysEx(10, buf);
+		byte buf[10] = {0xF0, 0x7F, 0x7F, 0x01, 0x01, 
+			mtc.pos[0],mtc.pos[1],mtc.pos[2],mtc.pos[3], 
+			0xF7};
+		usbMIDI.sendSysEx(10, buf, true); // 'true' == buffer already starts with 0xF0 & ends with 0xF7)
 		mtcFrame = 0;
 	}
 
 	void mtcSetPosition(int hh, int mm, int ss, int ff){
-		mtc.pos[0] = (hh & 0x00011111) | (0x00100000);  // 001 in leftmost bits indicates 25FPS frame rate
+		mtc.pos[0] = (hh & 0b00011111) | (0b00100000);  // 001 in leftmost bits indicates 25FPS frame rate
 		mtc.pos[1] = mm;
 		mtc.pos[2] = ss;
 		mtc.pos[3] = ff;
@@ -367,8 +365,8 @@ void setup()
 				mtc.pos[2] = 0;
 				if (++mtc.pos[1] >= 60) {
 					mtc.pos[1] = 0;
-					if ((++mtc.pos[0] & 0x00011111) >= 24) {
-						mtc.pos[0] = 0x00100000;								// 001 in leftmost bits indicates 25FPS frame rate
+					if ((++mtc.pos[0] & 0b00011111) >= 24) {
+						mtc.pos[0] = 0b00100000;								// 001 in leftmost bits indicates 25FPS frame rate
 					}
 				}
 			}
@@ -534,8 +532,11 @@ void loop()
 		// user just pressed play button to start PO
 		// move downbeat to now!
 		hc.downbeatTime = nowTime;
+		// sync the circular clock!
+		cc.circlePos = 0.0;
 #ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Start);
+		usbMIDI.sendRealTime(usbMIDI.Clock);
 #endif
 #ifdef MIDITIMECODE
 		// rewind time to zero
@@ -720,9 +721,10 @@ void loop()
 #ifdef MIDICLOCK
 				usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
-#ifdef MIDITIMECODE
-			sendMtcStamp();
-#endif
+/* #ifdef MIDITIMECODE */
+			// TODO: Shifting the downbeat (without chaning tempo) in MTC mode ...
+/* 			sendMtcStamp(); */
+/* #endif */
 			}
 		}
 		if (midiMeasuresRemaining == 0) {
@@ -739,9 +741,9 @@ void loop()
 #ifdef MIDICLOCK
 			usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
-#ifdef MIDITIMECODE
-			sendMtcStamp();
-#endif
+/* #ifdef MIDITIMECODE */
+/* 			sendMtcStamp(); */
+/* #endif */
 		}
 	}
 
@@ -792,11 +794,10 @@ void loop()
 	// how often to increment the MTC frame?
 	// 25 frames == 1 second of MTC time.
 	// if we say that equals 1 second of PO time at 120bpm, aka 2 beats per second,
-	// then that's 12.5 frames per beat, which is awkward.
-	// Since this mapping is not about "real" time, we can just define 12 frames per beat
+	// then that's 12.5 frames per beat
 
-	// if we've crossed a 1/12 boundary, increment the frame.
-	if ((int)((1+cc.circlePos) * 12.0) > (int)((1+cc.prevCirclePos) * 12.0)) {
+	// if we've crossed a 1/12.5 boundary, increment the frame.
+	if ((int)((1+cc.circlePos) * 12.5) > (int)((1+cc.prevCirclePos) * 12.5)) {
 		if (playing) { 
 			if (!cc.frozen) {
 				mtcIncFrame();
