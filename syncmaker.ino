@@ -3,8 +3,6 @@
 
 // Config:
 //
-// use interrupts, or poll?
-#define INTERRUPTS yeasurewelikeinterrupts  
 // send MIDI clock?
 #define MIDICLOCK timex
 // send MIDI timecode?
@@ -108,12 +106,7 @@ elapsedMicros playPinTimer;
 elapsedMicros awakeTimer;
 
 
-#ifdef INTERRUPTS
 volatile bool imu_ready = false;
-#else
-elapsedMicros imuClock;
-const int imuClockTick = 500; // 2khz data rate (match what's set in NXPMotionSense
-#endif
 
 #ifdef MIDITIMECODE
 elapsedMillis mtcClock;
@@ -190,12 +183,10 @@ unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
 
-#ifdef INTERRUPTS
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
 }
-#endif
 
 void setup()
 {
@@ -209,11 +200,9 @@ void setup()
 	// imu pin 11 is also reserved but I can't get to it from software ...
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 
-#ifdef INTERRUPTS
 	// IMU int2 pin is open-collector mode
 	pinMode(IMU_int, INPUT_PULLUP);
 	attachInterrupt(IMU_int, imu_int, FALLING);
-#endif
 	
   imu.begin();
 
@@ -249,10 +238,6 @@ void setup()
 	} else {
 		EEPROM.get(eepromBase, hc.measureLen);
 	}
-
-#ifndef INTERRUPTS
-	imuClock = 0;
-#endif
 
 #ifdef MIDITIMECODE
 	mtcClock = 0;
@@ -420,13 +405,8 @@ void loop()
 	tapped = LOW;
 
 	// Read IMU data if ready:
-#ifdef INTERRUPTS
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
-#else
-	if (imuClock > imuClockTick) { // on interval
-		imuClock -= imuClockTick;
-#endif
 
 #ifdef SDEBUG
 		imus++;
