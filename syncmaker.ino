@@ -59,8 +59,8 @@ Bounce btn3 = Bounce();
 
 // Pins:
 #ifdef EVT4
-const int button1Pin = 21;   // sw1
-const int button2Pin = 22;   // sw2
+const int button1Pin = 22;   // sw1
+const int button2Pin = 21;   // sw2
 const int button3Pin = 0;   // nonstop
 const int boardLedPin = 13;	// builtin led on Teensy 3.2
 const int led1Pin =  15;    // led1
@@ -107,7 +107,7 @@ const unsigned long strobeOnLen = 500;
 const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
-const unsigned long playFlickerTime = 100 * TIMESCALE; 
+/* const unsigned long playFlickerTime = 100 * TIMESCALE;  */
 
 
 
@@ -232,6 +232,7 @@ void setup()
 #ifdef EVT4
   pinMode(button3Pin, INPUT_PULLUP); // nonstop
   pinMode(button3LedPin, OUTPUT);       // nonstop led
+	digitalWrite(button3LedPin, HIGH);
 #endif
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
@@ -246,7 +247,7 @@ void setup()
 	btn2.attach(button2Pin);
 	btn2.interval(debounceLen);
 #ifdef EVT4
-	btn3.attach(button2Pin);
+	btn3.attach(button3Pin);
 	btn3.interval(debounceLen);
 #endif
 
@@ -287,7 +288,9 @@ void setup()
   analogWriteResolution(12);
   analogWrite(A14, 0);  //Set the DAC output to 0.
   DAC0_C0 &= 0b10111111;  //uses 1.2V reference for DAC instead of 3.3V
-												// does this clash with analogReference() above?
+												// does this clash with analogReference() above?  probably ... 
+	// anyway I still get background noise when running off battery.
+	// TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 
 	////////////
 	// Sleep setup:
@@ -392,9 +395,22 @@ void loop()
 		playLedState = playPinState;
 	} else {
 		// Done flickering? Has play been stopped for 10ms or longer?
-		if (playPinTimer > playFlickerTime) {
+		//if (playPinTimer > playFlickerTime) {
+		
+		// animation of this LED varies a lot(!) between PO models.
+		// The KO is the worst: it only strobes it every 2 pulses/4 beats.
+		if (playPinTimer > (2 * hc.measureLen)) {
 			playLedState = playPinState;
 		}
+		// Most of the rest either hold it completely high (1 & 2 series) 
+		// or blink it off every 2 pulses/4 beats.
+		// The Speak has the problem that when you press play it doesn't
+		// start right away ... waiting for a pulse or IDK?
+
+		// this makes the whole thing way less responsive to the play button,
+		// although you can still start/stop accurately using the side buttons.
+
+		// TODO: detect which model we're attached to somehow?
 	}
 
 	// calculate if we're playing or not, based on playLedState,
@@ -791,6 +807,9 @@ uint powerNap(){
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
 	digitalWrite(boardLedPin, LOW);
+#ifdef EVT4
+	digitalWrite(button3LedPin, LOW);
+#endif
 
 	// disable interrupts from accelerometer
 	/* detachInterrupt(IMU_int); */
