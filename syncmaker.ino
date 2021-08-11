@@ -1,4 +1,4 @@
-// Rev 1 Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
+// EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include <CircularBuffer.h>
 
 // Config:
@@ -24,6 +24,13 @@
 #define Dbg_flush(X) {}
 #endif
 
+
+// what version of board is this? (i hope someday we can autodetect ...)
+#define EVT4
+// using SPI for IMU?  (default is i2c)
+#ifdef EVT4
+#define USE_SPI cuzitsgroovy!
+#endif
 
 // Gesture Detection:
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
@@ -63,9 +70,11 @@ AudioConnection          patchCord2(amp1, dac1);
 const int debounceLen = 2; // must be in MS as required by bounce2 lib
 Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
+#ifdef EVT4
+Bounce btn3 = Bounce();
+#endif
 #define PRESSED(btn) 				(btn.read() == LOW)
 #define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
-#define ARMED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
 // useful for preventing two-button mode right after having entered NONSTOP with both buttons pressed.
 #define TWOBUTTONMODE(b1,b2) 	(PRESSED(b1) && PRESSED(b2) && (! nonstopStarted))
 #define EITHERPRESSED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
@@ -73,6 +82,30 @@ Bounce btn2 = Bounce();
 
 
 // Pins:
+#ifdef EVT4
+const int button1Pin = 21;   // sw1
+const int button2Pin = 22;   // sw2
+const int button3Pin = 0;   // nonstop
+const int boardLedPin = 13;	// builtin led on Teensy 3.2
+const int led1Pin =  15;    // led1
+const int led2Pin =  8;    // led2
+const int button3LedPin = 1; // nonstop led
+const int pulsePin1 = 20; 	// j1 tip / l_sync_out
+const int pulsePin2 = 23; 		// j2 tip / r_sync_out
+const int analogOut = 14;   // 12 bit DAC on Teensy 3.2 connected to j1/j2 ring
+const int PO_play = 16; 		// goes high on PO play (runs to play LED)
+const int PO_wake = 9;			// goes low when PO sleeps I think
+const int PO_reset = 7;			
+const int PO_SWCLK = 6;			// jtag/stlink pins:
+const int PO_SWDIO = 5;
+const int PO_SWO   = 4;
+/* const int IMU_fsync = -1;   // not connected on evt4 */
+const int IMU_int = 2;
+const int SPI_clock = 13;
+const int SPI_cs = 10;
+const int SPI_miso = 12;
+const int SPI_mosi = 11;
+#else
 const int button1Pin = 0;   // sw1
 const int button2Pin = 9;   // sw2
 const int boardLedPin = 13;	// builtin led on Teensy 3.2
@@ -89,6 +122,7 @@ const int PO_SWDIO = 5;
 const int PO_SWO   = 4;
 const int IMU_fsync = 1;   // need to ground this on icm-42605
 const int IMU_int = 2;
+#endif
 
 
 
@@ -190,13 +224,23 @@ void setup()
 
 	///////
 	// IMU setup:
+#ifdef USE_SPI
+	// raise chipSelect line to select the only chip. 
+	pinMode(SPI_cs, OUTPUT);
+	digitalWrite(SPI_cs, HIGH);
+	// AudioLibrary changed these, i change them back!
+	SPI.setMOSI(SPI_mosi);
+	SPI.setMISO(SPI_miso);
+	SPI.setSCK(SPI_clock);
+#else
 	// slight hack for EVT1/rev1:
 	// i changed IMU chips, and this pin (IMU pin 10) is "reserved" on the ICM42605:
 	pinMode(IMU_fsync, OUTPUT);
 	// imu pin 11 is also reserved but I can't get to it from software ...
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
+#endif
 
-	// IMU int2 pin is open-collector mode
+	// IMU int pin is open-collector mode
 	pinMode(IMU_int, INPUT_PULLUP);
 	attachInterrupt(IMU_int, imu_int, FALLING);
 	
@@ -211,6 +255,10 @@ void setup()
   pinMode(pulsePin2, OUTPUT);       // j2 tip
   pinMode(button1Pin, INPUT_PULLUP); // sw1
   pinMode(button2Pin, INPUT_PULLUP); // sw2
+#ifdef EVT4
+  pinMode(button3Pin, INPUT_PULLUP); // nonstop
+  pinMode(button3LedPin, OUTPUT);       // nonstop led
+#endif
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
 	pinMode(PO_wake, INPUT);
@@ -223,6 +271,10 @@ void setup()
 	btn1.interval(debounceLen);
 	btn2.attach(button2Pin);
 	btn2.interval(debounceLen);
+#ifdef EVT4
+	btn3.attach(button2Pin);
+	btn3.interval(debounceLen);
+#endif
 
 	////////
 	// Clock setup:
@@ -289,6 +341,9 @@ void loop()
 
 	btn1.update();
 	btn2.update();
+#ifdef EVT4
+	btn3.update();
+#endif
 
 	if (EITHERNOTPRESSED(btn1, btn2)){
 		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,

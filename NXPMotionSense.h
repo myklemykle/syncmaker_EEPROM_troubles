@@ -2,7 +2,6 @@
 #define _NXP_Motion_Sensors_
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <EEPROM.h>
 
 // TODO: move these inside class namespace
