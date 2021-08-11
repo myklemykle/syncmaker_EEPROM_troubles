@@ -1,6 +1,6 @@
 // hacked for ICM-42605
 
-#define USE_SPI
+#include "config.h"
 
 #include "ICM42605/ICM42605_LIS2MDL_LPS22HB_Dragonfly/ICM42605.h"
 #define ICM42605_I2C_ADDR0 0b1101000
@@ -19,8 +19,8 @@
 #include <SPI.h>
 	// default spiconf should be fine for this chip
 const uint8_t chip_addr=ICM42605_SPI_CS;
-//const SPISettings spiconf(24000000, MSBFIRST, SPI_MODE0);
-const SPISettings spiconf(4000000, MSBFIRST, SPI_MODE0);
+const SPISettings spiconf(24000000, MSBFIRST, SPI_MODE0);
+//const SPISettings spiconf(4000000, MSBFIRST, SPI_MODE0);
 #else
 #include <Wire.h>
 const uint8_t chip_addr=ICM42605_I2C_ADDR0;
@@ -184,8 +184,13 @@ bool NXPMotionSense::ICM42605_begin()
 	// }
 	
 	// interrupt electrical stuff: INT_CONFIG
+#ifdef EVT4
+	// int1 (and disconnected int2 why not?) push pull
+	reg = reg | 0b00010010;
+#else
 	// int2 push pull
 	reg = reg | 0b00010000;
+#endif
 	if (!write_reg(chip_addr, ICM42605_INT_CONFIG, reg)) return false;  
 	
 	// report temperature: TEMP_DATA1/0
@@ -199,24 +204,30 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(chip_addr, ICM42605_PWR_MGMT0, 0b00001111)) return false;    
 	
 	// gyro: GYRO_CONFIG0
-	// set output data rate to 8khz
+	// set output data rate ...
 	// GYRO_CONFIG0 = 0bxxxx0011
 	// set sensitivity to +-2000dps
 	// GYRO_CONFIG0 = 0b000.....
-	// if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
-	//if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
+#ifdef USE_SPI
+	if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
+#else
+	// if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
 	if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000101)) return false;    // 2khz
+#endif
 	
 	// accelerometer: ACCEL_CONFIG0
-	// set output data rate to 8khz
+	// set output data rate ...
 	// ICM42605_ACCEL_CONFIG0 = 0b....0011
 	// set accel sensitivity to 8g
 	// ICM42605_ACCEL_CONFIG0 = 0b001.....
 	// to do both in one register:
-	//if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
+#ifdef USE_SPI
+	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
+#else
 	//if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
 	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 	//if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
+#endif
 
 	// Interrupt stuff:
 	//
@@ -231,10 +242,17 @@ bool NXPMotionSense::ICM42605_begin()
 	// if (!read_regs(chip_addr, ICM42605_INT_CONFIG1, &reg, 1)) return false;
 	// Serial.printf("INT_CONFIG1: %x\n", reg);
 	
+#ifdef EVT4
+	// interrupt INT1 on data ready:
+	// INT_SOURCE0 = 0b00001000
+	if (!write_reg(chip_addr, ICM42605_INT_SOURCE0, 0b00001000)) return false;    // int2 on data ready
+	if (!read_regs(chip_addr, ICM42605_INT_SOURCE0, &reg, 1)) return false;
+#else
 	// interrupt INT2 on data ready:
 	// INT_SOURCE3 = 0b00001000
 	if (!write_reg(chip_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(chip_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
+#endif
 	Serial.printf("INT_SOURCE3: %x\n", reg);
 
 	// // make sure we're not self-testing ...

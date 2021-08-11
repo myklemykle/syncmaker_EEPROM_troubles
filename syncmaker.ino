@@ -1,43 +1,15 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
+#include "config.h"
+
 #include <CircularBuffer.h>
-
-// Config:
-//
-// send MIDI clock?
-#define MIDICLOCK timex
-
-// send MIDI timecode?
-//#define MIDITIMECODE rolex
-
-// send debug output to usb serial?
-#define SDEBUG crittersbuggin 
-#ifdef SDEBUG
-// Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.
-// is there some more normal solution for this?  Seems like this would be a common problem.
-#define Dbg_print(X) if(Serial) Serial.print(X)
-#define Dbg_print2(X, Y) if(Serial) Serial.print(X, Y)
-#define Dbg_println(X) if(Serial) Serial.println(X)
-#define Dbg_flush(X) if(Serial) Serial.flush()
-#else
-#define Dbg_print(X) {}
-#define Dbg_println(X) {}
-#define Dbg_flush(X) {}
-#endif
-
-
-// what version of board is this? (i hope someday we can autodetect ...)
-#define EVT4
-// using SPI for IMU?  (default is i2c)
-#ifdef EVT4
-#define USE_SPI cuzitsgroovy!
-#endif
 
 // Gesture Detection:
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
 														// set to higher data rate, 
 														// ignores other two IMU chips 
 														// Should be renamed, refactored, etc.
-NXPMotionSense imu;		// on EVT1/rev1, the IMU is an ICM42605 MEMS acc/gyro chip
+
+NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
 const float shakeThreshold = 0.65; 	
 const float tapThreshold = 2.0;
 bool shaken = LOW, tapped = LOW;
@@ -49,6 +21,10 @@ float inertia = 0, prevInertia = 0;
 SnoozeDigital s_digital;
 SnoozeTimer s_timer;
 SnoozeBlock s_config(s_timer);
+// This is the codec power supply that's regulated lower than the main supply.
+// i'm reading this as 778 when on usb power & awake ... 
+// then down to 300-ish when board sleeps.
+const unsigned int awakePinThreshold = 400;
 
 #include <Audio.h>
 // GUItool: end automatically generated code
@@ -92,9 +68,8 @@ const int led2Pin =  8;    // led2
 const int button3LedPin = 1; // nonstop led
 const int pulsePin1 = 20; 	// j1 tip / l_sync_out
 const int pulsePin2 = 23; 		// j2 tip / r_sync_out
-const int analogOut = 14;   // 12 bit DAC on Teensy 3.2 connected to j1/j2 ring
 const int PO_play = 16; 		// goes high on PO play (runs to play LED)
-const int PO_wake = 9;			// goes low when PO sleeps I think
+const int PO_wake = 14;			// goes low when PO sleeps I think
 const int PO_reset = 7;			
 const int PO_SWCLK = 6;			// jtag/stlink pins:
 const int PO_SWDIO = 5;
@@ -113,7 +88,6 @@ const int led1Pin =  21;    // led1
 const int led2Pin =  20;    // led2
 const int pulsePin1 = 11; 	// j1 tip
 const int pulsePin2 = 8; 		// j2 tip
-const int analogOut = 14;   // 12 bit DAC on Teensy 3.2 connected to j1/j2 ring
 const int PO_play = 16; 		// goes high on PO play (runs to play LED)
 const int PO_wake = 17;			// goes low when PO sleeps I think
 const int PO_reset = 7;			
@@ -146,7 +120,6 @@ elapsedMicros awakeTimer;
 volatile bool imu_ready = false;
 
 #ifdef MIDITIMECODE
-#include "miditimecode.cpp"
 MidiTimecodeGenerator mtc;
 #endif
 
@@ -202,7 +175,8 @@ bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
 bool nonstop = LOW, nonstopStarted = LOW;
-bool awakePinState = HIGH; 
+//bool awakePinState = HIGH; 
+unsigned int awakePinState = 0; // analog
 
 
 
@@ -262,7 +236,7 @@ void setup()
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
 	pinMode(PO_wake, INPUT);
-	pinMode(PO_reset, INPUT_PULLUP); // TODO: really we want this pulled down, not up.
+	pinMode(PO_reset, INPUT_PULLUP); // TODO: why do we still get resets when connecting?  need pullup on the PI board?
 	pinMode(PO_SWCLK, INPUT_PULLUP);
 	pinMode(PO_SWDIO, INPUT_PULLUP);
 	pinMode(PO_SWO, INPUT_PULLUP);
@@ -357,13 +331,17 @@ void loop()
 #endif
 
 	// go to sleep if the PO_wake pin is low:
-	awakePinState = digitalRead(PO_wake);
+	//awakePinState = digitalRead(PO_wake);
+	awakePinState = analogRead(PO_wake);
 
-	if (! awakePinState) {
-	/* if (PRESSED(btn1)) { // DEBUG */
+	// awaiting a jumper fix in EVT4 ...
+#ifndef EVT4
+	if (awakePinState < awakePinThreshold) {
+	// if (PRESSED(btn1)) { // DEBUG 
 		powerNap();
 		return;
 	}
+#endif 
 
 	// Check IMU:
 
@@ -697,19 +675,21 @@ void loop()
 				// emit MIDI clock!
 				usbMIDI.sendRealTime(usbMIDI.Clock);
 
-				if (tapped) { 
-					Dbg_print("TMC ");
-				} else { 
-					Dbg_print("MC ");
-				}
-				Dbg_print((int)(cc.circlePos * 12.0));
+				/* if (tapped) {  */
+				/* 	Dbg_print("TMC "); */
+				/* } else {  */
+				/* 	Dbg_print("MC "); */
+				/* } */
+
+				/* Dbg_print((int)(cc.circlePos * 12.0)); */
 				/* Dbg_print2(cc.circlePos, 7); */
 				/* Dbg_print(">"); */
 				/* Dbg_print2(cc.prevCirclePos, 7); */
-				Dbg_print(", ");
-				if (cc.circlePos >= 1.0) {
-					Dbg_println(".");
-				}
+
+				/* Dbg_print(", "); */
+				/* if (cc.circlePos >= 1.0) { */
+				/* 	Dbg_println("."); */
+				/* } */
 			}
 		}
 	}
@@ -753,7 +733,8 @@ void loop()
 		if (pulseState == HIGH) {
 			Dbg_print(awakeTimer);
 			Dbg_print(':');
-			if (awakePinState) { 
+
+			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playing ? "play  " : "stop  ");
 				if (nonstop) 
 					Dbg_print("NONSTOP ");
@@ -823,9 +804,10 @@ uint powerNap(){
 	do {
 		// sleep N seconds or until right button wakes us
 		who = Snooze.deepSleep(s_config);
-		awakePinState = digitalRead(PO_wake);
+		awakePinState = analogRead(PO_wake);
 		btn2.update();
-	} while (awakePinState == LOW && (! PRESSED(btn2)));
+	//} while (awakePinState == LOW && (! PRESSED(btn2)));
+	} while (awakePinState < awakePinThreshold && (! PRESSED(btn2)));
 
 	// detach from buttons
 	s_config -= s_digital;
