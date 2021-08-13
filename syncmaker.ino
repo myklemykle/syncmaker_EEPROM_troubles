@@ -109,7 +109,9 @@ const unsigned long pulseLen = 5 * TIMESCALE;
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
 /* const unsigned long playFlickerTime = 100 * TIMESCALE;  */
 
-
+//#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  // float: convert usecs to secs (1M to 1), pulses to beats (2 to 1), divide by 60 secs per minute
+#define USEC2BPM(interval) ( 30000000.0 / interval )  									// same thing
+#define BPM2USEC(bpm) ( 30000000.0 / bpm  ) 															// inverse
 
 // Timers:
 elapsedMicros loopTimer;
@@ -126,10 +128,8 @@ MidiTimecodeGenerator mtc;
 
 // EEPROM
 #include <EEPROM.h>
-// NOTE: the prop shield calibration is stored in the EEPROM,
-// we mustn't overwrite that!  
-// It's rumored to be 68 bytes starting at address 0x60 -- 
-//    https://forum.pjrc.com/threads/33997-EEPROM-usage-table?highlight=prop+shield+eeprom
+
+// only for rev1 historical reasons is this number not 0:
 const int eepromBase = 2000;
 
 
@@ -195,6 +195,12 @@ void imu_int(){
 void setup()
 {
   Serial.begin(115200);
+	delay(100);
+#ifdef EVT4
+	Dbg_println("flashed for EVT4 board");
+# else
+	Dbg_println("flashed for rev3 board");
+#endif
 
 	///////
 	// IMU setup:
@@ -751,18 +757,24 @@ void loop()
 			Dbg_print(':');
 
 			if (awakePinState >= awakePinThreshold) {   
-				Dbg_print(playing ? "play  " : "stop  ");
+				Dbg_print(playing ? "play, wv@" : "stop, wv");
+				Dbg_print(awakePinState);
 				if (nonstop) 
 					Dbg_print("NONSTOP ");
 			} else { 
-				Dbg_print("asleep  ");
+				Dbg_print("asleep, wv@");
+				Dbg_print(awakePinState);
 			}
+			Dbg_print(", ");
 			Dbg_print(loops);
 			Dbg_print(" loops, ");
 			Dbg_print(imus);
-			Dbg_print(" imus in ");
-			Dbg_print(hc.measureLen);
-			Dbg_print(" us, ");
+			/* Dbg_print(" imus in "); */
+			/* Dbg_print(hc.measureLen); */
+			/* Dbg_print(" us, "); */
+			Dbg_print(" imus at ");
+			Dbg_print(USEC2BPM(hc.measureLen));
+			Dbg_print(" BPM, ");
 			Dbg_print(AudioMemoryUsageMax());
 			Dbg_print(" audioMem, ");
 			Dbg_print(AudioProcessorUsageMax());
@@ -800,7 +812,7 @@ uint powerNap(){
 
 #ifdef SDEBUG
 	Dbg_println("zzzzz.");
-	delay(10);
+	delay(100);
 #endif
 
 	// turn off LEDs
