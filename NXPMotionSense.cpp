@@ -119,27 +119,6 @@ static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num
 	return true;
 }
 
-// 	// not sure that this version of read_regs has meaning in SPI-land.  Is it even used?
-// static bool read_regs(uint8_t selector, uint8_t *data, uint8_t num)
-// {
-// #ifdef USE_SPI
-// 	digitalWrite(selector, LOW);
-// 	while (num > 0) {
-// 		*data++ = SPI.transfer(0);
-// 		num--;
-// 	}
-// 	digitalWrite(selector, HIGH);
-// #else
-// 	Wire.requestFrom(selector, num);
-// 	if (Wire.available() != num) return false;
-// 	while (num > 0) {
-// 		*data++ = Wire.read();
-// 		num--;
-// 	}
-// #endif
-// 	return true;
-// }
-
 
 bool NXPMotionSense::ICM42605_sleep(){
 	// 0b00100000
@@ -184,13 +163,8 @@ bool NXPMotionSense::ICM42605_begin()
 	// }
 	
 	// interrupt electrical stuff: INT_CONFIG
-#ifdef EVT4
-	// int1 (and disconnected int2 why not?) push pull
+	// int1 & int2 push pull
 	reg = reg | 0b00010010;
-#else
-	// int2 push pull
-	reg = reg | 0b00010000;
-#endif
 	if (!write_reg(chip_addr, ICM42605_INT_CONFIG, reg)) return false;  
 	
 	// report temperature: TEMP_DATA1/0
@@ -208,7 +182,7 @@ bool NXPMotionSense::ICM42605_begin()
 	// GYRO_CONFIG0 = 0bxxxx0011
 	// set sensitivity to +-2000dps
 	// GYRO_CONFIG0 = 0b000.....
-#ifdef USE_SPI
+#ifdef IMU_8KHZ
 	if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000011)) return false;    // 8khz
 #else
 	// if (!write_reg(chip_addr, ICM42605_GYRO_CONFIG0, 0b00000100)) return false;    // 4khz
@@ -221,12 +195,11 @@ bool NXPMotionSense::ICM42605_begin()
 	// set accel sensitivity to 8g
 	// ICM42605_ACCEL_CONFIG0 = 0b001.....
 	// to do both in one register:
-#ifdef USE_SPI
+#ifdef IMU_8KHZ
 	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100011)) return false;    // 8khz
 #else
 	//if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100100)) return false;    // 4khz
 	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
-	//if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100110)) return false;  // 1khz
 #endif
 
 	// Interrupt stuff:
@@ -242,17 +215,14 @@ bool NXPMotionSense::ICM42605_begin()
 	// if (!read_regs(chip_addr, ICM42605_INT_CONFIG1, &reg, 1)) return false;
 	// Serial.printf("INT_CONFIG1: %x\n", reg);
 	
-#ifdef EVT4
-	// interrupt INT1 on data ready:
+	// interrupt INT1 and INT2 on data ready:
 	// INT_SOURCE0 = 0b00001000
 	if (!write_reg(chip_addr, ICM42605_INT_SOURCE0, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(chip_addr, ICM42605_INT_SOURCE0, &reg, 1)) return false;
-#else
-	// interrupt INT2 on data ready:
+	Serial.printf("INT_SOURCE0: %x\n", reg);
 	// INT_SOURCE3 = 0b00001000
 	if (!write_reg(chip_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(chip_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
-#endif
 	Serial.printf("INT_SOURCE3: %x\n", reg);
 
 	// // make sure we're not self-testing ...
