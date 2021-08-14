@@ -121,7 +121,20 @@ elapsedMicros awakeTimer;
 
 volatile bool imu_ready = false;
 
+#ifdef MIDICLOCK
+	// Midi Clock msgs are supposed to be sent 24 times per beat.
+	// Human Clock sends 1 sync pulse per 2 PO beats, 
+	// so we should send 12 midi clocks per sync pulse
+#define MIDICLOCKSPERPULSE 12.0
+#endif
+
 #ifdef MIDITIMECODE
+	// How often to increment the MTC frame, (1/25 second, the minimum resolution of midi timecode)?
+	// if we declare that 1 second of MTC equals 1 second of PO time at 120bpm, so 2 "beats" per second,
+	// which is actually (when you set PO tempo to 120) one entire 16-note pattern per second, 
+	// which is 8 sync pulses per second, spread over 25 frames.  
+	// 25/8 = 3.125
+#define MIDIFRAMESPERPULSE 3.125
 MidiTimecodeGenerator mtc;
 #endif
 
@@ -155,7 +168,7 @@ HumanClock hc;
 // This is the very minimum (per loop cycle) forward advance
 const	float circleMinFwd = 1.0/1000000.0; 
 // OTOH, if we advance any faster than this, we could skip a MIDI clock beat
-const float circleMaxFwd = 0.08333; // 1/12 to 5 places.
+const float circleMaxFwd = 1 / MIDICLOCKSPERPULSE ;
 //
 typedef struct {
 	// Clock position is a float value between 0 and 1.
@@ -694,8 +707,8 @@ void loop()
 	}
 
 #ifdef MIDICLOCK
-	// if we've crossed a 1/12 boundary, send a MIDI clock.
-	if ((int)((1+cc.circlePos) * 12.0) > (int)((1+cc.prevCirclePos) * 12.0)) {
+	// if we've crossed a clock boundary, send a MIDI clock.
+	if ((int)((1+cc.circlePos) * MIDICLOCKSPERPULSE) > (int)((1+cc.prevCirclePos) * MIDICLOCKSPERPULSE)) {
 		// debugging noise:
 		// send a triangle pulse to audio out
 		// dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
@@ -712,7 +725,7 @@ void loop()
 				/* 	Dbg_print("MC "); */
 				/* } */
 
-				/* Dbg_print((int)(cc.circlePos * 12.0)); */
+				/* Dbg_print((int)(cc.circlePos * MIDICLOCKSPERPULSE)); */
 				/* Dbg_print2(cc.circlePos, 7); */
 				/* Dbg_print(">"); */
 				/* Dbg_print2(cc.prevCirclePos, 7); */
@@ -726,13 +739,9 @@ void loop()
 	}
 #endif
 #ifdef MIDITIMECODE
-	// how often to increment the MTC frame, that is the minimum resolution of timecode?
-	// 25 frames == 1 second of MTC time.
-	// if we say that equals 1 second of PO time at 120bpm, aka 2 beats per second,
-	// then that's 12.5 frames per beat
 
-	// if we've crossed a 1/12.5 boundary, increment the frame.
-	if ((int)((1+cc.circlePos) * 12.5) > (int)((1+cc.prevCirclePos) * 12.5)) {
+	// if we've crossed a frame boundary, increment the frame.
+	if ((int)((1+cc.circlePos) * MIDIFRAMESPERPULSE) > (int)((1+cc.prevCirclePos) * MIDIFRAMESPERPULSE)) {
 		if (playing) { 
 			if (!cc.frozen) {
 				mtc.incFrame();
