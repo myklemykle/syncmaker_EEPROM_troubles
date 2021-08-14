@@ -132,22 +132,6 @@ const int imuClockTick = 500; // 2khz data rate
 
 #endif
 
-#ifdef MIDICLOCK
-	// Midi Clock msgs are supposed to be sent 24 times per beat.
-	// Human Clock sends 1 sync pulse per 2 PO beats, 
-	// so we should send 12 midi clocks per sync pulse
-#define MIDICLOCKSPERPULSE 12.0
-#endif
-
-#ifdef MIDITIMECODE
-	// How often to increment the MTC frame, (1/25 second, the minimum resolution of midi timecode)?
-	// if we declare that 1 second of MTC equals 1 second of PO time at 120bpm, so 2 "beats" per second,
-	// which is actually (when you set PO tempo to 120) one entire 16-note pattern per second, 
-	// which is 8 sync pulses per second, spread over 25 frames.  
-	// 25/8 = 3.125
-#define MIDIFRAMESPERPULSE 3.125
-MidiTimecodeGenerator mtc;
-#endif
 
 
 // EEPROM
@@ -176,21 +160,42 @@ HumanClock hc;
 // and cannot move backwards.
 // So relatively more "continuous" than the Human Clock, but still updated discretely.
 //
-// This is the very minimum (per loop cycle) forward advance
-const	float circleMinFwd = 1.0/1000000.0; 
+// integer CC loops from 0 to 1B (1000000000)
+#define CC_INT_RES 1000000000
+#define CC_FLOAT_RES 1000000000.0
+//
+// This is the very minimum (per loop cycle) forward advance -- one millionth of a loop
+const	int circleMinFwd = CC_INT_RES / 1000000;  
 // OTOH, if we advance any faster than this, we could skip a MIDI clock beat
-const float circleMaxFwd = 1 / 12.0;
+const int circleMaxFwd = CC_INT_RES / 12; // 83333333
 //
 typedef struct {
-	// Clock position is a float value between 0 and 1.
-	// TODO: refactor to ints.
-	float circlePos = 0.0, prevCirclePos = 0.0;
+	// Clock position is an int value between 0 and 1B.
+	long circlePos = 0, prevCirclePos = 0;
 	// Freeze when both buttons pressed & end of MMR reached;
 	// unfreeze on the next downbeat after a button is released.
 	bool frozen = false;
 } CircularClock;
 CircularClock cc;
 
+#ifdef MIDICLOCK
+	// Midi Clock msgs are supposed to be sent 24 times per beat.
+	// Human Clock sends 1 sync pulse per 2 PO beats, 
+	// so we should send 12 midi clocks per sync pulse
+#define MIDICLOCKSPERPULSE 12.0
+const long circleTicksPerClock = CC_INT_RES / MIDICLOCKSPERPULSE;
+#endif
+
+#ifdef MIDITIMECODE
+	// How often to increment the MTC frame, (1/25 second, the minimum resolution of midi timecode)?
+	// if we declare that 1 second of MTC equals 1 second of PO time at 120bpm, so 2 "beats" per second,
+	// which is actually (when you set PO tempo to 120) one entire 16-note pattern per second, 
+	// which is 8 sync pulses per second, spread over 25 frames.  
+	// 25/8 = 3.125
+#define MIDIFRAMESPERPULSE 3.125
+const long circleTicksPerFrame = CC_INT_RES / MIDIFRAMESPERPULSE ;
+MidiTimecodeGenerator mtc;
+#endif
 
 // State Variables:
 bool led1State = LOW, newLed1State = LOW;
@@ -345,9 +350,8 @@ void loop()
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopTimer;
 
-	float instantPos; 
-	float circleOffset;
-	//int measureIdx;
+	long instantPos; 
+	long circleOffset;
 	long measureIdx;
 	bool targetNear, targetAhead;
 
@@ -520,7 +524,8 @@ void loop()
 		// move downbeat to now!
 		hc.downbeatTime = nowTime;
 		// sync the circular clock!
-		cc.circlePos = 0.0;
+		//cc.circlePos = 0.0;
+		cc.circlePos = 0;
 #ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Start);
 		usbMIDI.sendRealTime(usbMIDI.Clock);
@@ -685,10 +690,10 @@ void loop()
 	cc.prevCirclePos = cc.circlePos;
 
 	// the instantaneous position of our moment in the current measure is:
-	measureIdx = hc.downbeatTime - nowTime;
+	measureIdx = hc.measureLen - (hc.downbeatTime - nowTime);
 
-	// Expressed as a float btwn 0 & 1:
-	instantPos = 1.0 - ( (float)measureIdx / (float)hc.measureLen ) ;
+	// Expressed as an int btwn 0 & 1B:
+	instantPos = (CC_FLOAT_RES / 100) * ( (100 * measureIdx) / hc.measureLen ) ;
 
 	// the difference between that position & the current circular position:
 	circleOffset = abs(cc.circlePos - instantPos);
@@ -735,7 +740,7 @@ void loop()
 	}
 
 	// Is the cc ahead of the hc & needing to slow down, or behind it & needing to speed up?
-	targetNear = (circleOffset < 0.5);
+	targetNear = circleOffset < (CC_INT_RES / 2);
 	targetAhead = (instantPos > cc.circlePos);
 	if (!cc.frozen) {
 		if ( ( targetNear && targetAhead ) || (!targetNear && !targetAhead) ) {
@@ -749,7 +754,7 @@ void loop()
 
 #ifdef MIDICLOCK
 	// if we've crossed a clock boundary, send a MIDI clock.
-	if ((int)((1+cc.circlePos) * MIDICLOCKSPERPULSE) > (int)((1+cc.prevCirclePos) * MIDICLOCKSPERPULSE)) {
+	if (   (  (cc.circlePos + circleTicksPerClock) / circleTicksPerClock  )   >   (  (cc.prevCirclePos + circleTicksPerClock) / circleTicksPerClock  )   ) {
 		// debugging noise:
 		// send a triangle pulse to audio out
 		// dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
@@ -782,7 +787,8 @@ void loop()
 #ifdef MIDITIMECODE
 
 	// if we've crossed a frame boundary, increment the frame.
-	if ((int)((1+cc.circlePos) * MIDIFRAMESPERPULSE) > (int)((1+cc.prevCirclePos) * MIDIFRAMESPERPULSE)) {
+		// TODO INTWISE ...
+	if (   (  (cc.circlePos + circleTicksPerFrame) / circleTicksPerFrame  )   >   (  (cc.prevCirclePos + circleTicksPerFrame) / circleTicksPerFrame  )   ) {
 		if (playing) { 
 			if (!cc.frozen) {
 				mtc.incFrame();
@@ -792,9 +798,9 @@ void loop()
 #endif
 
 	// wrap!
-	if (cc.circlePos > 1.0) {
-		cc.circlePos -= 1.0;
-		cc.prevCirclePos -= 1.0;
+	if (cc.circlePos > CC_INT_RES) {
+		cc.circlePos -= CC_INT_RES;
+		cc.prevCirclePos -= CC_INT_RES;
 		if (BOTHPRESSED(btn1, btn2)) {
 			if (midiMeasuresRemaining>0)
 				midiMeasuresRemaining--;
