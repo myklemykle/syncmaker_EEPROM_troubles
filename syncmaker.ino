@@ -1,6 +1,8 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include "config.h"
 
+/* #define NONSTOP ijustcantstopit */
+
 #include <CircularBuffer.h>
 
 // Gesture Detection:
@@ -51,8 +53,6 @@ Bounce btn3 = Bounce();
 #endif
 #define PRESSED(btn) 				(btn.read() == LOW)
 #define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
-// useful for preventing two-button mode right after having entered NONSTOP with both buttons pressed.
-#define TWOBUTTONMODE(b1,b2) 	(PRESSED(b1) && PRESSED(b2) && (! nonstopStarted))
 #define EITHERPRESSED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
 #define EITHERNOTPRESSED(b1,b2) 		(!PRESSED(b1) || !PRESSED(b2))
 
@@ -61,10 +61,10 @@ Bounce btn3 = Bounce();
 #ifdef EVT4
 const int button1Pin = 22;   // sw1
 const int button2Pin = 21;   // sw2
-const int button3Pin = 0;   // nonstop
 const int boardLedPin = 13;	// builtin led on Teensy 3.2
 const int led1Pin =  15;    // led1
 const int led2Pin =  8;    // led2
+const int button3Pin = 0;   // nonstop
 const int button3LedPin = 1; // nonstop led
 const int pulsePin1 = 20; 	// j1 tip / l_sync_out
 const int pulsePin2 = 23; 		// j2 tip / r_sync_out
@@ -174,7 +174,9 @@ bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
+#ifdef NONSTOP
 bool nonstop = LOW, nonstopStarted = LOW;
+#endif
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
 
@@ -328,12 +330,14 @@ void loop()
 	btn3.update();
 #endif
 
+#ifdef NONSTOP
 	if (EITHERNOTPRESSED(btn1, btn2)){
 		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,
 		// and cleared as soon as both buttons aren't pressed.  It exists to prevent conflict
 		// between these two meanings/uses of both-buttons-pressed.
 		nonstopStarted = false;
 	}
+#endif
 
 #ifdef SDEBUG
 	loops++; 
@@ -419,22 +423,24 @@ void loop()
 		// TODO: detect which model we're attached to somehow?
 	}
 
-	// calculate if we're playing or not, based on playLedState,
-	// buttons and NONSTOP flag:
+	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
 	prevPlaying = playing;
 
 	// If the play light just lit,
 	if (playLedState && (!prevPlayLedState)) {
 		// set PLAYING.
 		playing = true;
+#ifdef NONSTOP
 		// if both buttons are held down, 
 		if (BOTHPRESSED(btn1, btn2)) {
 			// set NONSTOP and NONSTOP-STARTED.
 			nonstop = nonstopStarted = true;
 		}
+#endif
 
 	// otherwise, if the play light just unlit,
 	} else if (prevPlayLedState && (! playLedState)) {
+#ifdef NONSTOP
 		// if both buttons are held down,
 		if (BOTHPRESSED(btn1, btn2)) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
@@ -447,6 +453,9 @@ void loop()
 		} else if (!nonstop) { 
 			playing = false;
 		}
+#else
+		playing = false;
+#endif
 	}
 	
 	/////////
@@ -759,8 +768,10 @@ void loop()
 			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playing ? "play, wv@" : "stop, wv");
 				Dbg_print(awakePinState);
+#ifdef NONSTOP
 				if (nonstop) 
 					Dbg_print("NONSTOP ");
+#endif
 			} else { 
 				Dbg_print("asleep, wv@");
 				Dbg_print(awakePinState);
