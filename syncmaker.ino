@@ -119,7 +119,18 @@ elapsedMicros playPinTimer;
 elapsedMicros awakeTimer;
 
 
+#ifdef IMU_INTERRUPTS
 volatile bool imu_ready = false;
+#else
+elapsedMicros imuClock;
+
+#ifdef IMU_8KHZ
+const int imuClockTick = 125; // 8khz data rate 
+#else
+const int imuClockTick = 500; // 2khz data rate
+#endif
+
+#endif
 
 #ifdef MIDICLOCK
 	// Midi Clock msgs are supposed to be sent 24 times per beat.
@@ -168,7 +179,7 @@ HumanClock hc;
 // This is the very minimum (per loop cycle) forward advance
 const	float circleMinFwd = 1.0/1000000.0; 
 // OTOH, if we advance any faster than this, we could skip a MIDI clock beat
-const float circleMaxFwd = 1 / MIDICLOCKSPERPULSE ;
+const float circleMaxFwd = 1 / 12.0;
 //
 typedef struct {
 	// Clock position is a float value between 0 and 1.
@@ -201,11 +212,12 @@ unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
-
+#ifdef IMU_INTERRUPTS
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
 }
+#endif
 
 void setup()
 {
@@ -219,7 +231,7 @@ void setup()
 
 	///////
 	// IMU setup:
-#ifdef USE_SPI
+#ifdef IMU_SPI
 	// raise chipSelect line to select the only chip. 
 	pinMode(SPI_cs, OUTPUT);
 	digitalWrite(SPI_cs, HIGH);
@@ -235,9 +247,13 @@ void setup()
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 #endif
 
+#ifdef IMU_INTERRUPTS
 	// IMU int pin is open-collector mode
 	pinMode(IMU_int, INPUT_PULLUP);
 	attachInterrupt(IMU_int, imu_int, FALLING);
+#else
+	imuClock = 0;
+#endif
 	
   imu.begin();
 
@@ -375,8 +391,13 @@ void loop()
 	tapped = LOW;
 
 	// Read IMU data if ready:
+#ifdef IMU_INTERRUPTS
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
+#else
+	if (imuClock > imuClockTick) { // on interval
+		imuClock -= imuClockTick;
+#endif
 
 #ifdef SDEBUG
 		imus++;
@@ -393,6 +414,7 @@ void loop()
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		amp1.gain(max((inertia - shakeThreshold)/3.0, 0.0));
+		//amp1.gain(max((inertia - shakeThreshold)/3.0, 0.10)); // DEBUG (to listen for audio dropouts)
 
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
 			shaken = HIGH;
@@ -413,17 +435,34 @@ void loop()
 	// so we can't just read it as logic.
 	prevPlayLedState = playLedState;
 	playPinState = digitalRead(PO_play);
-	if (playPinState) {
+	if (playPinState) { // lit
 		playPinTimer = 0;
 		playLedState = playPinState;
-	} else {
+	} else {						// unlit
 		// Done flickering? Has play been stopped for 10ms or longer?
 		//if (playPinTimer > playFlickerTime) {
 		
 		// animation of this LED varies a lot(!) between PO models.
 		// The KO is the worst: it only strobes it every 2 pulses/4 beats.
-		if (playPinTimer > (2 * hc.measureLen)) {
+		// The Speak is normal on during play, but blinks off for about 2 measures every 4 beats, and also flickers at other random times ...
+		// while the KO is the opposite & only flickers on that long.
+
+		// TODO: actually measure the flicker we're seeing during the first 8 pulses after play,
+		// and use that to tune this interval (and potentially detect the PO model!)
+
+		//if (playPinTimer > (2 * hc.measureLen)) { // coeff. of 2 theoretically correct but very slightly not long enough due to misc computation delays.
+		if (playPinTimer > ( (27 * hc.measureLen) / 10) ) { // integer equivalent of 2.5 coeff.
 			playLedState = playPinState;
+
+			// DEBUG
+			/* if(prevPlayLedState){ */
+			/* 	Dbg_print("play led off for"); */
+			/* 	Dbg_print(playPinTimer); */
+			/* 	Dbg_print(" during meaure of "); */
+			/* 	Dbg_print(hc.measureLen); */
+			/* 	Dbg_println("us"); */
+			/* } */
+
 		}
 		// Most of the rest either hold it completely high (1 & 2 series) 
 		// or blink it off every 2 pulses/4 beats.
@@ -443,6 +482,7 @@ void loop()
 	if (playLedState && (!prevPlayLedState)) {
 		// set PLAYING.
 		playing = true;
+		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down, 
 		if (BOTHPRESSED(btn1, btn2)) {
@@ -469,6 +509,7 @@ void loop()
 #else
 		playing = false;
 #endif
+		Dbg_println("STOP");
 	}
 	
 	/////////
@@ -792,7 +833,7 @@ void loop()
 			/* Dbg_print(" imus in "); */
 			/* Dbg_print(hc.measureLen); */
 			/* Dbg_print(" us, "); */
-			Dbg_print(" imus at ");
+			Dbg_print(" IMUs at ");
 			Dbg_print(USEC2BPM(hc.measureLen));
 			Dbg_print(" BPM, ");
 			Dbg_print(AudioMemoryUsageMax());

@@ -15,7 +15,7 @@
 #define NXP_MOTION_CAL_EEADDR  60
 #define NXP_MOTION_CAL_SIZE    68
 
-#ifdef USE_SPI
+#ifdef IMU_SPI
 #include <SPI.h>
 	// default spiconf should be fine for this chip
 const uint8_t chip_addr=ICM42605_SPI_CS;
@@ -32,7 +32,7 @@ bool NXPMotionSense::begin()
 	uint8_t i;
 	uint16_t crc;
 
-#ifdef USE_SPI
+#ifdef IMU_SPI
 	SPI.begin();
 #else
 	Wire.begin();
@@ -80,7 +80,7 @@ void NXPMotionSense::update()
 
 static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val)
 {
-#ifdef USE_SPI
+#ifdef IMU_SPI
 	digitalWrite(selector, LOW);
 	SPI.transfer(addr & 0b01111111); // first bit clear for write-op
 	SPI.transfer(val);
@@ -95,7 +95,7 @@ static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val)
 
 static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num)
 {
-#ifdef USE_SPI
+#ifdef IMU_SPI
 	SPI.beginTransaction(spiconf);
 	digitalWrite(selector, LOW);
 	SPI.transfer(addr | 0b10000000); // first bit set for read-op
@@ -136,7 +136,7 @@ bool NXPMotionSense::ICM42605_begin()
 	uint8_t t[2];
 	uint8_t reg;
 
-#ifdef USE_SPI
+#ifdef IMU_SPI
 	Serial.print("ICM42605_begin: SPI bus on pin ");
 	Serial.println(chip_addr);
 #else
@@ -202,6 +202,7 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 #endif
 
+#ifdef IMU_INTERRUPTS
 	// Interrupt stuff:
 	//
 	// INT_CONFIG1:
@@ -224,6 +225,7 @@ bool NXPMotionSense::ICM42605_begin()
 	if (!write_reg(chip_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(chip_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
 	Serial.printf("INT_SOURCE3: %x\n", reg);
+#endif
 
 	// // make sure we're not self-testing ...
 	// if (!read_regs(chip_addr, ICM42605_SELF_TEST_CONFIG, &reg, 1)) return false;

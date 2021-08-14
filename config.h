@@ -4,7 +4,7 @@
 // 1) the big question: what board are we building for?
 //
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
-// #define EVT4 itsathing
+#define EVT4 itsathing
 //	
 // or is it REV3: I2C comms, IMU interrupt 2
 // (rev3 is the default when no other board is defined)
@@ -19,12 +19,16 @@
 // send MIDI timecode?
 //#define MIDITIMECODE rolex
 
+	
 //////////////////////
 // 3) send debug output to usb serial?
 // (disable in production)
 #define SDEBUG crittersbuggin
 
 
+//////////////////////
+// 4) should the IMU report new data via interrupt?
+// #define IMU_INTERRUPTS excuseme!
 
 
 
@@ -33,13 +37,19 @@
 
 
 
+
+//////////// ////////////// ////////////// ////////////// //////////////
 // END CONFIG AREA.  The rest below is derived from above.
+//////////// ////////////// ////////////// ////////////// //////////////
 
 
 
 // using SPI for IMU?  (default is i2c)
 #ifdef EVT4
-#define USE_SPI cuzitsgroovy!
+#define IMU_SPI cuzitsgroovy!
+// I don't yet perceive any improvement over 2khz, for the record
+#define IMU_8KHZ fasterpussycat!
+//#define IMU_4KHZ gospeedracer
 #endif
 
 #ifdef SDEBUG
