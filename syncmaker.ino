@@ -48,16 +48,17 @@ AudioConnection          patchCord2(amp1, dac1);
 
 // Buttons:
 #include "Bounce2.h"
-const int debounceLen = 2; // must be in MS as required by bounce2 lib
+const int debounceLen = 2; // milliseconds
 Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
+bool btn1pressed = false, btn2pressed = false;
 #ifdef EVT4
 Bounce btn3 = Bounce();
+bool btn3pressed = false;
 #endif
-#define PRESSED(btn) 				(btn.read() == LOW)
-#define BOTHPRESSED(b1,b2) 	(PRESSED(b1) && PRESSED(b2))
-#define EITHERPRESSED(b1,b2) 		(PRESSED(b1) || PRESSED(b2))
-#define EITHERNOTPRESSED(b1,b2) 		(!PRESSED(b1) || !PRESSED(b2))
+#define BOTHPRESSED 	( btn1pressed && btn2pressed )
+#define EITHERPRESSED ( btn1pressed || btn2pressed )
+#define EITHERNOTPRESSED ( ! BOTHPRESSED )
 
 
 // Pins:
@@ -301,7 +302,7 @@ void setup()
 	//
 	hc.downbeatTime = micros(); // now!
 	// If buttons are held down when we boot, reset the default measure length
-	if (BOTHPRESSED(btn1, btn2)) {
+	if (BOTHPRESSED) {
 		hc.measureLen = 250 * TIMESCALE; 	// default for 120bpm (1 beat per half/second) */
 	} else {
 		EEPROM.get(eepromBase, hc.measureLen);
@@ -360,14 +361,17 @@ void loop()
 
 	static int midiMeasuresRemaining = 0;
 
-	btn1.update();
-	btn2.update();
+	if (btn1.update())
+			btn1pressed = (btn1.read() == LOW);
+	if (btn2.update())
+			btn2pressed = (btn2.read() == LOW);
 #ifdef EVT4
-	btn3.update();
+	if (btn3.update())
+			btn3pressed = (btn3.read() == LOW);
 #endif
 
 #ifdef NONSTOP
-	if (EITHERNOTPRESSED(btn1, btn2)){
+	if (EITHERNOTPRESSED){
 		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,
 		// and cleared as soon as both buttons aren't pressed.  It exists to prevent conflict
 		// between these two meanings/uses of both-buttons-pressed.
@@ -386,7 +390,7 @@ void loop()
 	// awaiting a jumper fix in EVT4 ...
 #ifndef EVT4
 	if (awakePinState < awakePinThreshold) {
-	// if (PRESSED(btn1)) { // DEBUG 
+	// if (btn1pressed) { // DEBUG 
 		powerNap();
 		return;
 	}
@@ -492,7 +496,7 @@ void loop()
 		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down, 
-		if (BOTHPRESSED(btn1, btn2)) {
+		if (BOTHPRESSED) {
 			// set NONSTOP and NONSTOP-STARTED.
 			nonstop = nonstopStarted = true;
 		}
@@ -502,7 +506,7 @@ void loop()
 	} else if (prevPlayLedState && (! playLedState)) {
 #ifdef NONSTOP
 		// if both buttons are held down,
-		if (BOTHPRESSED(btn1, btn2)) {
+		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
 			playing = nonstop = nonstopStarted = false;
 		// else 
@@ -552,7 +556,7 @@ void loop()
 
 	// Check the buttons:
 	//
-	if (EITHERPRESSED(btn1, btn2)) {
+	if (EITHERPRESSED) {
 		if (tapped) { 
 
 			// Adjust position of downbeat based on tap/shake:
@@ -565,7 +569,7 @@ void loop()
 			// otherwise, when the previous beat is still closer (dbT > nt + (mL/2),
 				// Retard downbeat to now + hc.measureLen
 
-			if (BOTHPRESSED(btn1, btn2)) {
+			if (BOTHPRESSED) {
 				hc.downbeatTime = nowTime;
 			} else if (hc.downbeatTime > (nowTime + (hc.measureLen/2))) {
 				hc.downbeatTime = nowTime + hc.measureLen;
@@ -577,7 +581,7 @@ void loop()
 				// Also adjust the measure length to the time between taps:
 				tapInterval = nowTime - hc.lastTapTime;
 
-				if (! BOTHPRESSED(btn1, btn2)) {
+				if (EITHERNOTPRESSED) {
 					// if tapInterval is closer to mL*2 than to mL, 
 					// assume we are tapping half-time (1/4 notes)
 					if (tapInterval > (1.5 * hc.measureLen)) {
@@ -628,7 +632,7 @@ void loop()
 	// in order to be clearly visible to the human eye.)
 	//
 	if (playing ) { 
-		if (PRESSED(btn1)) {
+		if (btn1pressed) {
 			if (nowTime - hc.downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
 				newLed1State = LOW;
 			else
@@ -640,7 +644,7 @@ void loop()
 				newLed1State = LOW;
 		}
 
-		if (PRESSED(btn2)) {
+		if (btn2pressed) {
 			if (nowTime - hc.downbeatTime < strobeOffLen)
 				newLed2State = LOW;
 			else
@@ -653,8 +657,8 @@ void loop()
 		}
 	} else {  // !playing
 		// don't blink when not playing, just indicate buttons
-		newLed1State = PRESSED(btn1);
-		newLed2State = PRESSED(btn2);
+		newLed1State = btn1pressed;
+		newLed2State = btn2pressed;
 	}
 
 	
@@ -670,7 +674,7 @@ void loop()
 	//////////
 	// Calculate & update the sync pulse
 	//
-	if (BOTHPRESSED(btn1, btn2)) { 
+	if (BOTHPRESSED) { 
 		if (tapped) // TODO: simplify? i think tapped is always true if the following if-clause is false:
 			newPulseState = HIGH;
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
@@ -705,7 +709,7 @@ void loop()
 	// unfreeze on the next pulse after a button is released.
 	// also unfreeze for 1 measureLen if tapped while bothbuttons pressed
 
-	if (BOTHPRESSED(btn1, btn2)) {
+	if (BOTHPRESSED) {
 		if (btn1.fell() || btn2.fell()) { // If we just pressed now entered 2-button mode
 			midiMeasuresRemaining = 1;  	 // midi only to the end of this measure.
 		} else if (tapped) {						// but if we tapped a beat,
@@ -804,7 +808,7 @@ void loop()
 	if (cc.circlePos > CC_INT_RES) {
 		cc.circlePos -= CC_INT_RES;
 		cc.prevCirclePos -= CC_INT_RES;
-		if (BOTHPRESSED(btn1, btn2)) {
+		if (BOTHPRESSED) {
 			if (midiMeasuresRemaining>0)
 				midiMeasuresRemaining--;
 		}
@@ -912,8 +916,8 @@ uint powerNap(){
 		who = Snooze.deepSleep(s_config);
 		awakePinState = analogRead(PO_wake);
 		btn2.update();
-	//} while (awakePinState == LOW && (! PRESSED(btn2)));
-	} while (awakePinState < awakePinThreshold && (! PRESSED(btn2)));
+	//} while (awakePinState == LOW && (! btn2pressed));
+	} while (awakePinState < awakePinThreshold && (! btn2pressed));
 
 	// detach from buttons
 	s_config -= s_digital;
@@ -926,10 +930,6 @@ uint powerNap(){
 
 	// reset some counters
 	//hc.downbeatTime += (nowTime - thenTime);
-
-	// update button state for next loop
-	btn1.update();
-	btn2.update();
 
 #ifdef SDEBUG
 	if (!Serial) { 
