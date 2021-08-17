@@ -5,17 +5,20 @@
 
 #include <CircularBuffer.h>
 
-// Gesture Detection:
+// IMU Gesture Detection:
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
 														// set to higher data rate, 
 														// ignores other two IMU chips 
 														// Should be renamed, refactored, etc.
 
 NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
-const float shakeThreshold = 0.65; 	
-const float tapThreshold = 2.0;
+#define COUNT_PER_G 8192 // accelerometer units
+#define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
+#define COUNT_PER_UT_COUNT 10 // compass units, not used
+const int shakeThreshold = 5324;			// 0.65 * COUNT_PER_G
+const int tapThreshold = 2 * COUNT_PER_G;
 bool shaken = LOW, tapped = LOW;
-float inertia = 0, prevInertia = 0;
+long inertia = 0, prevInertia = 0;
 
 
 // Sleep/hibernation:
@@ -339,8 +342,8 @@ void setup()
 
 void loop()
 {
-	float ax, ay, az;
-  float gx, gy, gz;
+	int ax, ay, az;
+  int gx, gy, gz;
 
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopTimer;
@@ -405,7 +408,7 @@ void loop()
 
 		prevInertia = inertia;
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-		inertia = abs(sqrt(pow(ax,2) + pow(ay,2) + pow(az,2)));  // vector amplitude
+		inertia = (long)sqrt((ax * ax) + (ay * ay) + (az * az));  // vector amplitude
 
 #ifdef SDEBUG
 		/* if (inertia > shakeThreshold)  */
@@ -413,8 +416,8 @@ void loop()
 #endif
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		amp1.gain(max((inertia - shakeThreshold)/3.0, 0.0));
-		//amp1.gain(max((inertia - shakeThreshold)/3.0, 0.10)); // DEBUG (to listen for audio dropouts)
+		//amp1.gain(max((inertia - shakeThreshold)/3.0, 0.10)); // DEBUG (always on, to listen for audio dropouts)
+		amp1.gain(max((inertia - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
 
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
 			shaken = HIGH;
@@ -841,11 +844,16 @@ void loop()
 			Dbg_print(AudioProcessorUsageMax());
 			Dbg_print(" audioCPU, ");
 			Dbg_print(midiMeasuresRemaining);
-			Dbg_print(" MMR, ");
+			Dbg_print(" MMR, accel ");
 			/* Dbg_print(instantPos); */
 			/* Dbg_print(" instant, "); */
 			/* Dbg_print(cc.circlePos); */
 			/* Dbg_print(" circular, "); */
+			Dbg_print(ax);
+			Dbg_print(", ");
+			Dbg_print(ay);
+			Dbg_print(", ");
+			Dbg_print(az);
 			Dbg_println(".");
 
 #ifdef SDEBUG
