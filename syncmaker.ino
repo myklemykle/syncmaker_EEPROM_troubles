@@ -696,7 +696,7 @@ void loop()
 	measureIdx = hc.measureLen - (hc.downbeatTime - nowTime);
 
 	// Expressed as an int btwn 0 & 1B:
-	instantPos = (CC_FLOAT_RES / 100) * ( (100 * measureIdx) / hc.measureLen ) ;
+	instantPos = (CC_INT_RES / 100) * ( (100 * measureIdx) / hc.measureLen ) ;
 
 	// the difference between that position & the current circular position:
 	circleOffset = abs(cc.circlePos - instantPos);
