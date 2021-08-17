@@ -424,7 +424,7 @@ void loop()
 #endif
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		//amp1.gain(max((inertia - shakeThreshold)/3.0, 0.10)); // DEBUG (always on, to listen for audio dropouts)
+		//amp1.gain(max((inertia - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
 		amp1.gain(max((inertia - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
 
 		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
