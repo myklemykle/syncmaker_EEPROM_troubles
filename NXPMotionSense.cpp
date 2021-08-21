@@ -147,7 +147,9 @@ bool NXPMotionSense::ICM42605_begin()
 	// detect if chip is present
 	if (!read_regs(chip_addr, ICM42605_WHO_AM_I, &b, 1)) return false;
 	Serial.printf("ICM42605 ID = %02X\n", b);
-	if (b != 0x42) return false;
+	if ( (b != 0x42) 			// ICM42605 (getting hard to find)
+			&& (b != 0x6F) ) // ICM42652 (expensive pin-compatible upgrade, in stock @ DK)
+		return false;
 
 	// // reset the device:
 	// if (!write_reg(chip_addr, ICM42605_DEVICE_CONFIG, 0b00000001)) return false;    // 8khz
