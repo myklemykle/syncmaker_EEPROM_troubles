@@ -278,7 +278,7 @@ void setup()
 #ifdef EVT4
   pinMode(button3Pin, INPUT_PULLUP); // nonstop
   pinMode(button3LedPin, OUTPUT);       // nonstop led
-	digitalWrite(button3LedPin, HIGH);
+	digitalWrite(button3LedPin, LOW);
 #endif
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...

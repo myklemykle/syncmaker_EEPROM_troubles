@@ -28,7 +28,7 @@
 
 //////////////////////
 // 4) should the IMU report new data via interrupt?
-// #define IMU_INTERRUPTS excuseme!
+#define IMU_INTERRUPTS excuseme!
 
 
 
@@ -48,7 +48,7 @@
 #ifdef EVT4
 #define IMU_SPI cuzitsgroovy!
 // I don't yet perceive any improvement over 2khz, for the record
-#define IMU_8KHZ fasterpussycat!
+//#define IMU_8KHZ fasterpussycat!
 //#define IMU_4KHZ gospeedracer
 #endif
 
