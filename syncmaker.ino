@@ -1,7 +1,7 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include "config.h"
 
-/* #define NONSTOP ijustcantstopit */
+#define NONSTOP ijustcantstopit 
 
 #include <CircularBuffer.h>
 
@@ -12,10 +12,10 @@
 														// Should be renamed, refactored, etc.
 
 NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
-#define COUNT_PER_G 8192 // accelerometer units
+#define COUNT_PER_G 4096 // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
 #define COUNT_PER_UT_COUNT 10 // compass units, not used
-const int shakeThreshold = 5324;			// 0.65 * COUNT_PER_G
+const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
 const int tapThreshold = 2 * COUNT_PER_G;
 bool shaken = LOW, tapped = LOW;
 long inertia = 0, prevInertia = 0;
@@ -208,7 +208,7 @@ bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
 #ifdef NONSTOP
-bool nonstop = LOW, nonstopStarted = LOW;
+bool nonstop = false, prevNonstop = false, nonstopStarted = false;
 #endif
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
@@ -290,11 +290,18 @@ void setup()
 
 	btn1.attach(button1Pin);
 	btn1.interval(debounceLen);
+	btn1.update();
+	btn1pressed = (btn1.read() == LOW);
+
 	btn2.attach(button2Pin);
 	btn2.interval(debounceLen);
+	btn2.update();
+	btn2pressed = (btn2.read() == LOW);
 #ifdef EVT4
 	btn3.attach(button3Pin);
 	btn3.interval(debounceLen);
+	btn3.update();
+	btn3pressed = (btn3.read() == LOW);
 #endif
 
 	////////
@@ -466,13 +473,13 @@ void loop()
 			playLedState = playPinState;
 
 			// DEBUG
-			/* if(prevPlayLedState){ */
-			/* 	Dbg_print("play led off for"); */
-			/* 	Dbg_print(playPinTimer); */
-			/* 	Dbg_print(" during meaure of "); */
-			/* 	Dbg_print(hc.measureLen); */
-			/* 	Dbg_println("us"); */
-			/* } */
+			if(prevPlayLedState){
+				Dbg_print("play led off for");
+				Dbg_print(playPinTimer);
+				Dbg_print(" during meaure of ");
+				Dbg_print(hc.measureLen);
+				Dbg_println("us");
+			}
 
 		}
 		// Most of the rest either hold it completely high (1 & 2 series) 
@@ -488,6 +495,9 @@ void loop()
 
 	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
 	prevPlaying = playing;
+#ifdef NONSTOP
+	prevNonstop = nonstop;
+#endif
 
 	// If the play light just lit,
 	if (playLedState && (!prevPlayLedState)) {
@@ -495,7 +505,7 @@ void loop()
 		playing = true;
 		Dbg_println("START");
 #ifdef NONSTOP
-		// if both buttons are held down, 
+		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
 			// set NONSTOP and NONSTOP-STARTED.
 			nonstop = nonstopStarted = true;
@@ -503,12 +513,13 @@ void loop()
 #endif
 
 	// otherwise, if the play light just unlit,
-	} else if (prevPlayLedState && (! playLedState)) {
+	} else if (prevPlayLedState && (!playLedState)) {
 #ifdef NONSTOP
-		// if both buttons are held down,
+		// if both buttons are held down when play LED unlit
 		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
 			playing = nonstop = nonstopStarted = false;
+			Dbg_println("STOP");
 		// else 
 			// if NONSTOP
 				// don't stop!
@@ -522,6 +533,15 @@ void loop()
 #endif
 		Dbg_println("STOP");
 	}
+
+#ifdef NONSTOP
+	if (btn3pressed && btn3.fell()) { // if NONSTOP pressed,
+		if (nonstop)
+			nonstop = false;
+		else 
+			nonstop = nonstopStarted = true;
+	}
+#endif
 	
 	/////////
 	// Update the Human Clock & MIDI transport
@@ -670,6 +690,11 @@ void loop()
 		led2State = newLed2State;
 		digitalWrite(led2Pin, led2State);
 	}
+
+#ifdef NONSTOP
+	if (nonstop != prevNonstop) 
+		digitalWrite(button3LedPin, nonstop ? HIGH : LOW);
+#endif
 
 	//////////
 	// Calculate & update the sync pulse
@@ -829,11 +854,10 @@ void loop()
 			Dbg_print(':');
 
 			if (awakePinState >= awakePinThreshold) {   
-				Dbg_print(playing ? "play, wv@" : "stop, wv");
+				Dbg_print(playLedState ? "play, wv@" : "stop, wv");
 				Dbg_print(awakePinState);
 #ifdef NONSTOP
-				if (nonstop) 
-					Dbg_print("NONSTOP ");
+				Dbg_print(nonstop ? " NONSTOP " : "--->");
 #endif
 			} else { 
 				Dbg_print("asleep, wv@");
@@ -864,6 +888,11 @@ void loop()
 			Dbg_print(ay);
 			Dbg_print(", ");
 			Dbg_print(az);
+#ifdef EVT4
+		if (btn3pressed)  // DEBUG */
+			Dbg_print(" Boink!"); // DEBUG */
+#endif
+
 			Dbg_println(".");
 
 #ifdef SDEBUG
