@@ -52,10 +52,17 @@ const int debounceLen = 2; // milliseconds
 Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
 bool btn1pressed = false, btn2pressed = false;
+
 #ifdef EVT4
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
+// using these to bit-bang PWM, to dim the LED on EVT4 boards:
+unsigned long btn3clock;
+bool btn3pwm = false;
+#define BTN3PWM_ON 300 // usec
+#define BTN3PWM_OFF 5000 // usec
 #endif
+
 #define BOTHPRESSED 	( btn1pressed && btn2pressed )
 #define EITHERPRESSED ( btn1pressed || btn2pressed )
 #define EITHERNOTPRESSED ( ! BOTHPRESSED )
@@ -279,6 +286,7 @@ void setup()
   pinMode(button3Pin, INPUT_PULLUP); // nonstop
   pinMode(button3LedPin, OUTPUT);       // nonstop led
 	digitalWrite(button3LedPin, LOW);
+	btn3clock = loopTimer;
 #endif
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
@@ -692,8 +700,31 @@ void loop()
 	}
 
 #ifdef NONSTOP
-	if (nonstop != prevNonstop) 
-		digitalWrite(button3LedPin, nonstop ? HIGH : LOW);
+#ifdef EVT4
+	if (!nonstop) {
+		if (nonstop != prevNonstop) {
+			digitalWrite(button3LedPin, LOW);
+		}
+	} else { // nonstop!
+		// ghetto PWM because the LED is too bright on this board ...
+		// blink on & off every N usec
+		if (btn3pwm) { // is on now
+			if (nowTime - btn3clock > BTN3PWM_ON) { // on-time expired
+				btn3clock += BTN3PWM_ON; // adj clock
+				btn3pwm = false; // turn off
+			}
+		} else { // is off now
+			if (nowTime - btn3clock > BTN3PWM_OFF) { // off-time expired
+				btn3clock += BTN3PWM_OFF; // adj clock
+				btn3pwm = true; // turn on
+			}
+		}
+		digitalWrite(button3LedPin, btn3pwm ? HIGH : LOW );
+	}
+#else
+	// fix brightness in hardware, do something simple here.
+	// and/or: always put LEDs on PWM pins!
+#endif
 #endif
 
 	//////////
@@ -852,6 +883,10 @@ void loop()
 		if (pulseState == HIGH) {
 			Dbg_print(awakeTimer);
 			Dbg_print(':');
+			Dbg_print(loopTimer);
+			Dbg_print(':');
+			Dbg_print(btn3clock);
+			Dbg_print(':');
 
 			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playLedState ? "play, wv@" : "stop, wv");
@@ -906,11 +941,15 @@ void loop()
 	// We could do this only every 1000 (or more!) measures,
 	// but we choose every 10,
 	//	so that if it causes any audible bug, it'll be heard often!
-	if (loopTimer > 10 * hc.measureLen) { 
+	if (loopTimer > 9 * hc.measureLen) { 
 		//Dbg_println("PROTECTION!");//DEBUG
-		loopTimer -= 9*hc.measureLen;
-		hc.downbeatTime -= 9*hc.measureLen;
-		hc.lastTapTime -= 9*hc.measureLen;
+		loopTimer -= 8*hc.measureLen;
+		hc.downbeatTime -= 8*hc.measureLen;
+		hc.lastTapTime -= 8*hc.measureLen;
+#ifdef EVT4
+		btn3clock -= 8*hc.measureLen;
+#endif
+		
 	}
 }
 
