@@ -57,10 +57,10 @@ bool btn1pressed = false, btn2pressed = false;
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
 // using these to bit-bang PWM, to dim the LED on EVT4 boards:
-unsigned long btn3clock;
-bool btn3pwm = false;
-#define BTN3PWM_ON 300 // usec
-#define BTN3PWM_OFF 5000 // usec
+unsigned long nonstopLedPWMClock;
+bool nonstopLedPWMState = false;
+#define NSLEDPWM_ON 300 // usec
+#define NSLEDPWM_OFF 5000 // usec
 #endif
 
 #define BOTHPRESSED 	( btn1pressed && btn2pressed )
@@ -76,7 +76,7 @@ const int boardLedPin = 13;	// builtin led on Teensy 3.2
 const int led1Pin =  15;    // led1
 const int led2Pin =  8;    // led2
 const int button3Pin = 0;   // nonstop
-const int button3LedPin = 1; // nonstop led
+const int nonstopLedPin = 1; // nonstop led
 const int pulsePin1 = 20; 	// j1 tip / l_sync_out
 const int pulsePin2 = 23; 		// j2 tip / r_sync_out
 const int PO_play = 16; 		// goes high on PO play (runs to play LED)
@@ -284,9 +284,9 @@ void setup()
   pinMode(button2Pin, INPUT_PULLUP); // sw2
 #ifdef EVT4
   pinMode(button3Pin, INPUT_PULLUP); // nonstop
-  pinMode(button3LedPin, OUTPUT);       // nonstop led
-	digitalWrite(button3LedPin, LOW);
-	btn3clock = loopTimer;
+  pinMode(nonstopLedPin, OUTPUT);       // nonstop led
+	digitalWrite(nonstopLedPin, LOW);
+	nonstopLedPWMClock = loopTimer;
 #endif
 
 	pinMode(PO_play, INPUT); // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
@@ -399,17 +399,13 @@ void loop()
 #endif
 
 	// go to sleep if the PO_wake pin is low:
-	//awakePinState = digitalRead(PO_wake);
-	awakePinState = analogRead(PO_wake);
+	awakePinState = analogRead(PO_wake); 
 
-	// awaiting a jumper fix in EVT4 ...
-#ifndef EVT4
 	if (awakePinState < awakePinThreshold) {
 	// if (btn1pressed) { // DEBUG 
 		powerNap();
 		return;
 	}
-#endif 
 
 	// Check IMU:
 
@@ -464,6 +460,8 @@ void loop()
 	if (playPinState) { // lit
 		playPinTimer = 0;
 		playLedState = playPinState;
+		/* Dbg_println("BLINK");//DEBUG */
+
 	} else {						// unlit
 		// Done flickering? Has play been stopped for 10ms or longer?
 		//if (playPinTimer > playFlickerTime) {
@@ -542,13 +540,15 @@ void loop()
 		Dbg_println("STOP");
 	}
 
+#ifdef EVT4
 #ifdef NONSTOP
-	if (btn3pressed && btn3.fell()) { // if NONSTOP pressed,
+	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
 		if (nonstop)
 			nonstop = false;
 		else 
 			nonstop = nonstopStarted = true;
 	}
+#endif
 #endif
 	
 	/////////
@@ -703,23 +703,23 @@ void loop()
 #ifdef EVT4
 	if (!nonstop) {
 		if (nonstop != prevNonstop) {
-			digitalWrite(button3LedPin, LOW);
+			digitalWrite(nonstopLedPin, LOW);
 		}
 	} else { // nonstop!
 		// ghetto PWM because the LED is too bright on this board ...
 		// blink on & off every N usec
-		if (btn3pwm) { // is on now
-			if (nowTime - btn3clock > BTN3PWM_ON) { // on-time expired
-				btn3clock += BTN3PWM_ON; // adj clock
-				btn3pwm = false; // turn off
+		if (nonstopLedPWMState) { // is on now
+			if (nowTime - nonstopLedPWMClock > NSLEDPWM_ON) { // on-time expired
+				nonstopLedPWMClock += NSLEDPWM_ON; // adj clock
+				nonstopLedPWMState = false; // turn off
 			}
 		} else { // is off now
-			if (nowTime - btn3clock > BTN3PWM_OFF) { // off-time expired
-				btn3clock += BTN3PWM_OFF; // adj clock
-				btn3pwm = true; // turn on
+			if (nowTime - nonstopLedPWMClock > NSLEDPWM_OFF) { // off-time expired
+				nonstopLedPWMClock += NSLEDPWM_OFF; // adj clock
+				nonstopLedPWMState = true; // turn on
 			}
 		}
-		digitalWrite(button3LedPin, btn3pwm ? HIGH : LOW );
+		digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW );
 	}
 #else
 	// fix brightness in hardware, do something simple here.
@@ -885,8 +885,12 @@ void loop()
 			Dbg_print(':');
 			Dbg_print(loopTimer);
 			Dbg_print(':');
-			Dbg_print(btn3clock);
+#ifdef EVT4
+#ifdef NONSTOP
+			Dbg_print(nonstopLedPWMClock);
 			Dbg_print(':');
+#endif
+#endif
 
 			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playLedState ? "play, wv@" : "stop, wv");
@@ -947,7 +951,7 @@ void loop()
 		hc.downbeatTime -= 8*hc.measureLen;
 		hc.lastTapTime -= 8*hc.measureLen;
 #ifdef EVT4
-		btn3clock -= 8*hc.measureLen;
+		nonstopLedPWMClock -= 8*hc.measureLen;
 #endif
 		
 	}
@@ -967,7 +971,7 @@ uint powerNap(){
 	digitalWrite(led2Pin, LOW);
 	digitalWrite(boardLedPin, LOW);
 #ifdef EVT4
-	digitalWrite(button3LedPin, LOW);
+	digitalWrite(nonstopLedPin, LOW);
 #endif
 
 	// disable interrupts from accelerometer
