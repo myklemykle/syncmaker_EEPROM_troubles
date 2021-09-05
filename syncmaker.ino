@@ -118,7 +118,9 @@ const unsigned long strobeOnLen = 500;
 const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
-/* const unsigned long playFlickerTime = 100 * TIMESCALE;  */
+#ifdef PO1X
+const unsigned long playFlickerTime = 100 * TIMESCALE; 
+#endif
 
 //#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  // float: convert usecs to secs (1M to 1), pulses to beats (2 to 1), divide by 60 secs per minute
 #define USEC2BPM(interval) ( 30000000.0 / interval )  									// same thing
@@ -463,19 +465,43 @@ void loop()
 		/* Dbg_println("BLINK");//DEBUG */
 
 	} else {						// unlit
-		// Done flickering? Has play been stopped for 10ms or longer?
-		//if (playPinTimer > playFlickerTime) {
-		
-		// animation of this LED varies a lot(!) between PO models.
-		// The KO is the worst: it only strobes it every 2 pulses/4 beats.
-		// The Speak is normal on during play, but blinks off for about 2 measures every 4 beats, and also flickers at other random times ...
-		// while the KO is the opposite & only flickers on that long.
 
-		// TODO: actually measure the flicker we're seeing during the first 8 pulses after play,
-		// and use that to tune this interval (and potentially detect the PO model!)
+		// We can read the Play LED volts from the connector, to divine the state of play.
+		// However, animation of the Play LED varies a lot(!) between PO models.
 
+		// The po-12/13/14 are very simple, it's "lit" (actually PWM) whenever playing,
+		// but unfortunately it unlights during play if you press BPM or Play.
+
+		// The Speak & Tonic are lit during play, but blink off for about 2 measures every 4 beats, 
+		// and also flicker at other random times, maybe related to volume of the output?
+		// The Speak has the problem that when you press play it doesn't
+		// start right away ... waiting for a pulse or IDK?
+		// OTOH BPM and Play do not unlight it.  That's nice.
+
+		// The KO is basically the inverse of that: the LED is only strobed briefly every 2 pulses/4 beats.
+		// The office & maybe other PO-2X series are like that too.
+
+		// Point is, divining the state of play from the LED is hard.  For SB we're going
+		// to hardcode this for the po 11/12/13, which is where we did most of the development.
+		// In the future, we're still hoping to find a debug port that'll give us real infos.
+		// Barring that, we'll try to cleverly infer ...
+
+#ifdef PO1X
+		// PO 11/12/13 approach:
+		// Done flickering? Has play been stopped for 100ms (PWM interval) or longer?
+		if (playPinTimer > playFlickerTime) {
+#else
+#ifdef PO2X
+// (nothing written yet for PO2X)
+#else
+#ifdef TONIC
+		// TONIC/SPEAK approach: 
 		//if (playPinTimer > (2 * hc.measureLen)) { // coeff. of 2 theoretically correct but very slightly not long enough due to misc computation delays.
 		if (playPinTimer > ( (27 * hc.measureLen) / 10) ) { // integer equivalent of 2.5 coeff.
+#endif
+#endif
+#endif
+
 			playLedState = playPinState;
 
 			// DEBUG
@@ -488,15 +514,6 @@ void loop()
 			}
 
 		}
-		// Most of the rest either hold it completely high (1 & 2 series) 
-		// or blink it off every 2 pulses/4 beats.
-		// The Speak has the problem that when you press play it doesn't
-		// start right away ... waiting for a pulse or IDK?
-
-		// this makes the whole thing way less responsive to the play button,
-		// although you can still start/stop accurately using the side buttons.
-
-		// TODO: detect which model we're attached to somehow?
 	}
 
 	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
@@ -543,10 +560,15 @@ void loop()
 #ifdef EVT4
 #ifdef NONSTOP
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
-		if (nonstop)
+		if (nonstop) {
 			nonstop = false;
-		else 
+			if (!playLedState) {// if PO not currently playing,
+				playing = false; // stop when notstop is deactivated.
+			}
+		}
+		else  {
 			nonstop = nonstopStarted = true;
+		}
 	}
 #endif
 #endif
@@ -886,14 +908,16 @@ void loop()
 			Dbg_print(loopTimer);
 			Dbg_print(':');
 #ifdef EVT4
-#ifdef NONSTOP
-			Dbg_print(nonstopLedPWMClock);
-			Dbg_print(':');
-#endif
+//#ifdef NONSTOP
+			//Dbg_print(nonstopLedPWMClock);  // DEBUG
+			//Dbg_print(':');  // DEBUG
+//#endif
 #endif
 
 			if (awakePinState >= awakePinThreshold) {   
-				Dbg_print(playLedState ? "play, wv@" : "stop, wv");
+				Dbg_print(playing ? 
+										( playLedState ? "play, wv@" : "(play) wv@" )
+														: "stop, wv");
 				Dbg_print(awakePinState);
 #ifdef NONSTOP
 				Dbg_print(nonstop ? " NONSTOP " : "--->");
@@ -927,10 +951,10 @@ void loop()
 			Dbg_print(ay);
 			Dbg_print(", ");
 			Dbg_print(az);
-#ifdef EVT4
-		if (btn3pressed)  // DEBUG */
-			Dbg_print(" Boink!"); // DEBUG */
-#endif
+//#ifdef EVT4
+//		if (btn3pressed)  // DEBUG */
+//			Dbg_print(" Boink!"); // DEBUG */
+//#endif
 
 			Dbg_println(".");
 
@@ -988,7 +1012,6 @@ uint powerNap(){
 		who = Snooze.deepSleep(s_config);
 		awakePinState = analogRead(PO_wake);
 		btn2.update();
-	//} while (awakePinState == LOW && (! btn2pressed));
 	} while (awakePinState < awakePinThreshold && (! btn2pressed));
 
 	// detach from buttons
