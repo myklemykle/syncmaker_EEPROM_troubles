@@ -731,7 +731,7 @@ void loop()
 	// Calculate & update the sync pulse
 	//
 	if (BOTHPRESSED) { 
-		if (tapped) // TODO: simplify? i think tapped is always true if the following if-clause is false:
+		if (tapped) 
 			newPulseState = HIGH;
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
 			newPulseState = LOW;
