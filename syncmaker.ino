@@ -448,6 +448,15 @@ void loop()
 			// but try putting tapped at the apex-G moment; it may have better feel.
 			tapped = HIGH;
 		}
+
+		///////////////////////////////////
+		// other things to be done at IMU interrupt rate (2000hz) : 
+
+	  // MIDI Controllers should discard incoming MIDI messages.
+		while (usbMIDI.read()) {
+			// read & ignore incoming messages
+		}
+
 	}
 
 #ifdef MIDITIMECODE
