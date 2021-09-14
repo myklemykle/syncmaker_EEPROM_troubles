@@ -240,7 +240,7 @@ void imu_int(){
 void setup()
 {
   Serial.begin(115200);
-	delay(100);
+	delay(1000);
 #ifdef EVT4
 	Dbg_println("flashed for EVT4 board");
 # else
@@ -505,8 +505,7 @@ void loop()
 #else
 #ifdef TONIC
 		// TONIC/SPEAK approach: 
-		//if (playPinTimer > (2 * hc.measureLen)) { // coeff. of 2 theoretically correct but very slightly not long enough due to misc computation delays.
-		if (playPinTimer > ( (27 * hc.measureLen) / 10) ) { // integer equivalent of 2.5 coeff.
+		if (playPinTimer > ( (12 * hc.measureLen) / 10) ) { // a litle over one measure
 #endif
 #endif
 #endif
