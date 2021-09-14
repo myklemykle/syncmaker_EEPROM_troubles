@@ -164,7 +164,8 @@ typedef struct {
 	unsigned long downbeatTime;
 	unsigned int tapCount = 0;
 	unsigned long lastTapTime = 0;        
-	CircularBuffer<long, 3> tapIntervals; // for running avg of previous tap intervals, to update measureLen
+#define TAPBUFLEN 9
+	CircularBuffer<long, TAPBUFLEN> tapIntervals; // for running avg of previous tap intervals, to update measureLen
 } HumanClock;
 HumanClock hc;
 
@@ -334,9 +335,9 @@ void setup()
 	loopTimer = 0; // why?
 
 	// init this buffer:
-	hc.tapIntervals.push(0);
-	hc.tapIntervals.push(0);
-	hc.tapIntervals.push(0);
+	for (int i=0; i<TAPBUFLEN; i++) {
+		hc.tapIntervals.push(0);
+	}
 
 	////////
 	// Teensy Audio setup:
@@ -652,15 +653,28 @@ void loop()
 
 				if (tapInterval < minTapInterval) {
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
-					Dbg_println("ignoring bounce");
+					Dbg_print(tapInterval);
+					Dbg_println(": ignoring bounce");
 				} else {
 					hc.tapIntervals.unshift(tapInterval);
-					if (hc.tapCount == 2) {
-						hc.measureLen = tapInterval;
-					} else if (hc.tapCount == 3) {
-						hc.measureLen = (hc.tapIntervals[1] + hc.tapIntervals[0]) / 2;
-					} else if (hc.tapCount >= 4) {
-						hc.measureLen = (hc.tapIntervals[2] + hc.tapIntervals[1] + hc.tapIntervals[0]) / 3;
+
+					if (hc.tapCount > 1) { 
+						// average up all taps in this set.
+						unsigned long tcAvg = 0;
+						for (int i = 0; 
+								( i < (hc.tapCount-1) ) && (i < TAPBUFLEN) ; 
+								i++) { 
+							tcAvg += hc.tapIntervals[i];
+						}
+
+						if (hc.tapCount > 2)  
+							hc.measureLen	= tcAvg / min(hc.tapCount -1, TAPBUFLEN);
+						else
+							hc.measureLen	= tcAvg ;
+
+						if (hc.tapCount < 5) {
+							// todo: if taps <= 5 (intervals <= 4), quantize BPM
+						}
 					}
 
 					// but there has to be a minimum meaure length.
