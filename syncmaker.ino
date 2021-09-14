@@ -119,7 +119,9 @@ const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
 #ifdef PO1X
-const unsigned long playFlickerTime = 100 * TIMESCALE; 
+//const unsigned long playFlickerTime = 100 * TIMESCALE; 
+// was seeing periods of 100050, etc.
+const unsigned long playFlickerTime = 150 * TIMESCALE; 
 #endif
 
 //#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  // float: convert usecs to secs (1M to 1), pulses to beats (2 to 1), divide by 60 secs per minute
