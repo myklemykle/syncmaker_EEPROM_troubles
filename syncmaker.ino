@@ -124,9 +124,13 @@ const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double
 const unsigned long playFlickerTime = 150 * TIMESCALE; 
 #endif
 
-//#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  // float: convert usecs to secs (1M to 1), pulses to beats (2 to 1), divide by 60 secs per minute
+// convert a time interval between beats to BPM:
+//#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  
+	// float: convert usecs to secs (1M to 1), 
+	// pulses to beats (2 to 1), 
+	// divide by 60 secs per minute
 #define USEC2BPM(interval) ( 30000000.0 / interval )  									// same thing
-#define BPM2USEC(bpm) ( 30000000.0 / bpm  ) 															// inverse
+#define BPM2USEC(bpm) ( 30000000 / bpm  ) 															// inverse
 
 // Timers:
 elapsedMicros loopTimer;
@@ -674,6 +678,10 @@ void loop()
 
 						if (hc.tapCount < 5) {
 							// todo: if taps <= 5 (intervals <= 4), quantize BPM
+							hc.measureLen = BPM2USEC(int(USEC2BPM(hc.measureLen)));
+							Dbg_print("quantized to "); // DEBUG
+							Dbg_print(USEC2BPM(hc.measureLen)); // DEBUG
+							Dbg_println(" BPM"); // DEBUG
 						}
 					}
 
