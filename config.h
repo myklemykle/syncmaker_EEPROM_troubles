@@ -13,6 +13,7 @@
 ////////////////////
 // 1.5) are we hardcoding for a particular model?
 // (in the future I hope we aren't.)
+// (one must be defined!)
 #define PO1X OGFTW
 //#define TONIC AND_OR_SPEAK
 //#define PO2X AND_OR_KO
