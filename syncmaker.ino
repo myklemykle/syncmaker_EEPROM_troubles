@@ -659,6 +659,7 @@ void loop()
 					// Ignore spurious double-taps!  (This enforces a max tempo.)
 					Dbg_print(tapInterval);
 					Dbg_println(": ignoring bounce");
+					hc.tapCount--;
 				} else {
 					hc.tapIntervals.unshift(tapInterval);
 
@@ -676,12 +677,17 @@ void loop()
 						else
 							hc.measureLen	= tcAvg ;
 
-						if (hc.tapCount < 5) {
-							// todo: if taps <= 5 (intervals <= 4), quantize BPM
-							hc.measureLen = BPM2USEC(int(USEC2BPM(hc.measureLen)));
-							Dbg_print("quantized to "); // DEBUG
-							Dbg_print(USEC2BPM(hc.measureLen)); // DEBUG
-							Dbg_println(" BPM"); // DEBUG
+						// if taps <= 5 (intervals <= 4), quantize BPM
+						if (hc.tapCount <= 5) {
+							// But when BPM gets "too low", quantization is probably inappropriate.
+							// For now, 30 BPM is the arbitrary threshhold
+							// TODO: experiment with this.
+							if (USEC2BPM(hc.measureLen) > 30) {
+								hc.measureLen = BPM2USEC(int(USEC2BPM(hc.measureLen)));
+								Dbg_print("quantized to "); // DEBUG
+								Dbg_print(USEC2BPM(hc.measureLen)); // DEBUG
+								Dbg_println(" BPM"); // DEBUG
+							}
 						}
 					}
 
