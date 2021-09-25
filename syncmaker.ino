@@ -372,8 +372,8 @@ void setup()
 
 void loop()
 {
-	int ax, ay, az;
-  int gx, gy, gz;
+	static int ax, ay, az;
+  static int gx, gy, gz;
 
 	unsigned long tapInterval = 0; // could be fewer bits?
 	unsigned long nowTime = loopTimer;
@@ -665,6 +665,10 @@ void loop()
 
 					if (hc.tapCount > 1) { 
 						// average up all taps in this set.
+						// TODO: how we detect if the differences in length between taps are all in one direction,
+						// due to the user accellerating/decellerating,
+						// and average differently in that case?
+						// test more & see if it's an issue ...
 						unsigned long tcAvg = 0;
 						for (int i = 0; 
 								( i < (hc.tapCount-1) ) && (i < TAPBUFLEN) ; 
@@ -677,8 +681,8 @@ void loop()
 						else
 							hc.measureLen	= tcAvg ;
 
-						// if taps <= 5 (intervals <= 4), quantize BPM
-						if (hc.tapCount <= 5) {
+						// if taps <= 7 (intervals <= 6), quantize BPM
+						if (hc.tapCount <= 7) {
 							// But when BPM gets "too low", quantization is probably inappropriate.
 							// For now, 30 BPM is the arbitrary threshhold
 							// TODO: experiment with this.
