@@ -13,6 +13,7 @@
 #define CBROSE(cb) ( cb[0] > cb[1] )
 #define CBROSETHRU(cb, val) ( cb[0] > val && cb[1] <= val )
 #define CBDIFF(cb) ( cb[0] != cb[1] )
+#define CBREPEAT(cb) (cb.unshift(cb[0])) 
 
 
 // IMU Gesture Detection:
@@ -232,7 +233,9 @@ bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
-bool playing = LOW, prevPlaying = LOW, playLedState = LOW, prevPlayLedState = LOW, playPinState = LOW; 
+CircularBuffer<bool, 2> playing; // TODO initialize
+CircularBuffer<bool, 2> playLedState; // TODO initialize
+bool playPinState = LOW; 
 #ifdef NONSTOP
 bool nonstop = false, prevNonstop = false, nonstopStarted = false;
 #endif
@@ -484,11 +487,10 @@ void loop()
 	// Decode the state of the PO Play LED from the pin signal:
 	// This pin is low when not playing, but when playing it's actually flickering,
 	// so we can't just read it as logic.
-	prevPlayLedState = playLedState;
 	playPinState = digitalRead(PO_play);
 	if (playPinState) { // lit
 		playPinTimer = 0;
-		playLedState = playPinState;
+		CBSET(playLedState, playPinState);
 		/* Dbg_println("BLINK");//DEBUG */
 
 	} else {						// unlit
@@ -497,13 +499,13 @@ void loop()
 		// However, animation of the Play LED varies a lot(!) between PO models.
 
 		// The po-12/13/14 are very simple, it's "lit" (actually PWM) whenever playing,
-		// but unfortunately it unlights during play if you press BPM or Play.
+		// but unfortunately it unlights during play if you press BPM or Pattern.
 
 		// The Speak & Tonic are lit during play, but blink off for about 2 measures every 4 beats, 
-		// and also flicker at other random times, maybe related to volume of the output?
+		// and also flicker at other random times, related to volume of the output.
 		// The Speak has the problem that when you press play it doesn't
 		// start right away ... waiting for a pulse or IDK?
-		// OTOH BPM and Play do not unlight it.  That's nice.
+		// OTOH BPM and Pattern do not unlight it.  That's nice.
 
 		// The KO is basically the inverse of that: the LED is only strobed briefly every 2 pulses/4 beats.
 		// The office & maybe other PO-2X series are like that too.
@@ -528,10 +530,10 @@ void loop()
 #endif
 #endif
 
-			playLedState = playPinState;
+			CBSET(playLedState, playPinState);
 
 			// DEBUG
-			if(prevPlayLedState){
+			if(playLedState[1]){
 				Dbg_print("play led off for");
 				Dbg_print(playPinTimer);
 				Dbg_print(" during meaure of ");
@@ -539,19 +541,20 @@ void loop()
 				Dbg_println("us");
 			}
 
+		} else { // no change this loop
+			CBREPEAT(playLedState);
 		}
 	}
 
 	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
-	prevPlaying = playing;
 #ifdef NONSTOP
 	prevNonstop = nonstop;
 #endif
 
 	// If the play light just lit,
-	if (playLedState && (!prevPlayLedState)) {
+	if (CBROSE(playLedState)) {
 		// set PLAYING.
-		playing = true;
+		CBSET(playing, true);
 		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down when play LED lit
@@ -562,12 +565,13 @@ void loop()
 #endif
 
 	// otherwise, if the play light just unlit,
-	} else if (prevPlayLedState && (!playLedState)) {
+	} else if (CBFELL(playLedState) ){
 #ifdef NONSTOP
 		// if both buttons are held down when play LED unlit
 		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
-			playing = nonstop = nonstopStarted = false;
+			CBSET(playing, false);
+		 	nonstop = nonstopStarted = false;
 			Dbg_println("STOP");
 		// else 
 			// if NONSTOP
@@ -575,12 +579,15 @@ void loop()
 			// else
 				// clear PLAYING.
 		} else if (!nonstop) { 
-			playing = false;
+			CBSET(playing, false);
 		}
 #else
-		playing = false;
+		CBSET(playing, false);
 #endif
 		Dbg_println("STOP");
+
+	} else { // state has not changed in this loop.
+		CBREPEAT(playing); 
 	}
 
 #ifdef EVT4
@@ -588,8 +595,8 @@ void loop()
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
 		if (nonstop) {
 			nonstop = false;
-			if (!playLedState) {// if PO not currently playing,
-				playing = false; // stop when notstop is deactivated.
+			if (!playLedState[0]) {// if PO not currently playing,
+				CBSET(playing, false); // stop when notstop is deactivated.
 			}
 		}
 		else  {
@@ -602,7 +609,7 @@ void loop()
 	/////////
 	// Update the Human Clock & MIDI transport
 	//
-	if (playing && !prevPlaying) {
+	if (CBROSE(playing)) {
 		// user just pressed play button to start PO
 		// move downbeat to now!
 		hc.downbeatTime = nowTime;
@@ -617,7 +624,7 @@ void loop()
 		// rewind time to zero
 		mtc.rewind();
 #endif
-	} else if (!playing && prevPlaying) {
+	} else if (CBFELL(playing)) {
 		// user just pressed play button to stop PO.
 #ifdef MIDICLOCK
 		usbMIDI.sendRealTime(usbMIDI.Stop);
@@ -734,7 +741,7 @@ void loop()
 	// (Strobe-off times need to be much longer than strobe-on times
 	// in order to be clearly visible to the human eye.)
 	//
-	if (playing ) { 
+	if (playing[0] ) { 
 		if (btn1pressed) {
 			if (nowTime - hc.downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
 				newLed1State = LOW;
@@ -898,7 +905,7 @@ void loop()
 		// dc1.amplitude(1.0 - (cc.circlePos/2)); // DEBUG
 		// dc1.amplitude(0, 1); // DEBUG
 
-		if (playing) { 
+		if (playing[0]) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
 				usbMIDI.sendRealTime(usbMIDI.Clock);
@@ -927,7 +934,7 @@ void loop()
 	// if we've crossed a frame boundary, increment the frame.
 		// TODO INTWISE ...
 	if (   (  (cc.circlePos + circleTicksPerFrame) / circleTicksPerFrame  )   >   (  (cc.prevCirclePos + circleTicksPerFrame) / circleTicksPerFrame  )   ) {
-		if (playing) { 
+		if (playing[0]) { 
 			if (!cc.frozen) {
 				mtc.incFrame();
 			}
@@ -948,7 +955,7 @@ void loop()
 	// Pulse if PLAYING
 	if (pulseState != newPulseState) {
 		pulseState = newPulseState;
-		if (playing) { 
+		if (playing[0]) { 
 			// send sync pulse on both pins
 			digitalWrite(pulsePin1, pulseState);
 			digitalWrite(pulsePin2, pulseState);
@@ -968,8 +975,8 @@ void loop()
 #endif
 
 			if (awakePinState >= awakePinThreshold) {   
-				Dbg_print(playing ? 
-										( playLedState ? "play, wv@" : "(play) wv@" )
+				Dbg_print(playing[0] ? 
+										( playLedState[0] ? "play, wv@" : "(play) wv@" )
 														: "stop, wv");
 				Dbg_print(awakePinState);
 #ifdef NONSTOP
