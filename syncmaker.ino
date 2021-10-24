@@ -6,7 +6,9 @@
 #include <CircularBuffer.h>
 
 // utils for handling loop variables:
-#define CBSET(cb, val) ( cb.unshift(val) )
+#define CBINIT(cb, val) 	while(!cb.isFull()) cb.push(val) 
+#define CBSET(cb, val) { cb.shift(); cb.unshift(val); }
+#define CBPUSH(cb, val) ( cb.unshift(val) )
 #define CBGET(cb, val) ( cb[0] )
 #define CBFELL(cb) ( cb[0] < cb[1] ) // also works for bools in C++ because TRUE = 1 and FALSE = 0
 #define CBFELLTHRU(cb, val) ( cb[0] <= val && cb[1] > val )
@@ -233,11 +235,11 @@ bool led1State = LOW, newLed1State = LOW;
 bool led2State = LOW, newLed2State = LOW;
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
-CircularBuffer<bool, 2> playing; // TODO initialize
-CircularBuffer<bool, 2> playLedState; // TODO initialize
+CircularBuffer<bool, 2> playing; 
+CircularBuffer<bool, 2> playLedState; 
 bool playPinState = LOW; 
 #ifdef NONSTOP
-bool nonstop = false, prevNonstop = false;
+CircularBuffer<bool, 2> nonstop; 
 #endif
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
@@ -294,8 +296,7 @@ void setup()
 #endif
 	
   imu.begin();
-	CBSET(inertia, 0);
-	CBSET(inertia, 0);
+	//CBINIT(inertia, 0);
 
 	///////
 	// Pin setup:
@@ -383,6 +384,13 @@ void setup()
 	s_timer.setTimer(5000); 
 	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // comparison wake from deepSleep not supported on this pin.
 
+	///////////
+	// initialize circular buffers
+	//CBINIT(playing, 0);
+	//CBINIT(playLedState, 0);
+#ifdef NONSTOP
+	//CBINIT(nonstop, 0);
+#endif
 }
 
 void loop()
@@ -441,7 +449,7 @@ void loop()
 #endif
 
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-		CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
+		CBPUSH(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
 
 #ifdef SDEBUG
 		/* if (inertia[0] > shakeThreshold)  */
@@ -481,7 +489,7 @@ void loop()
 	playPinState = digitalRead(PO_play);
 	if (playPinState) { // lit
 		playPinTimer = 0;
-		CBSET(playLedState, playPinState);
+		CBPUSH(playLedState, playPinState);
 		/* Dbg_println("BLINK");//DEBUG */
 
 	} else {						// unlit
@@ -521,7 +529,7 @@ void loop()
 #endif
 #endif
 
-			CBSET(playLedState, playPinState);
+			CBPUSH(playLedState, playPinState);
 
 			// DEBUG
 			if(playLedState[1]){
@@ -539,41 +547,37 @@ void loop()
 
 	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
 #ifdef NONSTOP
-	prevNonstop = nonstop;
+	CBREPEAT(nonstop);
 #endif
 
 	// If the play light just lit,
 	if (CBROSE(playLedState)) {
 		// set PLAYING.
-		CBSET(playing, true);
+		CBPUSH(playing, true);
 		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
-			// set NONSTOP and NONSTOP-STARTED.
-			nonstop = true;
+			CBSET(nonstop, true);
 		}
 #endif
 
 	// otherwise, if the play light just unlit,
-	} else if (CBFELL(playLedState) ){
+	} else if (CBFELL(playLedState) ){ // TODO: better to test 'playing' than 'playLedState' here?
 #ifdef NONSTOP
 		// if both buttons are held down when play LED unlit
 		if (BOTHPRESSED) {
-			// clear PLAYING, NONSTOP and NONSTOP-STARTED
-			CBSET(playing, false);
-		 	nonstop = false;
+			// clear PLAYING, NONSTOP
+			CBPUSH(playing, false);
+		 	CBSET(nonstop, false);
 			Dbg_println("STOP");
-		// else 
-			// if NONSTOP
-				// don't stop!
-			// else
-				// clear PLAYING.
-		} else if (!nonstop) { 
-			CBSET(playing, false);
+		} else if (!nonstop[0]) { 
+			// stop:
+			CBPUSH(playing, false);
 		}
+		  // else ... don't stop not stopping!
 #else
-		CBSET(playing, false);
+		CBPUSH(playing, false);
 #endif
 		Dbg_println("STOP");
 
@@ -584,14 +588,14 @@ void loop()
 #ifdef EVT4
 #ifdef NONSTOP
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
-		if (nonstop) {
-			nonstop = false;
+		if (nonstop[0]) {
+			CBSET(nonstop, false);
 			if (!playLedState[0]) {// if PO not currently playing,
-				CBSET(playing, false); // stop when notstop is deactivated.
+				CBPUSH(playing, false); // stop when notstop is deactivated.
 			}
 		}
 		else  {
-			nonstop = true;
+			CBSET(nonstop, true);
 		}
 	}
 #endif
@@ -774,8 +778,8 @@ void loop()
 
 #ifdef NONSTOP
 #ifdef EVT4
-	if (!nonstop) {
-		if (nonstop != prevNonstop) {
+	if (!nonstop[0]) {
+		if (CBDIFF(nonstop)) {
 			digitalWrite(nonstopLedPin, LOW);
 		}
 	} else { // nonstop!
@@ -971,7 +975,7 @@ void loop()
 														: "stop, wv");
 				Dbg_print(awakePinState);
 #ifdef NONSTOP
-				Dbg_print(nonstop ? " NONSTOP " : "--->");
+				Dbg_print(nonstop[0] ? " NONSTOP " : "--->");
 #endif
 			} else { 
 				Dbg_print("asleep, wv@");
