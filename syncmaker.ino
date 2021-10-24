@@ -5,6 +5,16 @@
 
 #include <CircularBuffer.h>
 
+// utils for handling loop variables:
+#define CBSET(cb, val) ( cb.unshift(val) )
+#define CBGET(cb, val) ( cb[0] )
+#define CBFELL(cb) ( cb[0] < cb[1] ) // also works for bools in C++ because TRUE = 1 and FALSE = 0
+#define CBFELLTHRU(cb, val) ( cb[0] <= val && cb[1] > val )
+#define CBROSE(cb) ( cb[0] > cb[1] )
+#define CBROSETHRU(cb, val) ( cb[0] > val && cb[1] <= val )
+#define CBDIFF(cb) ( cb[0] != cb[1] )
+
+
 // IMU Gesture Detection:
 #include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
 														// set to higher data rate, 
@@ -18,7 +28,7 @@ NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/
 const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
 const int tapThreshold = 2 * COUNT_PER_G;
 bool shaken = LOW, tapped = LOW;
-long inertia = 0, prevInertia = 0;
+CircularBuffer<long, 2> inertia;
 
 
 // Sleep/hibernation:
@@ -281,6 +291,8 @@ void setup()
 #endif
 	
   imu.begin();
+	CBSET(inertia, 0);
+	CBSET(inertia, 0);
 
 	///////
 	// Pin setup:
@@ -434,23 +446,22 @@ void loop()
 		imus++;
 #endif
 
-		prevInertia = inertia;
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-		inertia = (long)sqrt((ax * ax) + (ay * ay) + (az * az));  // vector amplitude
+		CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
 
 #ifdef SDEBUG
-		/* if (inertia > shakeThreshold)  */
-		/* 	Dbg_println(inertia); */
+		/* if (inertia[0] > shakeThreshold)  */
+		/* 	Dbg_println(inertia[0]); */
 #endif
 
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
-		//amp1.gain(max((inertia - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
-		amp1.gain(max((inertia - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
+		//amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
+		amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
 
-		if ( (inertia > shakeThreshold) && (prevInertia <= shakeThreshold) ) {
+		if ( CBROSETHRU(inertia, shakeThreshold) ) {
 			shaken = HIGH;
 		}
-		if ( (inertia > tapThreshold) && (prevInertia <= tapThreshold) ) {
+		if ( CBROSETHRU(inertia, tapThreshold) ) {
 			// TODO: shaken should be the start of sound moment, 
 			// but try putting tapped at the apex-G moment; it may have better feel.
 			tapped = HIGH;
