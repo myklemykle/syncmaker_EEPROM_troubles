@@ -237,7 +237,7 @@ CircularBuffer<bool, 2> playing; // TODO initialize
 CircularBuffer<bool, 2> playLedState; // TODO initialize
 bool playPinState = LOW; 
 #ifdef NONSTOP
-bool nonstop = false, prevNonstop = false, nonstopStarted = false;
+bool nonstop = false, prevNonstop = false;
 #endif
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
@@ -409,15 +409,6 @@ void loop()
 			btn3pressed = (btn3.read() == LOW);
 #endif
 
-#ifdef NONSTOP
-	if (EITHERNOTPRESSED){
-		// this mode is entered only when we start in NONSTOP mode with both buttons pressed,
-		// and cleared as soon as both buttons aren't pressed.  It exists to prevent conflict
-		// between these two meanings/uses of both-buttons-pressed.
-		nonstopStarted = false;
-	}
-#endif
-
 #ifdef SDEBUG
 	loops++; 
 #endif
@@ -560,7 +551,7 @@ void loop()
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
 			// set NONSTOP and NONSTOP-STARTED.
-			nonstop = nonstopStarted = true;
+			nonstop = true;
 		}
 #endif
 
@@ -571,7 +562,7 @@ void loop()
 		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP and NONSTOP-STARTED
 			CBSET(playing, false);
-		 	nonstop = nonstopStarted = false;
+		 	nonstop = false;
 			Dbg_println("STOP");
 		// else 
 			// if NONSTOP
@@ -600,7 +591,7 @@ void loop()
 			}
 		}
 		else  {
-			nonstop = nonstopStarted = true;
+			nonstop = true;
 		}
 	}
 #endif
