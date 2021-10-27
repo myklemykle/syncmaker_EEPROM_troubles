@@ -15,7 +15,7 @@
 #define CBROSE(cb) ( cb[0] > cb[1] )
 #define CBROSETHRU(cb, val) ( cb[0] > val && cb[1] <= val )
 #define CBDIFF(cb) ( cb[0] != cb[1] )
-#define CBREPEAT(cb) (cb.unshift(cb[0])) 
+#define CBNEXT(cb) (cb.unshift(cb[0])) 
 
 
 // IMU Gesture Detection:
@@ -231,8 +231,10 @@ MidiTimecodeGenerator mtc;
 #endif
 
 // State Variables:
-bool led1State = LOW, newLed1State = LOW;
-bool led2State = LOW, newLed2State = LOW;
+//bool led1State = LOW, newLed1State = LOW;
+//bool led2State = LOW, newLed2State = LOW;
+CircularBuffer<bool, 2> led1State; // TODO initialize
+CircularBuffer<bool, 2> led2State; // TODO initialize
 bool blinkState = LOW, newBlinkState = LOW;
 bool pulseState = LOW, newPulseState = LOW;
 CircularBuffer<bool, 2> playing; 
@@ -269,6 +271,15 @@ void setup()
 	Dbg_println("flashed for rev3 board");
 #endif
 
+	///////////
+	// initialize loop state:
+	CBINIT(inertia, 0);
+#ifdef NONSTOP
+	CBINIT(nonstop, 0);
+#endif
+	CBINIT(playing, 0);
+	CBINIT(playLedState, 0);
+
 	///////
 	// IMU setup:
 #ifdef IMU_SPI
@@ -296,7 +307,6 @@ void setup()
 #endif
 	
   imu.begin();
-	//CBINIT(inertia, 0);
 
 	///////
 	// Pin setup:
@@ -384,13 +394,6 @@ void setup()
 	s_timer.setTimer(5000); 
 	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // comparison wake from deepSleep not supported on this pin.
 
-	///////////
-	// initialize circular buffers
-	//CBINIT(playing, 0);
-	//CBINIT(playLedState, 0);
-#ifdef NONSTOP
-	//CBINIT(nonstop, 0);
-#endif
 }
 
 void loop()
@@ -408,19 +411,6 @@ void loop()
 
 	static int midiMeasuresRemaining = 0;
 
-	if (btn1.update())
-			btn1pressed = (btn1.read() == LOW);
-	if (btn2.update())
-			btn2pressed = (btn2.read() == LOW);
-#ifdef EVT4
-	if (btn3.update())
-			btn3pressed = (btn3.read() == LOW);
-#endif
-
-#ifdef SDEBUG
-	loops++; 
-#endif
-
 	// go to sleep if the PO_wake pin is low:
 	awakePinState = analogRead(PO_wake); 
 
@@ -429,6 +419,31 @@ void loop()
 		powerNap();
 		return;
 	}
+
+	// shift outer loop state:
+	CBNEXT(led1State);
+	CBNEXT(led2State);
+	CBNEXT(playLedState);
+	CBNEXT(playing); 
+#ifdef NONSTOP
+	CBNEXT(nonstop);
+#endif
+
+#ifdef SDEBUG
+	// count loop rate:
+	loops++; 
+#endif
+
+	// check buttons: 
+	// TODO move to 2000hz section?
+	if (btn1.update())
+			btn1pressed = (btn1.read() == LOW);
+	if (btn2.update())
+			btn2pressed = (btn2.read() == LOW);
+#ifdef EVT4
+	if (btn3.update())
+			btn3pressed = (btn3.read() == LOW);
+#endif
 
 	// Check IMU:
 
@@ -444,12 +459,17 @@ void loop()
 		imuClock -= imuClockTick;
 #endif
 
+		// IMU section runs at 2000hz:
+
 #ifdef SDEBUG
 		imus++;
 #endif
 
+		// shift inner loop state:
+		CBNEXT(inertia);
+
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-		CBPUSH(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
+		CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
 
 #ifdef SDEBUG
 		/* if (inertia[0] > shakeThreshold)  */
@@ -489,7 +509,7 @@ void loop()
 	playPinState = digitalRead(PO_play);
 	if (playPinState) { // lit
 		playPinTimer = 0;
-		CBPUSH(playLedState, playPinState);
+		CBSET(playLedState, playPinState);
 		/* Dbg_println("BLINK");//DEBUG */
 
 	} else {						// unlit
@@ -529,7 +549,7 @@ void loop()
 #endif
 #endif
 
-			CBPUSH(playLedState, playPinState);
+			CBSET(playLedState, playPinState);
 
 			// DEBUG
 			if(playLedState[1]){
@@ -541,19 +561,16 @@ void loop()
 			}
 
 		} else { // no change this loop
-			CBREPEAT(playLedState);
+			CBNEXT(playLedState);
 		}
 	}
 
 	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
-#ifdef NONSTOP
-	CBREPEAT(nonstop);
-#endif
 
 	// If the play light just lit,
 	if (CBROSE(playLedState)) {
 		// set PLAYING.
-		CBPUSH(playing, true);
+		CBSET(playing, true);
 		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down when play LED lit
@@ -568,21 +585,19 @@ void loop()
 		// if both buttons are held down when play LED unlit
 		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP
-			CBPUSH(playing, false);
+			CBSET(playing, false);
 		 	CBSET(nonstop, false);
 			Dbg_println("STOP");
 		} else if (!nonstop[0]) { 
 			// stop:
-			CBPUSH(playing, false);
+			CBSET(playing, false);
 		}
 		  // else ... don't stop not stopping!
 #else
-		CBPUSH(playing, false);
+		CBSET(playing, false);
 #endif
 		Dbg_println("STOP");
 
-	} else { // state has not changed in this loop.
-		CBREPEAT(playing); 
 	}
 
 #ifdef EVT4
@@ -591,7 +606,7 @@ void loop()
 		if (nonstop[0]) {
 			CBSET(nonstop, false);
 			if (!playLedState[0]) {// if PO not currently playing,
-				CBPUSH(playing, false); // stop when notstop is deactivated.
+				CBSET(playing, false); // stop when notstop is deactivated.
 			}
 		}
 		else  {
@@ -739,41 +754,38 @@ void loop()
 	if (playing[0] ) { 
 		if (btn1pressed) {
 			if (nowTime - hc.downbeatTime < strobeOffLen) // there's some bug here, the interval never gets long enough.
-				newLed1State = LOW;
+				{ CBSET(led1State, LOW); }
 			else
-				newLed1State = HIGH;
+				{ CBSET(led1State, HIGH); }
 		} else {
 			if (nowTime - hc.downbeatTime < strobeOnLen)
-				newLed1State = HIGH;
+				{ CBSET(led1State, HIGH); }
 			else
-				newLed1State = LOW;
+				{ CBSET(led1State, LOW); }
 		}
 
 		if (btn2pressed) {
 			if (nowTime - hc.downbeatTime < strobeOffLen)
-				newLed2State = LOW;
+				{ CBSET(led2State, LOW); }
 			else
-				newLed2State = HIGH;
+				{ CBSET(led2State, HIGH); }
 		} else {
 			if (nowTime - hc.downbeatTime < strobeOnLen)
-				newLed2State = HIGH;
+				{ CBSET(led2State, HIGH); }
 			else
-				newLed2State = LOW;
+				{ CBSET(led2State, LOW); }
 		}
-	} else {  // !playing
-		// don't blink when not playing, just indicate buttons
-		newLed1State = btn1pressed;
-		newLed2State = btn2pressed;
+	} else {
+		CBSET(led1State, btn1pressed);
+		CBSET(led2State, btn2pressed);
 	}
 
 	
-	if (led1State != newLed1State) {
-		led1State = newLed1State;
-		digitalWrite(led1Pin, led1State);
+	if (CBDIFF(led1State)) {
+		digitalWrite(led1Pin, led1State[0]);
 	}
-	if (led2State != newLed2State) {
-		led2State = newLed2State;
-		digitalWrite(led2Pin, led2State);
+	if (CBDIFF(led2State)) {
+		digitalWrite(led2Pin, led2State[0]);
 	}
 
 #ifdef NONSTOP
