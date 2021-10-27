@@ -27,11 +27,13 @@
 NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
 #define COUNT_PER_G 4096 // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
-#define COUNT_PER_UT_COUNT 10 // compass units, not used
 const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
 const int tapThreshold = 2 * COUNT_PER_G;
-bool shaken = LOW, tapped = LOW;
 CircularBuffer<long, 2> inertia;
+// TODO: shaken should be the start of sound moment, 
+// but try putting tapped at the apex-G moment; it may have better feel.
+#define SHAKEN ( CBROSETHRU(inertia, shakeThreshold) ) 
+#define TAPPED ( CBROSETHRU(inertia, tapThreshold) ) 
 
 
 // Sleep/hibernation:
@@ -445,11 +447,6 @@ void loop()
 			btn3pressed = (btn3.read() == LOW);
 #endif
 
-	// Check IMU:
-
-	shaken = LOW;
-	tapped = LOW;
-
 	// Read IMU data if ready:
 #ifdef IMU_INTERRUPTS
 	if (imu_ready) { // on interrupt
@@ -459,7 +456,7 @@ void loop()
 		imuClock -= imuClockTick;
 #endif
 
-		// IMU section runs at 2000hz:
+		// IMU inner loop runs once per IMU interrupt, currentlyu 2000hz ...
 
 #ifdef SDEBUG
 		imus++;
@@ -479,15 +476,6 @@ void loop()
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		//amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
 		amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
-
-		if ( CBROSETHRU(inertia, shakeThreshold) ) {
-			shaken = HIGH;
-		}
-		if ( CBROSETHRU(inertia, tapThreshold) ) {
-			// TODO: shaken should be the start of sound moment, 
-			// but try putting tapped at the apex-G moment; it may have better feel.
-			tapped = HIGH;
-		}
 
 		///////////////////////////////////
 		// other things to be done at IMU interrupt rate (2000hz) : 
@@ -650,7 +638,7 @@ void loop()
 	// Check the buttons:
 	//
 	if (EITHERPRESSED) {
-		if (tapped) { 
+		if (TAPPED) { 
 
 			// Adjust position of downbeat based on tap/shake:
 
@@ -820,7 +808,7 @@ void loop()
 	// Calculate & update the sync pulse
 	//
 	if (BOTHPRESSED) { 
-		if (tapped) 
+		if (TAPPED) 
 			{ CBSET(pulseState, HIGH); }
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
 			{ CBSET(pulseState, LOW); }
@@ -857,7 +845,7 @@ void loop()
 	if (BOTHPRESSED) {
 		if (btn1.fell() || btn2.fell()) { // If we just pressed now entered 2-button mode
 			midiMeasuresRemaining = 1;  	 // midi only to the end of this measure.
-		} else if (tapped) {						// but if we tapped a beat,
+		} else if (TAPPED) {						// but if we tapped a beat,
 			midiMeasuresRemaining++;		// add a measure to that,
 				// then unfreeze for just that one measure:
 			if (cc.frozen) {
@@ -917,7 +905,7 @@ void loop()
 				// emit MIDI clock!
 				usbMIDI.sendRealTime(usbMIDI.Clock);
 
-				/* if (tapped) {  */
+				/* if (TAPPED) {  */
 				/* 	Dbg_print("TMC "); */
 				/* } else {  */
 				/* 	Dbg_print("MC "); */
