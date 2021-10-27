@@ -432,17 +432,6 @@ void loop()
 	loops++; 
 #endif
 
-	// check buttons: 
-	// TODO move to 2000hz section?
-	if (btn1.update())
-			btn1pressed = (btn1.read() == LOW);
-	if (btn2.update())
-			btn2pressed = (btn2.read() == LOW);
-#ifdef EVT4
-	if (btn3.update())
-			btn3pressed = (btn3.read() == LOW);
-#endif
-
 	// Read IMU data if ready:
 #ifdef IMU_INTERRUPTS
 	if (imu_ready) { // on interrupt
@@ -460,6 +449,17 @@ void loop()
 
 		// shift inner loop state:
 		CBNEXT(inertia);
+
+		// check buttons: 
+		// TODO move to 2000hz section?
+		if (btn1.update())
+				btn1pressed = (btn1.read() == LOW);
+		if (btn2.update())
+				btn2pressed = (btn2.read() == LOW);
+#ifdef EVT4
+		if (btn3.update())
+				btn3pressed = (btn3.read() == LOW);
+#endif
 
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 		CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
@@ -545,7 +545,7 @@ void loop()
 		}
 	}
 
-	// calculate if we're playing or not, based on decodedPlayLed, buttons and NONSTOP:
+	// Decide if we're playing or not, based on decodedPlayLed, buttons and NONSTOP:
 
 	// If the play light just lit,
 	if (CBROSE(decodedPlayLed)) { 
