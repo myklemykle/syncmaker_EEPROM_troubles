@@ -231,12 +231,10 @@ MidiTimecodeGenerator mtc;
 #endif
 
 // State Variables:
-//bool led1State = LOW, newLed1State = LOW;
-//bool led2State = LOW, newLed2State = LOW;
-CircularBuffer<bool, 2> led1State; // TODO initialize
-CircularBuffer<bool, 2> led2State; // TODO initialize
-bool blinkState = LOW, newBlinkState = LOW;
-bool pulseState = LOW, newPulseState = LOW;
+CircularBuffer<bool, 2> led1State; 
+CircularBuffer<bool, 2> led2State; 
+CircularBuffer<bool, 2> blinkState; 
+CircularBuffer<bool, 2> pulseState; 
 CircularBuffer<bool, 2> playing; 
 CircularBuffer<bool, 2> playLedState; 
 bool playPinState = LOW; 
@@ -420,14 +418,16 @@ void loop()
 		return;
 	}
 
-	// shift outer loop state:
+	// shift outer loop states:
+	CBNEXT(blinkState);
 	CBNEXT(led1State);
 	CBNEXT(led2State);
-	CBNEXT(playLedState);
-	CBNEXT(playing); 
 #ifdef NONSTOP
 	CBNEXT(nonstop);
 #endif
+	CBNEXT(playLedState);
+	CBNEXT(playing); 
+	CBNEXT(pulseState); 
 
 #ifdef SDEBUG
 	// count loop rate:
@@ -821,14 +821,14 @@ void loop()
 	//
 	if (BOTHPRESSED) { 
 		if (tapped) 
-			newPulseState = HIGH;
+			{ CBSET(pulseState, HIGH); }
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
-			newPulseState = LOW;
+			{ CBSET(pulseState, LOW); }
 	} else {
 		if (nowTime - hc.downbeatTime < pulseLen)
-			newPulseState = HIGH;
+			{ CBSET(pulseState, HIGH); }
 		else if (nowTime - hc.downbeatTime >= pulseLen) 
-			newPulseState = LOW;
+			{ CBSET(pulseState, LOW); }
 	}
 
 	//////////
@@ -879,7 +879,7 @@ void loop()
 #endif
 			}
 		}
-	} else if ((pulseState != newPulseState) && (newPulseState == HIGH) ) {
+	} else if (CBROSE(pulseState)) {
 		if (cc.frozen) {
 			cc.frozen = false; 					
 #ifdef MIDICLOCK
@@ -960,16 +960,15 @@ void loop()
 	}
 
 	// Pulse if PLAYING
-	if (pulseState != newPulseState) {
-		pulseState = newPulseState;
+	if (CBDIFF(pulseState)) {
 		if (playing[0]) { 
 			// send sync pulse on both pins
-			digitalWrite(pulsePin1, pulseState);
-			digitalWrite(pulsePin2, pulseState);
+			digitalWrite(pulsePin1, pulseState[0]);
+			digitalWrite(pulsePin2, pulseState[0]);
 		}
 
 		// print benchmarks when pulse goes high.
-		if (pulseState == HIGH) {
+		if (pulseState[0] == HIGH) {
 			Dbg_print(awakeTimer);
 			Dbg_print(':');
 			Dbg_print(loopTimer);
