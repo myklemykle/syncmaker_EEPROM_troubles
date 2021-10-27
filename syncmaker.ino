@@ -127,7 +127,7 @@ const int IMU_int = 2;
 
 
 // Important time intervals:
-const unsigned int TIMESCALE = 1000; // uS
+const unsigned int TIMESCALE = 1000; // uS per ms
 const unsigned long strobeOnLen = 500;
 
 const unsigned long strobeOffLen = 100 * TIMESCALE;
@@ -144,8 +144,8 @@ const unsigned long playFlickerTime = 150 * TIMESCALE;
 	// float: convert usecs to secs (1M to 1), 
 	// pulses to beats (2 to 1), 
 	// divide by 60 secs per minute
-#define USEC2BPM(interval) ( 30000000.0 / interval )  									// same thing
-#define BPM2USEC(bpm) ( 30000000 / bpm  ) 															// inverse
+#define USEC2BPM(interval) ( 30000000.0 / interval )  									// same thing.  gives float result
+#define BPM2USEC(bpm) ( 30000000 / bpm  ) 															// inverse.  gives float result if passed a float!
 
 // Timers:
 elapsedMicros loopTimer;
@@ -197,9 +197,8 @@ HumanClock hc;
 //
 // integer CC loops from 0 to 1B (1000000000)
 #define CC_INT_RES 1000000000
-#define CC_FLOAT_RES 1000000000.0
 //
-// This is the very minimum (per loop cycle) forward advance -- one millionth of a loop
+// This is the very minimum (per loop cycle) forward advance -- one millionth of a measure
 const	int circleMinFwd = CC_INT_RES / 1000000;  
 // OTOH, if we advance any faster than this, we could skip a MIDI clock beat
 const int circleMaxFwd = CC_INT_RES / 12; // 83333333
@@ -207,7 +206,8 @@ const int circleMaxFwd = CC_INT_RES / 12; // 83333333
 typedef struct {
 	// Clock position is an int value between 0 and 1B.
 	long circlePos = 0, prevCirclePos = 0;
-	// Freeze when both buttons pressed & end of MMR reached;
+	// Freeze & unfreese behavior is subtle:
+	// Freeze when both buttons pressed & no more midi measures remain;
 	// unfreeze on the next downbeat after a button is released.
 	bool frozen = false;
 } CircularClock;
@@ -353,7 +353,7 @@ void setup()
 	hc.downbeatTime = micros(); // now!
 	// If buttons are held down when we boot, reset the default measure length
 	if (BOTHPRESSED) {
-		hc.measureLen = 250 * TIMESCALE; 	// default for 120bpm (1 beat per half/second) */
+		hc.measureLen = 250 * TIMESCALE; 	// 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
 	} else {
 		EEPROM.get(eepromBase, hc.measureLen);
 	}
@@ -364,10 +364,7 @@ void setup()
 
 	loopTimer = 0; // why?
 
-	// init this buffer:
-	for (int i=0; i<TAPBUFLEN; i++) {
-		hc.tapIntervals.push(0);
-	}
+	CBINIT(hc.tapIntervals, 0);
 
 	////////
 	// Teensy Audio setup:
@@ -401,7 +398,7 @@ void loop()
 	static int ax, ay, az;
   static int gx, gy, gz;
 
-	unsigned long tapInterval = 0; // could be fewer bits?
+	unsigned long tapInterval = 0; 
 	unsigned long nowTime = loopTimer;
 
 	long instantPos; 
@@ -970,8 +967,9 @@ void loop()
 
 			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playing[0] ? 
-										( playLedState[0] ? "play, wv@" : "(play) wv@" )
-														: "stop, wv");
+										( playLedState[0] ? "play" : "(play)" )
+														: "stop");
+				Dbg_print(" wv@" );
 				Dbg_print(awakePinState);
 #ifdef NONSTOP
 				Dbg_print(nonstop[0] ? " NONSTOP " : "--->");
@@ -981,13 +979,12 @@ void loop()
 				Dbg_print(awakePinState);
 			}
 			Dbg_print(", ");
-			Dbg_print(loops);
-			Dbg_print(" loops, ");
-			Dbg_print(imus);
-			/* Dbg_print(" imus in "); */
-			/* Dbg_print(hc.measureLen); */
-			/* Dbg_print(" us, "); */
-			Dbg_print(" IMUs at ");
+			/* Dbg_print(loops); */
+			/* Dbg_print(" loops, "); */
+			/* Dbg_print(imus); */
+			/* Dbg_print(" IMUs at "); */
+			Dbg_print((float)loops / (float)imus);
+			Dbg_print(" loops/IMU @ ");
 			Dbg_print(USEC2BPM(hc.measureLen));
 			Dbg_print(" BPM, ");
 			Dbg_print(AudioMemoryUsageMax());
@@ -1036,7 +1033,8 @@ void loop()
 }
 
 uint powerNap(){
-	uint who = 0;
+	uint who = 0; 		// Who dares disturb my slumber??
+
 	// Head towards deep sleep:
 
 #ifdef SDEBUG
