@@ -238,8 +238,7 @@ CircularBuffer<bool, 2> led2State;
 CircularBuffer<bool, 2> blinkState; 
 CircularBuffer<bool, 2> pulseState; 
 CircularBuffer<bool, 2> playing; 
-CircularBuffer<bool, 2> playLedState; 
-bool playPinState = LOW; 
+CircularBuffer<bool, 2> decodedPlayLed; 
 #ifdef NONSTOP
 CircularBuffer<bool, 2> nonstop; 
 #endif
@@ -278,7 +277,7 @@ void setup()
 	CBINIT(nonstop, 0);
 #endif
 	CBINIT(playing, 0);
-	CBINIT(playLedState, 0);
+	CBINIT(decodedPlayLed, 0);
 
 	///////
 	// IMU setup:
@@ -424,7 +423,7 @@ void loop()
 #ifdef NONSTOP
 	CBNEXT(nonstop);
 #endif
-	CBNEXT(playLedState);
+	CBNEXT(decodedPlayLed);
 	CBNEXT(playing); 
 	CBNEXT(pulseState); 
 
@@ -488,13 +487,11 @@ void loop()
 	mtc.frameCheck();
 #endif
 
-	// Decode the state of the PO Play LED from the pin signal:
-	// This pin is low when not playing, but when playing it's actually flickering,
-	// so we can't just read it as logic.
-	playPinState = digitalRead(PO_play);
-	if (playPinState) { // lit
+	// Decode the state of PO Play from the LED signal:
+	// This pin is low when not playing, but when playing ... it's complicated.
+	if (digitalRead(PO_play)) { // lit
 		playPinTimer = 0;
-		CBSET(playLedState, playPinState);
+		CBSET(decodedPlayLed, HIGH);
 		/* Dbg_println("BLINK");//DEBUG */
 
 	} else {						// unlit
@@ -534,10 +531,10 @@ void loop()
 #endif
 #endif
 
-			CBSET(playLedState, playPinState);
+			CBSET(decodedPlayLed, LOW); // unlit
 
 			// DEBUG
-			if(playLedState[1]){
+			if(CBFELL(decodedPlayLed)){
 				Dbg_print("play led off for");
 				Dbg_print(playPinTimer);
 				Dbg_print(" during meaure of ");
@@ -545,33 +542,31 @@ void loop()
 				Dbg_println("us");
 			}
 
-		} else { // no change this loop
-			CBNEXT(playLedState);
 		}
 	}
 
-	// calculate if we're playing or not, based on playLedState, buttons and NONSTOP:
+	// calculate if we're playing or not, based on decodedPlayLed, buttons and NONSTOP:
 
 	// If the play light just lit,
-	if (CBROSE(playLedState)) {
+	if (CBROSE(decodedPlayLed)) { 
 		// set PLAYING.
 		CBSET(playing, true);
 		Dbg_println("START");
 #ifdef NONSTOP
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
-			CBSET(nonstop, true);
+			CBSET(nonstop, true); // TODO: maybe don't want this in EVT4 now that we have a button ...
 		}
 #endif
 
 	// otherwise, if the play light just unlit,
-	} else if (CBFELL(playLedState) ){ // TODO: better to test 'playing' than 'playLedState' here?
+	} else if (CBFELL(decodedPlayLed) ){ 
 #ifdef NONSTOP
 		// if both buttons are held down when play LED unlit
 		if (BOTHPRESSED) {
 			// clear PLAYING, NONSTOP
 			CBSET(playing, false);
-		 	CBSET(nonstop, false);
+		 	CBSET(nonstop, false); // TODO: maybe don't want this in EVT4 now that we have a button ...
 			Dbg_println("STOP");
 		} else if (!nonstop[0]) { 
 			// stop:
@@ -590,7 +585,7 @@ void loop()
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
 		if (nonstop[0]) {
 			CBSET(nonstop, false);
-			if (!playLedState[0]) {// if PO not currently playing,
+			if (!decodedPlayLed[0]) {// if PO not currently playing,
 				CBSET(playing, false); // stop when notstop is deactivated.
 			}
 		}
@@ -967,7 +962,7 @@ void loop()
 
 			if (awakePinState >= awakePinThreshold) {   
 				Dbg_print(playing[0] ? 
-										( playLedState[0] ? "play" : "(play)" )
+										( decodedPlayLed[0] ? "play" : "(play)" )
 														: "stop");
 				Dbg_print(" wv@" );
 				Dbg_print(awakePinState);
