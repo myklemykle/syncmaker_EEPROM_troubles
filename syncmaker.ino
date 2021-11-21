@@ -1060,6 +1060,7 @@ uint powerNap(){
 		who = Snooze.deepSleep(s_config);
 		awakePinState = analogRead(PO_wake);
 		btn2.update();
+		btn2pressed = (btn2.read() == LOW);
 	} while (awakePinState < awakePinThreshold && (! btn2pressed));
 
 	// detach from buttons
