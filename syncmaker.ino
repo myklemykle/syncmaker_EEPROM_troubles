@@ -27,7 +27,8 @@
 NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
 #define COUNT_PER_G 4096 // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
-const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
+//const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
+const int shakeThreshold = (COUNT_PER_G * 100) / 80 ; 			 // a little more sensitive
 const int tapThreshold = 2 * COUNT_PER_G;
 CircularBuffer<long, 2> inertia;
 // TODO: shaken should be the start of sound moment, 
