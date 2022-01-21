@@ -608,8 +608,22 @@ void loop()
 		//cc.circlePos = 0.0;
 		cc.circlePos = 0;
 #ifdef MIDICLOCK
+		/* usbMIDI.sendRealTime(usbMIDI.Start); */
+		/* usbMIDI.sendRealTime(usbMIDI.Clock); */
+
+		/* I haven't yet found good guidance for this bit,
+			 but it really appears that Live 10 treats the Start and Stop
+			 messages as if they were also clock beats.  So sending Clock 
+			 and Start in quick succession was making Live briefly think the tempo 
+			 was super-high, leading to an initial stutter.  I changed this
+			 and it now sounds much better.
+			 FWIW I think there's a matching problem with Stop; we don't sync it to
+			 where the MTC clock pulse would be, which is why sometimes when
+			 I hit stop Live sets the tempo super high -- but it's stopped, 
+			 so it's not really a problem.  Nevertheless,
+			 I should find some other test cases than Live ...  */
+
 		usbMIDI.sendRealTime(usbMIDI.Start);
-		usbMIDI.sendRealTime(usbMIDI.Clock);
 #endif
 #ifdef MIDITIMECODE
 		// rewind time to zero
