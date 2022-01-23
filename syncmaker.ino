@@ -134,11 +134,10 @@ const unsigned long strobeOnLen = 500;
 const unsigned long strobeOffLen = 100 * TIMESCALE;
 const unsigned long pulseLen = 5 * TIMESCALE; 		
 const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
-#ifdef PO1X
-//const unsigned long playFlickerTime = 100 * TIMESCALE; 
-// was seeing periods of 100050, etc.
-const unsigned long playFlickerTime = 150 * TIMESCALE; 
-#endif
+
+// duration of the off-cycle of the Play button PWM wave
+//const unsigned long pwmOffTime = 100 * TIMESCALE; 
+const unsigned long pwmOffTime = 150 * TIMESCALE; 
 
 // convert a time interval between beats to BPM:
 //#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  
@@ -151,8 +150,8 @@ const unsigned long playFlickerTime = 150 * TIMESCALE;
 // Timers:
 elapsedMicros loopTimer;
 elapsedMicros playPinTimer;
+elapsedMicros pwmOffTimer;
 elapsedMicros awakeTimer;
-
 
 #ifdef IMU_INTERRUPTS
 volatile bool imu_ready = false;
@@ -246,7 +245,19 @@ CircularBuffer<bool, 2> nonstop;
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
 
+unsigned long playPinOnTime = 0, playPinOffTime = 0;
 
+// These are groups of PO models that have the same/similar Play LED animation behaviour:
+// These keep the LED steady on when playing (with caveats):
+#define MGRP_A 1 //PO12,PO14,PO16
+// These keep the LED mostly off, and just flash it every 4 beats:
+#define MGRP_B 2 //PO22,24,28,33
+// These keep the LED mostly on, but wink it off every 4 beats:
+#define MGRP_C 3 //PO32,35
+// Unknown/not detected yet:
+#define MGRP_AUTO 0
+
+unsigned char poModelGroup = MGRP_AUTO;
 
 #ifdef SDEBUG
 // tracking of CPU performance
@@ -490,95 +501,103 @@ void loop()
 
 	// Decode the state of PO Play from the LED signal:
 	// This pin is low when not playing, but when playing ... it's complicated.
-	if (digitalRead(PO_play)) { // lit
-		playPinTimer = 0;
-		CBSET(decodedPlayLed, HIGH);
+
+	if (digitalRead(PO_play) == HIGH){
+		pwmOffTimer = 0;
+	 if (!decodedPlayLed[0]) { // if LED is lit, and wasn't before
+		CBSET(decodedPlayLed, HIGH); // decode as on.
+		Dbg_println("led on");
+		/* playPinTimer = 0; */
 		/* Dbg_println("BLINK");//DEBUG */
+	 }
 
-	} else {						// unlit
-
-		// We can read the Play LED volts from the connector, to divine the state of play.
-		// However, animation of the Play LED varies a lot(!) between PO models.
-
-		// The po-12/13/14 are very simple, it's "lit" (actually PWM) whenever playing,
-		// but unfortunately it unlights during play if you press BPM or Pattern.
-
-		// The Speak & Tonic are lit during play, but blink off for about 2 measures every 4 beats, 
-		// and also flicker at other random times, related to volume of the output.
-		// The Speak has the problem that when you press play it doesn't
-		// start right away ... waiting for a pulse or IDK?
-		// OTOH BPM and Pattern do not unlight it.  That's nice.
-
-		// The KO is basically the inverse of that: the LED is only strobed briefly every 2 pulses/4 beats.
-		// The office & maybe other PO-2X series are like that too.
-
-		// Point is, divining the state of play from the LED is hard.  For SB we're going
-		// to hardcode this for the po 11/12/13, which is where we did most of the development.
-		// In the future, we're still hoping to find a debug port that'll give us real infos.
-		// Barring that, we'll try to cleverly infer ...
-
-#ifdef PO1X
-		// PO 11/12/13 approach:
-		// Done flickering? Has play been stopped for 100ms (PWM interval) or longer?
-		if (playPinTimer > playFlickerTime) {
-#else
-#ifdef PO2X
-// (nothing written yet for PO2X)
-#else
-#ifdef TONIC
-		// TONIC/SPEAK approach: 
-		if (playPinTimer > ( (12 * hc.measureLen) / 10) ) { // a litle over one measure
-#endif
-#endif
-#endif
-
-			CBSET(decodedPlayLed, LOW); // unlit
-
-			// DEBUG
-			if(CBFELL(decodedPlayLed)){
-				Dbg_print("play led off for");
-				Dbg_print(playPinTimer);
-				Dbg_print(" during meaure of ");
-				Dbg_print(hc.measureLen);
-				Dbg_println("us");
-			}
-
+	} else if (pwmOffTimer > pwmOffTime) {  // if unlit for longer than a PWM off cycle
+		if (decodedPlayLed[0]){
+			CBSET(decodedPlayLed, LOW); // decode as off
+			Dbg_println("led off");
 		}
 	}
 
+
 	// Decide if we're playing or not, based on decodedPlayLed, buttons and NONSTOP:
 
-	// If the play light just lit,
+	// If the play light just lit, we're playing.  Simple.
 	if (CBROSE(decodedPlayLed)) { 
 		// set PLAYING.
 		CBSET(playing, true);
 		Dbg_println("START");
+		playPinOffTime = playPinTimer;
+		playPinTimer = 0;
+		Dbg_print("play led off for ");
+		Dbg_print(playPinOffTime);
+		Dbg_print(" during meaure of ");
+		Dbg_print(hc.measureLen);
+		Dbg_println("us");
 #ifdef NONSTOP
+#ifndef EVT4  // don't want this in EVT4 now that we have a button ...
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
-			CBSET(nonstop, true); // TODO: maybe don't want this in EVT4 now that we have a button ...
+			CBSET(nonstop, true); 
 		}
 #endif
+#endif
+	}
 
 	// otherwise, if the play light just unlit,
-	} else if (CBFELL(decodedPlayLed) ){ 
-#ifdef NONSTOP
-		// if both buttons are held down when play LED unlit
-		if (BOTHPRESSED) {
-			// clear PLAYING, NONSTOP
-			CBSET(playing, false);
-		 	CBSET(nonstop, false); // TODO: maybe don't want this in EVT4 now that we have a button ...
-			Dbg_println("STOP");
-		} else if (!nonstop[0]) { 
-			// stop:
-			CBSET(playing, false);
-		}
-		  // else ... don't stop not stopping!
-#else
-		CBSET(playing, false);
-#endif
-		Dbg_println("STOP");
+	else if (CBFELL(decodedPlayLed)) { 
+		playPinOnTime = playPinTimer;
+		playPinTimer = 0;
+		Dbg_print("play led on for ");
+		Dbg_print(playPinOnTime);
+		Dbg_print(" during meaure of ");
+		Dbg_print(hc.measureLen);
+		Dbg_println("us");
+	}
 
+#ifdef NONSTOP
+	// otherwise, if the light has been off for a while, and we're not NONSTOPping
+	else if (playing[0] && !decodedPlayLed[0] && !nonstop[0]) { 
+#else
+	else if (playing[0] && !decodedPlayLed[0]) { 
+#endif
+		// We can read the Play LED volts from the connector, to divine the state of play.
+		// However, animation of the Play LED varies a lot(!) between PO models.
+		// So how long we wait before stopping depends on which model we've detected.
+		// Here's a simplified overview:
+
+		// The po-1x series are very simple, The play LED is "lit" (actually PWM) whenever playing,
+		// but unfortunately it unlights during play if you press BPM or Pattern,
+		// which one does when changing pattern or volume while playing.  
+		// So we wait for the LED to be unlit for a full 8 pulses/ 16beats in this case.  
+
+		// The Speak & Tonic are lit during play, but blink off every 4 beats, 
+		// and also flicker at other random times, related to volume of the output.
+		// OTOH BPM and Pattern do not unlight it.  That's nice.
+		// So we only have wait for the LED to be off for longer than length of one of those off blinks.
+
+		// The KO is basically the inverse of that: the LED is only lit briefly every 2 pulses/4 beats.
+		// The office & maybe other PO-2X series are like that too.
+
+		switch (poModelGroup) { 
+		case MGRP_AUTO:
+		case MGRP_A:
+			// has to be off for more than 8 pulses/16 beats
+			if (playPinTimer > 8 * hc.measureLen)
+				CBSET(playing, false);
+			break;
+		case MGRP_B:
+			// has to be off for a bit more than 2 pulses/4 beats 
+			if (playPinTimer > (21 * hc.measureLen) / 20)
+				CBSET(playing, false);
+			break;
+		case MGRP_C:
+			// has to be off for more than the length of a wink ... 500ms?
+			if (playPinTimer > (500 * TIMESCALE))
+				CBSET(playing, false);
+			break;
+		}
+		if (CBFELL(playing))
+			Dbg_println("STOP");
 	}
 
 #ifdef EVT4
@@ -586,9 +605,10 @@ void loop()
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
 		if (nonstop[0]) {
 			CBSET(nonstop, false);
-			if (!decodedPlayLed[0]) {// if PO not currently playing,
-				CBSET(playing, false); // stop when notstop is deactivated.
-			}
+			/* if (!decodedPlayLed[0]) {// if PO not currently playing, */
+			/* 	CBSET(playing, false); // stop when notstop is deactivated. */
+			/* } */
+			// get it on the next loop
 		}
 		else  {
 			CBSET(nonstop, true);
@@ -608,12 +628,13 @@ void loop()
 		//cc.circlePos = 0.0;
 		cc.circlePos = 0;
 #ifdef MIDICLOCK
+
 		/* usbMIDI.sendRealTime(usbMIDI.Start); */
 		/* usbMIDI.sendRealTime(usbMIDI.Clock); */
 
 		/* I haven't yet found good guidance for this bit,
 			 but it really appears that Live 10 treats the Start and Stop
-			 messages as if they were also clock beats.  So sending Clock 
+			 messages as if they were also clock beats.  Sending Clock 
 			 and Start in quick succession was making Live briefly think the tempo 
 			 was super-high, leading to an initial stutter.  I changed this
 			 and it now sounds much better.
@@ -624,6 +645,7 @@ void loop()
 			 I should find some other test cases than Live ...  */
 
 		usbMIDI.sendRealTime(usbMIDI.Start);
+
 #endif
 #ifdef MIDITIMECODE
 		// rewind time to zero

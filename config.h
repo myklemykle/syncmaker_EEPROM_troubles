@@ -14,9 +14,12 @@
 // 1.5) are we hardcoding for a particular model?
 // (in the future I hope we aren't.)
 // (one must be defined!)
-#define PO1X OGFTW
-//#define TONIC AND_OR_SPEAK
-//#define PO2X AND_OR_KO
+// These keep the LED steady on when playing (with caveats):
+//#define MGRP_A PO12,PO14,PO16
+// These keep the LED mostly off, and just flash it every 4 beats:
+//#define MGRP_B PO22,24,28,33
+// These keep the LED mostly on, but wink it off every 4 beats:
+//#define MGRP_C PO32,35
 	
 
 ///////////////////
