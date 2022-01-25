@@ -138,6 +138,7 @@ const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double
 // duration of the off-cycle of the Play button PWM wave
 //const unsigned long pwmOffTime = 100 * TIMESCALE; 
 const unsigned long pwmOffTime = 150 * TIMESCALE; 
+// But this should really be just 1ms ... once we fix measurement.
 
 // convert a time interval between beats to BPM:
 //#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )  
@@ -157,6 +158,7 @@ elapsedMicros awakeTimer;
 volatile bool imu_ready = false;
 #else
 elapsedMicros imuClock;
+#endif
 
 #ifdef IMU_8KHZ
 const int imuClockTick = 125; // 8khz data rate 
@@ -164,7 +166,6 @@ const int imuClockTick = 125; // 8khz data rate
 const int imuClockTick = 500; // 2khz data rate
 #endif
 
-#endif
 
 
 
@@ -245,7 +246,7 @@ CircularBuffer<bool, 2> nonstop;
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
 
-unsigned long playPinOnTime = 0, playPinOffTime = 0;
+unsigned long decodedPlayOnTime = 0, decodedPlayOffTime = 0;
 
 // These are groups of PO models that have the same/similar Play LED animation behaviour:
 // These keep the LED steady on when playing (with caveats):
@@ -506,18 +507,13 @@ void loop()
 		pwmOffTimer = 0;
 	 if (!decodedPlayLed[0]) { // if LED is lit, and wasn't before
 		CBSET(decodedPlayLed, HIGH); // decode as on.
-		Dbg_println("led on");
-		/* playPinTimer = 0; */
-		/* Dbg_println("BLINK");//DEBUG */
 	 }
 
 	} else if (pwmOffTimer > pwmOffTime) {  // if unlit for longer than a PWM off cycle
 		if (decodedPlayLed[0]){
 			CBSET(decodedPlayLed, LOW); // decode as off
-			Dbg_println("led off");
 		}
 	}
-
 
 	// Decide if we're playing or not, based on decodedPlayLed, buttons and NONSTOP:
 
@@ -526,13 +522,13 @@ void loop()
 		// set PLAYING.
 		CBSET(playing, true);
 		Dbg_println("START");
-		playPinOffTime = playPinTimer;
+		decodedPlayOffTime = playPinTimer;
 		playPinTimer = 0;
-		Dbg_print("play led off for ");
-		Dbg_print(playPinOffTime);
-		Dbg_print(" during meaure of ");
-		Dbg_print(hc.measureLen);
-		Dbg_println("us");
+		/* Dbg_print("play led off for "); */
+		/* Dbg_print(decodedPlayOffTime); */
+		/* Dbg_print(" during meaure of "); */
+		/* Dbg_print(hc.measureLen); */
+		/* Dbg_println("us"); */
 #ifdef NONSTOP
 #ifndef EVT4  // don't want this in EVT4 now that we have a button ...
 		// if both buttons are held down when play LED lit
@@ -545,13 +541,13 @@ void loop()
 
 	// otherwise, if the play light just unlit,
 	else if (CBFELL(decodedPlayLed)) { 
-		playPinOnTime = playPinTimer;
+		decodedPlayOnTime = playPinTimer;
 		playPinTimer = 0;
-		Dbg_print("play led on for ");
-		Dbg_print(playPinOnTime);
-		Dbg_print(" during meaure of ");
-		Dbg_print(hc.measureLen);
-		Dbg_println("us");
+		/* Dbg_print("play led on for "); */
+		/* Dbg_print(decodedPlayOnTime); */
+		/* Dbg_print(" during meaure of "); */
+		/* Dbg_print(hc.measureLen); */
+		/* Dbg_println("us"); */
 	}
 
 #ifdef NONSTOP
@@ -582,23 +578,51 @@ void loop()
 		case MGRP_AUTO:
 		case MGRP_A:
 			// has to be off for more than 8 pulses/16 beats
-			if (playPinTimer > 8 * hc.measureLen)
+			if (playPinTimer > (81 * hc.measureLen) / 10) { 
 				CBSET(playing, false);
+				Dbg_println("STOP grp A");
+			}
 			break;
 		case MGRP_B:
 			// has to be off for a bit more than 2 pulses/4 beats 
-			if (playPinTimer > (21 * hc.measureLen) / 20)
+			if (playPinTimer > (21 * hc.measureLen) / 10) {
 				CBSET(playing, false);
+				Dbg_println("STOP grp B");
+			}
 			break;
 		case MGRP_C:
-			// has to be off for more than the length of a wink ... 500ms?
-			if (playPinTimer > (500 * TIMESCALE))
+			// has to be off for more than the length of a wink ... 100ms?
+			if (playPinTimer > (100 * TIMESCALE)) { 
 				CBSET(playing, false);
+				Dbg_println("STOP grp C");
+			}
 			break;
 		}
-		if (CBFELL(playing))
+
+		if (CBFELL(playing)) { 
 			Dbg_println("STOP");
+			decodedPlayOnTime = decodedPlayOffTime = 0;   // reset to "not measured yet" state
+		}
 	}
+
+	// waiting until play_led detection is more reliable ...
+  /* // can we detect the PO model group from play LED behavior yet? */
+  /* if ((poModelGroup == MGRP_AUTO) && playing[0]) { */
+  /*   if (decodedPlayOnTime > 2 * hc.measureLen) {  // only group A keeps the play light on this long without blinking it. */
+  /*     poModelGroup = MGRP_A; */
+  /*     Dbg_println("########## Detected Model Group A"); */
+  /*   } */
+  /*   else if (0 < decodedPlayOnTime < 80  // group B never lights the led longer than 60us */
+  /*       && ((decodedPlayOnTime + decodedPlayOffTime) >> 3 == (2*hc.measureLen) >> 3)) { // right shifting make these match within a ballpark of +- 12% */
+  /*     poModelGroup = MGRP_B; */
+  /*     Dbg_println("########## Detected Model Group B"); */
+  /*   } */
+  /*   else if (0 < decodedPlayOffTime < 80  // group B never turns off the led longer than 60us */
+  /*       && ((decodedPlayOnTime + decodedPlayOffTime) >> 3 == (2*hc.measureLen) >> 3)) { // right shifting make these match within a ballpark of +- 12% */
+  /*     poModelGroup = MGRP_C; */
+  /*     Dbg_println("########## Detected Model Group C"); */
+  /*   } */
+  /* } */
 
 #ifdef EVT4
 #ifdef NONSTOP
