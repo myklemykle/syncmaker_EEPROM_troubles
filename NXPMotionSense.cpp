@@ -1,6 +1,5 @@
 // hacked for ICM-42605
 
-#include "config.h"
 
 #include "ICM42605/ICM42605_LIS2MDL_LPS22HB_Dragonfly/ICM42605.h"
 #define ICM42605_I2C_ADDR0 0b1101000

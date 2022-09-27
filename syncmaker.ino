@@ -2,8 +2,8 @@
 #include "config.h"
 
 #define NONSTOP ijustcantstopit 
-
 #include <CircularBuffer.h>
+
 
 // utils for handling loop variables:
 #define CBINIT(cb, val) 	while(!cb.isFull()) cb.push(val) 
@@ -38,15 +38,10 @@ CircularBuffer<long, 2> inertia;
 
 
 // Sleep/hibernation:
-#include <Snooze.h>
-SnoozeDigital s_digital;
-SnoozeTimer s_timer;
-SnoozeBlock s_config(s_timer);
-// This is the codec power supply that's regulated lower than the main supply.
-// i'm reading this as 778 when on usb power & awake ... 
-// then down to 300-ish when board sleeps.
-const unsigned int awakePinThreshold = 400;
+#include "sleep.h"
 
+#ifdef TEENSY32
+// Teensy audio!
 #include <Audio.h>
 // GUItool: end automatically generated code
 AudioSynthNoiseWhite     noise1;         //xy=110,301
@@ -60,19 +55,28 @@ AudioConnection          patchCord1(noise1, amp1);
 /* AudioConnection          patchCord4(mixer1, dac1); */ //DEBUG
 AudioConnection          patchCord2(amp1, dac1); 
 // GUItool: end automatically generated code
+#else
+// TODO: rp2040 audio
+#endif
 
 
 // Buttons:
 #include "Bounce2.h"
 const int debounceLen = 2; // milliseconds
+
+// side buttons
 Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
 bool btn1pressed = false, btn2pressed = false;
 
-#ifdef EVT4
+#ifdef NONSTOP
+// nonstop button
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
-// using these to bit-bang PWM, to dim the LED on EVT4 boards:
+#endif
+
+#ifdef EVT4
+// bit-banging PWM, to dim the LED on EVT4 boards:
 unsigned long nonstopLedPWMClock;
 bool nonstopLedPWMState = false;
 #define NSLEDPWM_ON 300 // usec
@@ -82,50 +86,6 @@ bool nonstopLedPWMState = false;
 #define BOTHPRESSED 	( btn1pressed && btn2pressed )
 #define EITHERPRESSED ( btn1pressed || btn2pressed )
 #define EITHERNOTPRESSED ( ! BOTHPRESSED )
-
-
-// Pins:
-#ifdef EVT4
-const int button1Pin = 22;   // sw1
-const int button2Pin = 21;   // sw2
-const int boardLedPin = 13;	// builtin led on Teensy 3.2
-const int led1Pin =  15;    // led1
-const int led2Pin =  8;    // led2
-const int button3Pin = 0;   // nonstop
-const int nonstopLedPin = 1; // nonstop led
-const int pulsePin1 = 20; 	// j1 tip / l_sync_out
-const int pulsePin2 = 23; 		// j2 tip / r_sync_out
-const int PO_play = 16; 		// goes high on PO play (runs to play LED)
-const int PO_wake = 14;			// goes low when PO sleeps I think
-const int PO_reset = 7;			
-const int PO_SWCLK = 6;			// jtag/stlink pins:
-const int PO_SWDIO = 5;
-const int PO_SWO   = 4;
-/* const int IMU_fsync = -1;   // not connected on evt4 */
-const int IMU_int = 2;
-const int SPI_clock = 13;
-const int SPI_cs = 10;
-const int SPI_miso = 12;
-const int SPI_mosi = 11;
-#else
-const int button1Pin = 0;   // sw1
-const int button2Pin = 9;   // sw2
-const int boardLedPin = 13;	// builtin led on Teensy 3.2
-const int led1Pin =  21;    // led1
-const int led2Pin =  20;    // led2
-const int pulsePin1 = 11; 	// j1 tip
-const int pulsePin2 = 8; 		// j2 tip
-const int PO_play = 16; 		// goes high on PO play (runs to play LED)
-const int PO_wake = 17;			// goes low when PO sleeps I think
-const int PO_reset = 7;			
-const int PO_SWCLK = 6;			// jtag/stlink pins:
-const int PO_SWDIO = 5;
-const int PO_SWO   = 4;
-const int IMU_fsync = 1;   // need to ground this on icm-42605
-const int IMU_int = 2;
-#endif
-
-
 
 // Important time intervals:
 const unsigned int TIMESCALE = 1000; // uS per ms
@@ -325,8 +285,8 @@ void setup()
 	//
   pinMode(led1Pin, OUTPUT);       // led1
   pinMode(led2Pin, OUTPUT);       // led2
-  pinMode(pulsePin1, OUTPUT);       // j1 tip
-  pinMode(pulsePin2, OUTPUT);       // j2 tip
+  pinMode(tip1, OUTPUT);       // j1 tip
+  pinMode(tip2, OUTPUT);       // j2 tip
   pinMode(button1Pin, INPUT_PULLUP); // sw1
   pinMode(button2Pin, INPUT_PULLUP); // sw2
 #ifdef EVT4
@@ -397,12 +357,7 @@ void setup()
 	// anyway I still get background noise when running off battery.
 	// TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 
-	////////////
-	// Sleep setup:
-	s_digital.pinMode(button2Pin, INPUT_PULLUP, FALLING);  // NO-OP; wake from deepSleep not supported on this pin.
-	s_timer.setTimer(5000); 
-	/* s_compare.pinMode(PO_wake, HIGH, 1.65); */ // comparison wake from deepSleep not supported on this pin.
-
+	sleep_setup();
 }
 
 void loop()
@@ -1004,8 +959,8 @@ void loop()
 	if (CBDIFF(pulseState)) {
 		if (playing[0]) { 
 			// send sync pulse on both pins
-			digitalWrite(pulsePin1, pulseState[0]);
-			digitalWrite(pulsePin2, pulseState[0]);
+			digitalWrite(tip1, pulseState[0]);
+			digitalWrite(tip2, pulseState[0]);
 		}
 
 		// print benchmarks when pulse goes high.
@@ -1086,65 +1041,5 @@ void loop()
 #endif
 		
 	}
-}
-
-uint powerNap(){
-	uint who = 0; 		// Who dares disturb my slumber??
-
-	// Head towards deep sleep:
-
-#ifdef SDEBUG
-	Dbg_println("zzzzz.");
-	delay(100);
-#endif
-
-	// turn off LEDs
-	digitalWrite(led1Pin, LOW);
-	digitalWrite(led2Pin, LOW);
-	digitalWrite(boardLedPin, LOW);
-#ifdef EVT4
-	digitalWrite(nonstopLedPin, LOW);
-#endif
-
-	// disable interrupts from accelerometer
-	/* detachInterrupt(IMU_int); */
-	delay(100);
-	// sleep accelerometer
-	imu.sleep();
-
-	// attach to buttons for button wakeup
-	s_config += s_digital;
-
-	do {
-		// sleep N seconds or until right button wakes us
-		who = Snooze.deepSleep(s_config);
-		awakePinState = analogRead(PO_wake);
-		btn2.update();
-		btn2pressed = (btn2.read() == LOW);
-	} while (awakePinState < awakePinThreshold && (! btn2pressed));
-
-	// detach from buttons
-	s_config -= s_digital;
-
-	// wake accelerometer
-	imu.wake();
-
-	// reattach interrupts
-	/* attachInterrupt(IMU_int, imu_int, FALLING); */
-
-	// reset some counters
-	//hc.downbeatTime += (nowTime - thenTime);
-
-#ifdef SDEBUG
-	if (!Serial) { 
-		delay(100); 
-	}
-	Dbg_println("good morning!");
-#endif
-
-	// LEDs will be restored on next loop.
-
-	awakeTimer = 0;
-	return who; // loop again!
 }
 

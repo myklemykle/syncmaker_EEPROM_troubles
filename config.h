@@ -3,6 +3,9 @@
 /////////////////
 // 1) the big question: what board are we building for?
 //
+// is it v6: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
+//#define V6 pleasebethelastone
+//
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
 #define EVT4 itsathing
 //	
@@ -55,9 +58,16 @@
 //////////// ////////////// ////////////// ////////////// //////////////
 
 
+#ifdef V6
+#define RP2040
+#else
+#define TEENSY32
+#endif
+
 
 // using SPI for IMU?  (default is i2c)
-#ifdef EVT4
+#if defined(EVT4) || defined(V6)
+#define NONSTOP justcantstopit
 #define IMU_SPI cuzitsgroovy!
 // I don't yet perceive any improvement over 2khz, for the record
 //#define IMU_8KHZ fasterpussycat!
@@ -80,3 +90,5 @@
 #ifdef MIDITIMECODE
 #include "miditimecode.cpp"
 #endif
+
+#include "pins.h"
