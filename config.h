@@ -68,6 +68,7 @@
 // using SPI for IMU?  (default is i2c)
 #if defined(EVT4) || defined(V6)
 #define NONSTOP justcantstopit
+#define NONSTOPBUTTON pressmepressme
 #define IMU_SPI cuzitsgroovy!
 // I don't yet perceive any improvement over 2khz, for the record
 //#define IMU_8KHZ fasterpussycat!

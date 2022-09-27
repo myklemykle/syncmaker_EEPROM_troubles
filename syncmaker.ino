@@ -1,11 +1,8 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include "config.h"
 
-#define NONSTOP ijustcantstopit 
-#include <CircularBuffer.h>
-
-
 // utils for handling loop variables:
+#include <CircularBuffer.h>
 #define CBINIT(cb, val) 	while(!cb.isFull()) cb.push(val) 
 #define CBSET(cb, val) { cb.shift(); cb.unshift(val); }
 #define CBPUSH(cb, val) ( cb.unshift(val) )
@@ -86,6 +83,12 @@ bool nonstopLedPWMState = false;
 #define BOTHPRESSED 	( btn1pressed && btn2pressed )
 #define EITHERPRESSED ( btn1pressed || btn2pressed )
 #define EITHERNOTPRESSED ( ! BOTHPRESSED )
+
+#ifdef V6
+// reset button
+Bounce btn4 = Bounce();
+bool btn4pressed = false;
+#endif
 
 // Important time intervals:
 const unsigned int TIMESCALE = 1000; // uS per ms
@@ -237,7 +240,9 @@ void setup()
 {
   Serial.begin(115200);
 	delay(1000);
-#ifdef EVT4
+#ifdef V6
+	Dbg_println("flashed for v6 board");
+#elif defined(EVT4)
 	Dbg_println("flashed for EVT4 board");
 # else
 	Dbg_println("flashed for rev3 board");
@@ -375,6 +380,9 @@ void loop()
 
 	static int midiMeasuresRemaining = 0;
 
+#ifdef V6
+	// TODO: check the resolution of the rp2040 analogRead 
+#else
 	// go to sleep if the PO_wake pin is low:
 	awakePinState = analogRead(PO_wake); 
 
@@ -383,6 +391,7 @@ void loop()
 		powerNap();
 		return;
 	}
+#endif
 
 	// shift outer loop states:
 	CBNEXT(blinkState);
@@ -437,9 +446,14 @@ void loop()
 		/* 	Dbg_println(inertia[0]); */
 #endif
 
+#ifdef V6
+		// TODO: make noise
+#endif
+#ifdef TEENSY32
 		// use the inertia (minus gravity) to set the volume of the pink noise generator 
 		//amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
 		amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.0));
+#endif
 
 		///////////////////////////////////
 		// other things to be done at IMU interrupt rate (2000hz) : 
@@ -485,7 +499,7 @@ void loop()
 		/* Dbg_print(hc.measureLen); */
 		/* Dbg_println("us"); */
 #ifdef NONSTOP
-#ifndef EVT4  // don't want this in EVT4 now that we have a button ...
+#ifndef NONSTOPBUTTON 
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
 			CBSET(nonstop, true); 
@@ -785,12 +799,12 @@ void loop()
 	}
 
 #ifdef NONSTOP
-#ifdef EVT4
 	if (!nonstop[0]) {
 		if (CBDIFF(nonstop)) {
 			digitalWrite(nonstopLedPin, LOW);
 		}
 	} else { // nonstop!
+#ifdef EVT4
 		// ghetto PWM because the LED is too bright on this board ...
 		// blink on & off every N usec
 		if (nonstopLedPWMState) { // is on now
@@ -805,11 +819,15 @@ void loop()
 			}
 		}
 		digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW );
-	}
+#elif defined(V6)
+		// TODO: dim this precisely with PWM/analogWrite 
+		digitalWrite(nonstopLedPin, HIGH);
 #else
+		digitalWrite(nonstopLedPin, HIGH);
 	// fix brightness in hardware, do something simple here.
 	// and/or: always put LEDs on PWM pins!
 #endif
+	}
 #endif
 
 	//////////
