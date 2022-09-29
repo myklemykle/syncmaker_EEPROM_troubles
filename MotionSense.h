@@ -6,10 +6,10 @@
 
 // TODO: move these inside class namespace
 #define G_PER_COUNT            0.0001220703125f  // = 1/8192
-#define DEG_PER_SEC_PER_COUNT  0.0625f  // = 1/16
 #define UT_PER_COUNT           0.1f
+#define DEG_PER_SEC_PER_COUNT  0.0625f  // = 1/16
 
-class NXPMotionSense {
+class MotionSense {
 public:
 	bool begin();
 	bool sleep() {
@@ -103,16 +103,30 @@ public:
 	}
 private:
 	void update();
+
 	bool FXOS8700_begin();
-	bool ICM42605_begin();
-	bool ICM42605_sleep();
-	bool ICM42605_wake();
 	bool FXAS21002_begin();
 	bool MPL3115_begin();
+	bool ICM42605_begin();
+#ifdef IMU_LSM6DSO32X
+	bool LSM6DSO32X_begin();
+#endif
+
 	bool FXOS8700_read(int16_t *data);
-	bool ICM42605_read(int16_t *data);
 	bool FXAS21002_read(int16_t *data);
 	bool MPL3115_read(int32_t *altitude, int16_t *temperature);
+	bool ICM42605_read(int16_t *data);
+#ifdef IMU_LSM6DSO32X
+	bool LSM6DSO32X_read(int16_t *data);
+#endif
+
+	bool ICM42605_sleep();
+	bool ICM42605_wake();
+#ifdef IMU_LSM6DSO32X
+	bool LSM6DSO32X_sleep();
+	bool LSM6DSO32X_wake();
+#endif
+
 	float cal[16]; // 0-8=offsets, 9=field strength, 10-15=soft iron map
 	int16_t accel_mag_raw[6];
 	int16_t gyro_raw[3];

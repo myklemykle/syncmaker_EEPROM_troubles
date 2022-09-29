@@ -16,12 +16,8 @@
 
 
 // IMU Gesture Detection:
-#include "NXPMotionSense.h" // hacked version of this Teensy Prop Shield lib;
-														// set to higher data rate, 
-														// ignores other two IMU chips 
-														// Should be renamed, refactored, etc.
-
-NXPMotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
+#include "MotionSense.h" 
+MotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
 #define COUNT_PER_G 4096 // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
 //const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G

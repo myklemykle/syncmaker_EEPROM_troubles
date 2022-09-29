@@ -1,3 +1,6 @@
+#ifndef __syncmaster_config_h
+#define __syncmaster_config_h
+
 // CONFIG AREA:
 //
 /////////////////
@@ -59,9 +62,11 @@
 
 
 #ifdef V6
-#define RP2040
+#define RP2040 /* mcu is raspPi */
+#define IMU_LSM6DSO32X /* imu from TDK */
 #else
-#define TEENSY32
+#define TEENSY32 /* mcu is a NXP cortex-m4 */
+#define IMU_ICM42605 /* imu from STMicro */
 #endif
 
 
@@ -93,3 +98,5 @@
 #endif
 
 #include "pins.h"
+
+#endif /* __syncmaster_config_h */

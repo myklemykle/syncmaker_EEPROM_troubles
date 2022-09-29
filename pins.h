@@ -1,3 +1,7 @@
+#ifndef __syncmaster_pins.h
+#define __syncmaster_pins.h
+
+
 // Pins:
 #ifdef V6
 const int button1Pin = 10;   // sw1 = gpio10
@@ -62,3 +66,5 @@ const int PO_SWO   = 4;
 const int IMU_fsync = 1;   // need to ground this on icm-42605
 const int IMU_int = 2;
 #endif
+
+#endif /* __syncmaster_pins */
