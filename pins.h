@@ -1,5 +1,5 @@
-#ifndef __syncmaster_pins.h
-#define __syncmaster_pins.h
+#ifndef __syncmaster_pins_h
+#define __syncmaster_pins_h
 
 
 // Pins:
@@ -23,8 +23,8 @@ const int PO_SWCLK = 1;			// jtag/stlink pins:
 const int PO_SWDIO = 2;
 const int PO_SWO   = 3;
 const int IMU_int = 11;
-const int SPI_clock = 13;
-const int SPI_cs = 14;
+const int SPI_clock = 14;
+const int SPI_cs = 13;
 const int SPI_miso = 12;
 const int SPI_mosi = 15;
 #elif defined(EVT4)
