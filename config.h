@@ -49,6 +49,9 @@
 #define IMU_INTERRUPTS excuseme!
 
 
+//////////////////////
+// 5) should we try to manage IMU calibration data?
+//#define IMU_CALIBRATION sweepingthenation
 
 
 
@@ -64,9 +67,11 @@
 #ifdef V6
 #define RP2040 /* mcu is raspPi */
 #define IMU_LSM6DSO32X /* imu from TDK */
+#define SPIPORT SPI1 /* from RP2040's SPI.h */
 #else
 #define TEENSY32 /* mcu is a NXP cortex-m4 */
 #define IMU_ICM42605 /* imu from STMicro */
+#define SPIPORT SPI // from Teensy's SPI.h 
 #endif
 
 
