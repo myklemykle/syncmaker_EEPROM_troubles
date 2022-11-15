@@ -1,3 +1,5 @@
+#ifndef sleep_h
+#define sleep_h
 
 // Sleep/hibernation:
 //
@@ -25,3 +27,4 @@ void sleep_setup();
 //
 unsigned int powerNap();
 
+#endif

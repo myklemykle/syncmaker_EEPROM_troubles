@@ -686,6 +686,13 @@ void loop()
 					if (tapInterval > (1.5 * hc.measureLen)) {
 						tapInterval /= 2;
 					}
+					// TODO: have to allow quarter-time & 1/8 time as well ...
+					// and in single-button mode there should be a limit to how much the tempo can change,
+					// which this section also enforces ...  so some percentage max change in single-button mode, say 25%
+#define SINGLEMAXCHANGE 0.25 // 25%
+					// so the window for normal time is measurelen*(1-SINGLEMAXCHANGE) < tapInterval < measurelen*(1 + SINGLEMAXCHANGE),
+					// for half time : measurelen*(2-SINGLEMAXCHANGE) < tapInterval < measurelen*(2 + SINGLEMAXCHANGE),
+					// for quarter time : measurelen*(4-SINGLEMAXCHANGE) < tapInterval < measurelen*(4 + SINGLEMAXCHANGE),
 				}
 				// Othwerwise assume full time (1/8 notes)
 

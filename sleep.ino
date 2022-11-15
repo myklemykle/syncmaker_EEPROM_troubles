@@ -1,4 +1,6 @@
 
+#include "sleep.h"
+
 // enter low-power hibernation, 
 // to be woken eithet by any button press or by
 // the PO awake pin going high.
@@ -46,6 +48,7 @@ unsigned int powerNap(){
 	// TODO
 #else
 	s_config += s_digital;
+	s_config += s_timer;
 #endif
 
 	do {
@@ -67,6 +70,7 @@ unsigned int powerNap(){
 	// TODO
 #else
 	s_config -= s_digital;
+	s_config -= s_timer;
 #endif
 
 	// wake accelerometer
