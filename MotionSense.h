@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-// TODO: move these inside class namespace
 #define G_PER_COUNT            0.0001220703125f  // = 1/8192
 #define UT_PER_COUNT           0.1f
 #define DEG_PER_SEC_PER_COUNT  0.0625f  // = 1/16
