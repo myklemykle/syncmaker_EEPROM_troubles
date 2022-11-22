@@ -67,7 +67,7 @@ Bounce btn3 = Bounce();
 bool btn3pressed = false;
 
 #ifdef EVT4
-// bit-banging PWM, to dim the LED on EVT4 boards:
+// bit-banging PWM, to dim the nonstop LED on EVT4 boards:
 unsigned long nonstopLedPWMClock;
 bool nonstopLedPWMState = false;
 #define NSLEDPWM_ON 300 // usec
@@ -297,12 +297,12 @@ void setup()
 	btn2.interval(debounceLen);
 	btn2.update();
 	btn2pressed = (btn2.read() == LOW);
-#ifdef EVT4
+
 	btn3.attach(button3Pin);
 	btn3.interval(debounceLen);
 	btn3.update();
 	btn3pressed = (btn3.read() == LOW);
-#endif
+
 
 	////////
 	// Clock setup:
@@ -406,10 +406,8 @@ void loop()
 				btn1pressed = (btn1.read() == LOW);
 		if (btn2.update())
 				btn2pressed = (btn2.read() == LOW);
-#ifdef EVT4
 		if (btn3.update())
 				btn3pressed = (btn3.read() == LOW);
-#endif
 
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 		CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)) );  // vector amplitude
@@ -995,10 +993,8 @@ void loop()
 			Dbg_print(ay);
 			Dbg_print(", ");
 			Dbg_print(az);
-//#ifdef EVT4
 //		if (btn3pressed)  // DEBUG */
 //			Dbg_print(" Boink!"); // DEBUG */
-//#endif
 
 			Dbg_println(".");
 
