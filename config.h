@@ -6,8 +6,8 @@
 /////////////////
 // 1) the big question: what board are we building for?
 //
-// is it v6: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
-//#define V6 pleasebethelastone
+// is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
+//#define PI_V6 pleasebethelastone
 //
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
 #define EVT4 itsathing
@@ -64,8 +64,8 @@
 //////////// ////////////// ////////////// ////////////// //////////////
 
 
-#ifdef V6
-#define RP2040 /* mcu is raspPi */
+#ifdef PI_V6
+#define MCU_RP2040 /* mcu is raspPi */
 #define IMU_LSM6DSO32X /* imu from TDK */
 #define SPIPORT SPI1 /* from RP2040's SPI.h */
 #else
@@ -76,7 +76,7 @@
 
 
 // using SPI for IMU?  (default is i2c)
-#if defined(EVT4) || defined(V6)
+#if defined(EVT4) || defined(PI_V6)
 #define NONSTOP justcantstopit
 #define NONSTOPBUTTON pressmepressme
 #define IMU_SPI cuzitsgroovy!

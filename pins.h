@@ -3,7 +3,7 @@
 
 
 // Pins:
-#ifdef V6
+#ifdef PI_V6
 const int button1Pin = 10;   // sw1 = gpio10
 const int button2Pin = 24;   // sw2 = gpio24
 const int button3Pin = 0;   // sw3/nonstop

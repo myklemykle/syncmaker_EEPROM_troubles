@@ -6,7 +6,7 @@
 // the PO awake pin going high.
 
 void sleep_setup(){
-#ifdef RP2040
+#ifdef MCU_RP2040
 	// TODO
 #endif
 #ifdef TEENSY
@@ -21,6 +21,9 @@ void sleep_setup(){
 
 unsigned int powerNap(){
 	unsigned int who = 0; 		// Who dares disturb my slumber??
+
+	// HACK FOR THE MO: do not sleep pls.
+	return 0;
 
 	// Head towards deep sleep:
 
@@ -44,7 +47,7 @@ unsigned int powerNap(){
 	imu.sleep();
 
 	// attach to buttons for button wakeup
-#ifdef rp2040
+#ifdef MCU_RP2040
 	// TODO
 #else
 	s_config += s_digital;
@@ -53,7 +56,7 @@ unsigned int powerNap(){
 
 	do {
 		// sleep N seconds or until right button wakes us
-#ifdef rp2040
+#ifdef MCU_RP2040
 	// TODO
 #else
 		who = Snooze.deepSleep(s_config);
@@ -66,7 +69,7 @@ unsigned int powerNap(){
 	} while (awakePinState < awakePinThreshold && (! btn2pressed));
 
 	// detach from buttons
-#ifdef rp2040
+#ifdef MCU_RP2040
 	// TODO
 #else
 	s_config -= s_digital;

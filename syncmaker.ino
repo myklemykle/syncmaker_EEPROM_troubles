@@ -80,7 +80,7 @@ bool nonstopLedPWMState = false;
 #define EITHERPRESSED ( btn1pressed || btn2pressed )
 #define EITHERNOTPRESSED ( ! BOTHPRESSED )
 
-#ifdef V6
+#ifdef PI_V6
 // reset button
 Bounce btn4 = Bounce();
 bool btn4pressed = false;
@@ -199,9 +199,7 @@ CircularBuffer<bool, 2> blinkState;
 CircularBuffer<bool, 2> pulseState; 
 CircularBuffer<bool, 2> playing; 
 CircularBuffer<bool, 2> decodedPlayLed; 
-#ifdef NONSTOP
 CircularBuffer<bool, 2> nonstop; 
-#endif
 //bool awakePinState = HIGH; 
 unsigned int awakePinState = 0; // analog
 
@@ -236,7 +234,7 @@ void setup()
 {
   Serial.begin(115200);
 	delay(1000);
-#ifdef V6
+#ifdef PI_V6
 	Dbg_println("flashed for v6 board");
 #elif defined(EVT4)
 	Dbg_println("flashed for EVT4 board");
@@ -247,9 +245,7 @@ void setup()
 	///////////
 	// initialize loop state:
 	CBINIT(inertia, 0);
-#ifdef NONSTOP
 	CBINIT(nonstop, 0);
-#endif
 	CBINIT(playing, 0);
 	CBINIT(decodedPlayLed, 0);
 
@@ -376,7 +372,7 @@ void loop()
 
 	static int midiMeasuresRemaining = 0;
 
-#ifdef V6
+#ifdef PI_V6
 	// TODO: check the resolution of the rp2040 analogRead 
 #else
 	// go to sleep if the PO_wake pin is low:
@@ -393,9 +389,7 @@ void loop()
 	CBNEXT(blinkState);
 	CBNEXT(led1State);
 	CBNEXT(led2State);
-#ifdef NONSTOP
 	CBNEXT(nonstop);
-#endif
 	CBNEXT(decodedPlayLed);
 	CBNEXT(playing); 
 	CBNEXT(pulseState); 
@@ -442,7 +436,7 @@ void loop()
 		/* 	Dbg_println(inertia[0]); */
 #endif
 
-#ifdef V6
+#ifdef PI_V6
 		// TODO: make noise
 #endif
 #ifdef TEENSY32
@@ -494,13 +488,11 @@ void loop()
 		/* Dbg_print(" during meaure of "); */
 		/* Dbg_print(hc.measureLen); */
 		/* Dbg_println("us"); */
-#ifdef NONSTOP
 #ifndef NONSTOPBUTTON 
 		// if both buttons are held down when play LED lit
 		if (BOTHPRESSED) {
 			CBSET(nonstop, true); 
 		}
-#endif
 #endif
 	}
 
@@ -515,12 +507,8 @@ void loop()
 		/* Dbg_println("us"); */
 	}
 
-#ifdef NONSTOP
 	// otherwise, if the light has been off for a while, and we're not NONSTOPping
 	else if (playing[0] && !decodedPlayLed[0] && !nonstop[0]) { 
-#else
-	else if (playing[0] && !decodedPlayLed[0]) { 
-#endif
 		// We can read the Play LED volts from the connector, to divine the state of play.
 		// However, animation of the Play LED varies a lot(!) between PO models.
 		// So how long we wait before stopping depends on which model we've detected.
@@ -589,8 +577,6 @@ void loop()
   /*   } */
   /* } */
 
-#ifdef EVT4
-#ifdef NONSTOP
 	if (btn3pressed && btn3.fell()) { // if NONSTOP button pressed,
 		if (nonstop[0]) {
 			CBSET(nonstop, false);
@@ -603,8 +589,6 @@ void loop()
 			CBSET(nonstop, true);
 		}
 	}
-#endif
-#endif
 	
 	/////////
 	// Update the Human Clock & MIDI transport
@@ -801,7 +785,6 @@ void loop()
 		digitalWrite(led2Pin, led2State[0]);
 	}
 
-#ifdef NONSTOP
 	if (!nonstop[0]) {
 		if (CBDIFF(nonstop)) {
 			digitalWrite(nonstopLedPin, LOW);
@@ -822,7 +805,7 @@ void loop()
 			}
 		}
 		digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW );
-#elif defined(V6)
+#elif defined(PI_V6)
 		// TODO: dim this precisely with PWM/analogWrite 
 		digitalWrite(nonstopLedPin, HIGH);
 #else
@@ -831,7 +814,6 @@ void loop()
 	// and/or: always put LEDs on PWM pins!
 #endif
 	}
-#endif
 
 	//////////
 	// Calculate & update the sync pulse
@@ -991,10 +973,8 @@ void loop()
 			Dbg_print(loopTimer);
 			Dbg_print(':');
 #ifdef EVT4
-//#ifdef NONSTOP
 			//Dbg_print(nonstopLedPWMClock);  // DEBUG
 			//Dbg_print(':');  // DEBUG
-//#endif
 #endif
 
 			if (awakePinState >= awakePinThreshold) {   
@@ -1003,9 +983,7 @@ void loop()
 														: "stop");
 				Dbg_print(" wv@" );
 				Dbg_print(awakePinState);
-#ifdef NONSTOP
 				Dbg_print(nonstop[0] ? " NONSTOP " : "--->");
-#endif
 			} else { 
 				Dbg_print("asleep, wv@");
 				Dbg_print(awakePinState);
