@@ -111,11 +111,7 @@ elapsedMicros playPinTimer;
 elapsedMicros pwmOffTimer;
 elapsedMicros awakeTimer;
 
-#ifdef IMU_INTERRUPTS
 volatile bool imu_ready = false;
-#else
-elapsedMicros imuClock;
-#endif
 
 #ifdef IMU_8KHZ
 const int imuClockTick = 125; // 8khz data rate 
@@ -221,12 +217,10 @@ unsigned int loops = 0; // # of main loop cycles between beats
 unsigned int imus = 0; // # number of inertia checks in same.
 #endif
 
-#ifdef IMU_INTERRUPTS
 // IMU interrupt handler:
 void imu_int(){
 	imu_ready = true;
 }
-#endif
 
 void setup()
 {
@@ -265,13 +259,9 @@ void setup()
 	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
 #endif
 
-#ifdef IMU_INTERRUPTS
 	// IMU int pin is open-collector mode
 	pinMode(IMU_int, INPUT_PULLUP);
 	attachInterrupt(IMU_int, imu_int, FALLING);
-#else
-	imuClock = 0;
-#endif
 	
   imu.begin();
 
@@ -398,13 +388,8 @@ void loop()
 #endif
 
 	// Read IMU data if ready:
-#ifdef IMU_INTERRUPTS
 	if (imu_ready) { // on interrupt
 		imu_ready = false;
-#else
-	if (imuClock > imuClockTick) { // on interval
-		imuClock -= imuClockTick;
-#endif
 
 		// IMU inner loop runs once per IMU interrupt, currentlyu 2000hz ...
 

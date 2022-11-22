@@ -45,11 +45,6 @@
 
 
 //////////////////////
-// 4) should the IMU report new data via interrupt?
-#define IMU_INTERRUPTS excuseme!
-
-
-//////////////////////
 // 5) should we try to manage IMU calibration data?
 //#define IMU_CALIBRATION sweepingthenation
 

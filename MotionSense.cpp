@@ -188,9 +188,7 @@ bool MotionSense::LSM6DSO32X_begin(){
 	// TODO: gyro data rate
 	// TODO: gyro sensitivity
 	// 
-#ifdef IMU_INTERRUPTS
 	// TODO: configure interrupt
-#endif
 
 	Serial.println("LSM6DSO32X configured");
 	return true;
@@ -281,7 +279,6 @@ bool MotionSense::ICM42605_begin()
 	if (!write_reg(chip_addr, ICM42605_ACCEL_CONFIG0, 0b00100101)) return false;  // 2khz
 #endif
 
-#ifdef IMU_INTERRUPTS
 	// Interrupt stuff:
 	//
 	// INT_CONFIG1:
@@ -304,7 +301,6 @@ bool MotionSense::ICM42605_begin()
 	if (!write_reg(chip_addr, ICM42605_INT_SOURCE3, 0b00001000)) return false;    // int2 on data ready
 	if (!read_regs(chip_addr, ICM42605_INT_SOURCE3, &reg, 1)) return false;
 	Serial.printf("INT_SOURCE3: %x\n", reg);
-#endif
 
 	// // make sure we're not self-testing ...
 	// if (!read_regs(chip_addr, ICM42605_SELF_TEST_CONFIG, &reg, 1)) return false;
