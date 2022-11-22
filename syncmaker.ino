@@ -62,11 +62,9 @@ Bounce btn1 = Bounce();
 Bounce btn2 = Bounce();
 bool btn1pressed = false, btn2pressed = false;
 
-#ifdef NONSTOP
 // nonstop button
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
-#endif
 
 #ifdef EVT4
 // bit-banging PWM, to dim the LED on EVT4 boards:
@@ -483,7 +481,7 @@ void loop()
 		Dbg_println("START");
 		decodedPlayOffTime = playPinTimer;
 		playPinTimer = 0;
-		/* Dbg_print("play led off for "); */
+		/* Dg_print("play led off for "); */
 		/* Dbg_print(decodedPlayOffTime); */
 		/* Dbg_print(" during meaure of "); */
 		/* Dbg_print(hc.measureLen); */
