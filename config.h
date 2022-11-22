@@ -17,7 +17,7 @@
 //
 
 ////////////////////
-// 1.5) are we hardcoding for a particular model?
+// 1.5) are we hardcoding for a particular model of Pocket Operator?
 // (in the future I hope we aren't.)
 // (one must be defined!)
 // These keep the LED steady on when playing (with caveats):
@@ -47,9 +47,6 @@
 //////////////////////
 // 5) should we try to manage IMU calibration data?
 //#define IMU_CALIBRATION sweepingthenation
-
-
-
 
 
 
