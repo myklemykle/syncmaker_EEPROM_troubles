@@ -1,5 +1,8 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include "config.h"
+#include <Arduino.h>
+
+#include <elapsedMillis.h>
 
 // utils for handling loop variables:
 #include <CircularBuffer.h>
@@ -14,10 +17,35 @@
 #define CBDIFF(cb) ( cb[0] != cb[1] )
 #define CBNEXT(cb) (cb.unshift(cb[0])) 
 
+#ifdef PI_V6
+
+// Adafruit TeensyUSB w/midi:
+#include <Adafruit_TinyUSB.h>
+/* #include <MIDI.h> */
+
+// USB MIDI object
+Adafruit_USBD_MIDI usb_midi;
+
+// Create a new instance of the (generic) Arduino MIDI Library,
+// and attach usb_midi as the transport.
+MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
+// (jeesuz what a hairy-looking macro to do something pretty basic)
+
+#else
+
+// usbMIDI -- defined automatically by Teensy libs.
+
+#endif
 
 // IMU Gesture Detection:
+#ifdef PI_V6
+#include "lsm6dso32x.h"  
+LSM6DSO32X_IMU imu;				// STMicro IMU used from v6 onward
+#else 
 #include "MotionSense.h" 
-MotionSense imu;					// on EVT1, rev2 & rev3 the IMU is an ICM42605 MEMS acc/gyro chip
+MotionSense imu;					// on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
+#endif
+
 #define COUNT_PER_G 4096 // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16 // gyro units
 //const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
@@ -115,6 +143,8 @@ volatile bool imu_ready = false;
 
 #ifdef IMU_8KHZ
 const int imuClockTick = 125; // 8khz data rate 
+#elseif defined(IMU_1.6KHZ)
+const int imuClockTick = 600; // 8khz data rate 
 #else
 const int imuClockTick = 500; // 2khz data rate
 #endif
@@ -176,6 +206,7 @@ const long circleTicksPerClock = CC_INT_RES / MIDICLOCKSPERPULSE;
 #endif
 
 #ifdef MIDITIMECODE
+#include "miditimecode.h"
 	// How often to increment the MTC frame, (1/25 second, the minimum resolution of midi timecode)?
 	// if we declare that 1 second of MTC equals 1 second of PO time at 120bpm, so 2 "beats" per second,
 	// which is actually (when you set PO tempo to 120) one entire 16-note pattern per second, 
@@ -288,6 +319,9 @@ void setup()
 	pinMode(PO_SWDIO, INPUT_PULLUP);
 	pinMode(PO_SWO, INPUT_PULLUP);
 
+
+	// Button setup:
+	//
 	btn1.attach(button1Pin);
 	btn1.interval(debounceLen);
 	btn1.update();
@@ -314,6 +348,15 @@ void setup()
 	} else {
 		EEPROM.get(eepromBase, hc.measureLen);
 	}
+#ifdef PI_V6
+	///////
+	// USB MIDI setup
+	//
+
+	// Initialize MIDI, and listen to all MIDI channels
+  // This will also call usb_midi's begin()
+  MIDI.begin(MIDI_CHANNEL_OMNI);
+#endif
 
 #ifdef MIDITIMECODE
 	mtc.setup();
@@ -323,6 +366,7 @@ void setup()
 
 	CBINIT(hc.tapIntervals, 0);
 
+#ifdef TEENSY32
 	////////
 	// Teensy Audio setup:
 	AudioMemory(2);
@@ -332,6 +376,9 @@ void setup()
 	/* dc1.amplitude(0); */ //DEBUG
 	/* mixer1.gain(0, 1); // noise1 -> amp1 */ //DEBUG
 	/* mixer1.gain(1, 1); // dc1 */ //DEBUG
+#else
+	// rp2040 todo
+#endif
 
 	//https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
 	// Initialize the DAC output pins
@@ -430,7 +477,11 @@ void loop()
 		// other things to be done at IMU interrupt rate (2000hz) : 
 
 	  // MIDI Controllers should discard incoming MIDI messages.
+#ifdef PI_V6
+		while (MIDI.read(MIDI_CHANNEL_OMNI)) {
+#else
 		while (usbMIDI.read()) {
+#endif
 			// read & ignore incoming messages
 		}
 
@@ -598,18 +649,29 @@ void loop()
 			 so it's not really a problem.  Nevertheless,
 			 I should find some other test cases than Live ...  */
 
+#ifdef PI_V6
+		MIDI.sendStart(); 
+#else
 		usbMIDI.sendRealTime(usbMIDI.Start);
+#endif
 
 #endif
 #ifdef MIDITIMECODE
 		// rewind time to zero
 		mtc.rewind();
 #endif
+
 	} else if (CBFELL(playing)) {
 		// user just pressed play button to stop PO.
+
 #ifdef MIDICLOCK
+#ifdef PI_V6
+		MIDI.sendStop();
+#else
 		usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
+#endif
+
 	}
 
 	// downbeatTime is the absolute time of the start of the current pulse.
@@ -843,7 +905,11 @@ void loop()
 			if (cc.frozen) {
 				cc.frozen = false; 					
 #ifdef MIDICLOCK
+#ifdef PI_V6
+				MIDI.sendContinue();
+#else
 				usbMIDI.sendRealTime(usbMIDI.Continue);
+#endif
 #endif
 /* #ifdef MIDITIMECODE */
 			// TODO: Shifting the downbeat (without chaning tempo) in MTC mode ...
@@ -855,7 +921,11 @@ void loop()
 			if (!cc.frozen) {
 				cc.frozen = true;
 #ifdef MIDICLOCK
+#ifdef PI_V6
+				MIDI.sendStop();
+#else
 				usbMIDI.sendRealTime(usbMIDI.Stop);
+#endif
 #endif
 			}
 		}
@@ -863,7 +933,11 @@ void loop()
 		if (cc.frozen) {
 			cc.frozen = false; 					
 #ifdef MIDICLOCK
-			usbMIDI.sendRealTime(usbMIDI.Continue);
+#ifdef PI_V6
+				MIDI.sendContinue();
+#else
+				usbMIDI.sendRealTime(usbMIDI.Continue);
+#endif
 #endif
 /* #ifdef MIDITIMECODE */
 /* 			mtc.sendStamp(); */
@@ -895,7 +969,11 @@ void loop()
 		if (playing[0]) { 
 			if (!cc.frozen) {
 				// emit MIDI clock!
+#ifdef PI_V6
+				MIDI.sendClock();
+#else
 				usbMIDI.sendRealTime(usbMIDI.Clock);
+#endif
 
 				/* if (TAPPED) {  */
 				/* 	Dbg_print("TMC "); */
