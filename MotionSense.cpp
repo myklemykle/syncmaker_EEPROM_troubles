@@ -4,23 +4,17 @@
 //
 #include "config.h"
 
-#ifdef IMU_ICM42605
 #include "ICM42605/ICM42605_LIS2MDL_LPS22HB_Dragonfly/ICM42605.h"
 #define ICM42605_I2C_ADDR0 0b1101000
 #define ICM42605_SPI_CS 10;
-#endif
 #include "config.h"
-
-#ifdef IMU_LSM6DSO32X
-#include "lsm6dso32x-pid/lsm6dso32x_reg.h"
-#endif
 
 // for NXP FXOS8700, FXAS21002, MPL3115
 #include "utility/NXPSensorRegisters.h"
 
 #include "MotionSense.h"
 #include <EEPROM.h>
-#include <util/crc16.h>
+// #include <util/crc16.h>
 #include <elapsedMillis.h>
 
 #define NXP_MOTION_CAL_EEADDR  60
@@ -33,16 +27,10 @@
 // "chip_addr" in SPI mode is the number of the GPIO pin that asserts CS for the chip --
 // kind of squeezing SPI's foot into I2C's shoe, but it fits.
 	
-#ifdef IMU_LSM6DSO32X
-const uint8_t chip_addr=SPI_cs;
-// TODO: this is just a guess:
-const SPISettings spiconf(24000000, MSBFIRST, SPI_MODE0);
-#else 
 const uint8_t chip_addr=ICM42605_SPI_CS;
 	// default spiconf should be fine for this chip
 const SPISettings spiconf(24000000, MSBFIRST, SPI_MODE0);
 //const SPISettings spiconf(4000000, MSBFIRST, SPI_MODE0);
-#endif
 
 #else /* I2C */
 #include <Wire.h>
@@ -67,12 +55,6 @@ bool MotionSense::begin()
 	memset(gyro_raw, 0, sizeof(gyro_raw));
 
 	//Serial.println("init hardware");
-#ifdef IMU_LSM6DSO32X
-	while (!LSM6DSO32X_begin()) {
-		Serial.println("config error LSM6DSO32X");
-		delay(1000);
-	}
-#endif
 #ifdef IMU_ICM42605
 	while (!ICM42605_begin()) {
 		Serial.println("config error ICM42605");
@@ -80,19 +62,19 @@ bool MotionSense::begin()
 	}
 #endif
 
-	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
-		buf[i] = EEPROM.read(NXP_MOTION_CAL_EEADDR + i);
-	}
-	crc = 0xFFFF;
-	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
-		crc = _crc16_update(crc, buf[i]);
-	}
-	if (crc == 0 && buf[0] == 117 && buf[1] == 84) {
-		memcpy(cal, buf+2, sizeof(cal));
-	} else {
-		memset(cal, 0, sizeof(cal));
-		cal[9] = 50.0f;
-	}
+	// for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
+	// 	buf[i] = EEPROM.read(NXP_MOTION_CAL_EEADDR + i);
+	// }
+	// crc = 0xFFFF;
+	// for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
+	// 	crc = _crc16_update(crc, buf[i]);
+	// }
+	// if (crc == 0 && buf[0] == 117 && buf[1] == 84) {
+	// 	memcpy(cal, buf+2, sizeof(cal));
+	// } else {
+	// 	memset(cal, 0, sizeof(cal));
+	// 	cal[9] = 50.0f;
+	// }
 	return true;
 
 }
@@ -103,11 +85,7 @@ void MotionSense::update()
 	static elapsedMillis msec;
 	int32_t alt;
 
-#ifdef IMU_ICM42605
 	if (ICM42605_read(accel_mag_raw)) { // accel + mag
-#elif defined(LSM6DSO32X)
-	if (LSM6DSO32X_read(accel_mag_raw)) { // accel + mag
-#endif
 		//Serial.println("accel+mag");
 		newdata = 1;
 	}
@@ -155,45 +133,6 @@ static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num
 #endif
 	return true;
 }
-
-#ifdef IMU_LSM6DSO32X
-bool MotionSense::LSM6DSO32X_sleep(){
-	// TODO
-	return true;
-}
-bool MotionSense::LSM6DSO32X_wake(){
-	// TODO
-	return true;
-}
-bool MotionSense::LSM6DSO32X_begin(){
-	Serial.print("LSM6DSO32X_begin: SPI slave on pin ");
-	Serial.println(chip_addr);
-
-	// detect if chip is present
-	if (!read_regs(chip_addr, LSM6DSO32X_WHO_AM_I, &b, 1)) return false;
-	Serial.printf("LSM6DSO32X ID = %02X\n", b);
-	if ( (b != 0x6CU) 			
-		return false;
-
-	// TODO: reset the device
-	//
-	// TODO: get the temperature
-	//
-	// TODO: configure components:
-	// TODO: accel data rate
-#ifdef IMU_8KHZ
-		// etc
-#endif
-	// TODO: accel sensitivity
-	// TODO: gyro data rate
-	// TODO: gyro sensitivity
-	// 
-	// TODO: configure interrupt
-
-	Serial.println("LSM6DSO32X configured");
-	return true;
-}
-#endif
 
 bool MotionSense::ICM42605_sleep(){
 	// 0b00100000
@@ -336,22 +275,22 @@ bool MotionSense::ICM42605_read(int16_t *data)  // accel + mag
 
 bool MotionSense::writeCalibration(const void *data)
 {
-	const uint8_t *p = (const uint8_t *)data;
-	uint16_t crc;
-	uint8_t i;
-
-	if (p[0] != 117 || p[1] != 84) return false;
-	crc = 0xFFFF;
-	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
-		crc = _crc16_update(crc, p[i]);
-	}
-	if (crc != 0) return false;
-	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
-		EEPROM.write(NXP_MOTION_CAL_EEADDR + i, p[i]);
-	}
-	for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
-		if (EEPROM.read(NXP_MOTION_CAL_EEADDR + i) != p[i]) return false;
-	}
-	memcpy(cal, ((const uint8_t *)data)+2, sizeof(cal));
+	// const uint8_t *p = (const uint8_t *)data;
+	// uint16_t crc;
+	// uint8_t i;
+  //
+	// if (p[0] != 117 || p[1] != 84) return false;
+	// crc = 0xFFFF;
+	// for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
+	// 	crc = _crc16_update(crc, p[i]);
+	// }
+	// if (crc != 0) return false;
+	// for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
+	// 	EEPROM.write(NXP_MOTION_CAL_EEADDR + i, p[i]);
+	// }
+	// for (i=0; i < NXP_MOTION_CAL_SIZE; i++) {
+	// 	if (EEPROM.read(NXP_MOTION_CAL_EEADDR + i) != p[i]) return false;
+	// }
+	// memcpy(cal, ((const uint8_t *)data)+2, sizeof(cal));
 	return true;
 }
