@@ -1,3 +1,6 @@
+// try to skip the entire file if this is not defined, cuz Arduino always compiles everything...
+#ifdef IMU_LSM6DSO32X
+
 #ifndef _LSM6DSO_Motion_Sensors_
 #define _LSM6DSO_Motion_Sensors_
 
@@ -36,4 +39,5 @@ private:
 	int16_t temperature_raw;
 };
 
+#endif
 #endif

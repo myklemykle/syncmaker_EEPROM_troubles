@@ -5,12 +5,20 @@
 //
 /////////////////
 // 1) the big question: what board are we building for?
+// (these are defined in Makefile targets)
 //
 // is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
-#define PI_V6 pleasebethelastone
+//#define PI_V6 pleasebethelastone
 //
+//
+// HACK: the inscrutible arduino-cli lets me pass -DPI_V6 unmolested when compiling rp2040,
+// but swallows/erases/loses all my build options when compiling Teensy.  
+// So I can't just -DEVT4. But I can do this, assuming i support no other Teensy3.2 platform:
+#ifdef ARDUINO_TEENSY32
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
-//#define EVT4 itsathing
+#define EVT4 itsathing
+#endif
+
 //	
 // or is it REV3: I2C comms, IMU interrupt 2
 // (rev3 is the default when no other board is defined)
@@ -59,12 +67,12 @@
 
 #ifdef PI_V6
 #define MCU_RP2040 /* mcu is raspPi */
-#define IMU_LSM6DSO32X /* imu from TDK */
+#define IMU_LSM6DSO32X /* imu from STMicro */
 #define SPIPORT SPI1 /* from RP2040's SPI.h */
 #define IMU_1_666KHZ 
 #else
 #define TEENSY32 /* mcu is a NXP cortex-m4 */
-#define IMU_ICM42605 /* imu from STMicro */
+#define IMU_ICM42605 /* imu from TDK */
 #define SPIPORT SPI // from Teensy's SPI.h 
 #endif
 

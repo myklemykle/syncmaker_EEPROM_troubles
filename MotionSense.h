@@ -1,3 +1,7 @@
+// try to skip the entire file if this is not defined, cuz Arduino always compiles everything...
+#ifdef ARDUINO_TEENSY32
+
+
 #ifndef _NXP_Motion_Sensors_
 #define _NXP_Motion_Sensors_
 
@@ -212,3 +216,5 @@ private:
 #undef UT_PER_COUNT
 
 #endif
+
+#endif // ARDUINO_TEENSY32

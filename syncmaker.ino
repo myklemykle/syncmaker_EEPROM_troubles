@@ -1,5 +1,6 @@
 // EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
 #include "config.h"
+#include "pins.h"
 #include <Arduino.h>
 
 #include <elapsedMillis.h>

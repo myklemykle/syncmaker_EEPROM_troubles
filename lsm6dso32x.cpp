@@ -1,8 +1,12 @@
+#include "config.h"
+
+// try to skip the entire file if this is not defined, cuz Arduino always compiles everything...
+#ifdef IMU_LSM6DSO32X
+
 // Paul's NXPSensorFusion library has a nice general-purpose
 // structure, so i've been adapting it to other sensors as I've
 // switched chips a few times ...
 
-#include "config.h"
 
 #include "lsm6dso32x-pid/lsm6dso32x_reg.h"
 
@@ -233,3 +237,9 @@ bool LSM6DSO32X_IMU::read_regs(uint8_t selector, uint8_t addr, uint8_t *data, ui
 // 	memcpy(cal, ((const uint8_t *)data)+2, sizeof(cal));
 // 	return true;
 // }
+//
+
+
+
+
+#endif

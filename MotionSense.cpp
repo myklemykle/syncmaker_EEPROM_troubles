@@ -1,3 +1,6 @@
+// try to skip the entire file if this is not defined, cuz Arduino always compiles everything...
+#ifdef ARDUINO_TEENSY32
+
 // Paul's NXPSensorFusion library has a nice general-purpose
 // structure, so i've been adapting it to other sensors as I've
 // switched chips a few times ...
@@ -296,3 +299,5 @@ bool MotionSense::writeCalibration(const void *data)
 	// memcpy(cal, ((const uint8_t *)data)+2, sizeof(cal));
 	return true;
 }
+
+#endif
