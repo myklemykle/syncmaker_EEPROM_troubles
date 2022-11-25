@@ -21,7 +21,7 @@
 
 // Adafruit TeensyUSB w/midi:
 #include <Adafruit_TinyUSB.h>
-/* #include <MIDI.h> */
+#include <MIDI.h>
 
 // USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
@@ -143,7 +143,7 @@ volatile bool imu_ready = false;
 
 #ifdef IMU_8KHZ
 const int imuClockTick = 125; // 8khz data rate 
-#elseif defined(IMU_1.6KHZ)
+#elif defined(IMU_1_666KHZ)
 const int imuClockTick = 600; // 8khz data rate 
 #else
 const int imuClockTick = 500; // 2khz data rate
@@ -276,18 +276,23 @@ void setup()
 	// IMU setup:
 #ifdef IMU_SPI
 	// raise chipSelect line to select the only chip. 
+	// (no-op; the library toggles it on & off anyway)
 	pinMode(SPI_cs, OUTPUT);
+
+#ifdef TEENSY32
 	digitalWrite(SPI_cs, HIGH);
-	// AudioLibrary changed these, i change them back!
-	SPI.setMOSI(SPI_mosi);
-	SPI.setMISO(SPI_miso);
-	SPI.setSCK(SPI_clock);
-#else
-	// slight hack for EVT1/rev1:
-	// i changed IMU chips, and this pin (IMU pin 10) is "reserved" on the ICM42605:
-	pinMode(IMU_fsync, OUTPUT);
-	// imu pin 11 is also reserved but I can't get to it from software ...
-	digitalWrite(IMU_fsync, 1); // ground this pin (teensy signals are "active low" so ground == 1)
+	// Teensy AudioLibrary may have changed these, i change them back!
+	SPIPORT.setMOSI(SPI_mosi);
+	SPIPORT.setMISO(SPI_miso);
+	SPIPORT.setSCK(SPI_clock);
+#elif defined(MCU_RP2040)
+	// Dunno why the RP2040 version has different api here ... maybe not necessary/depreacted?
+	SPIPORT.setRX(SPI_miso);
+  SPIPORT.setTX(SPI_mosi);
+  SPIPORT.setCS(SPI_cs); // no-op; the library drives this manually
+  SPIPORT.setSCK(SPI_clock);
+#endif
+
 #endif
 
 	// IMU int pin is open-collector mode
@@ -376,9 +381,6 @@ void setup()
 	/* dc1.amplitude(0); */ //DEBUG
 	/* mixer1.gain(0, 1); // noise1 -> amp1 */ //DEBUG
 	/* mixer1.gain(1, 1); // dc1 */ //DEBUG
-#else
-	// rp2040 todo
-#endif
 
 	//https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
 	// Initialize the DAC output pins
@@ -388,6 +390,9 @@ void setup()
 												// does this clash with analogReference() above?  probably ... 
 	// anyway I still get background noise when running off battery.
 	// TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
+#else
+	// rp2040 todo
+#endif
 
 	sleep_setup();
 }
@@ -1056,10 +1061,12 @@ void loop()
 			Dbg_print(" loops/IMU @ ");
 			Dbg_print(USEC2BPM(hc.measureLen));
 			Dbg_print(" BPM, ");
+#ifdef TEENSY32
 			Dbg_print(AudioMemoryUsageMax());
 			Dbg_print(" audioMem, ");
 			Dbg_print(AudioProcessorUsageMax());
 			Dbg_print(" audioCPU, ");
+#endif
 			Dbg_print(midiMeasuresRemaining);
 			Dbg_print(" MMR, accel ");
 			/* Dbg_print(instantPos); */

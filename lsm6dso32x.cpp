@@ -78,6 +78,8 @@ bool LSM6DSO32X_IMU::begin(){
   Serial.print("LSM6DSO32X::begin: SPI slave on pin ");
   Serial.println(SPI_cs);
 
+	SPIPORT.begin(false); // we seem to need to manage CS ourselves.
+
   // detect if chip is present
   if (!read_regs(SPI_cs, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
   Serial.printf("LSM6DSO32X ID = %02X\n", buf);

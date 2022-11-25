@@ -270,6 +270,8 @@ bool MotionSense::ICM42605_read(int16_t *data)  // accel + mag
 	data[3] = (int16_t)((buf[7] << 8) | buf[8]);
 	data[4] = (int16_t)((buf[9] << 8) | buf[10]);
 	data[5] = (int16_t)((buf[11] << 8) | buf[12]);
+
+	return true;
 }
 
 
