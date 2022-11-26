@@ -1,4 +1,8 @@
 target := syncmaker
+openocd_dir := ../openocd
+openocd_script := $(openocd_dir)/tcl
+openocd := $(openocd_dir)/src/openocd
+
 
 v6: v6compile v6upload
 
@@ -13,13 +17,24 @@ v6clean:
 $(v6img_uf2): syncmaker.ino *.cpp *.h 
 	 arduino-cli compile -v $(v6compileflags)  
 
+# flash fw via the USB-filesystem approach:
 v6upload: 
 	echo "uploading"
 	cp $(v6img_uf2) /Volumes/RPI-RP2/NEW.UF2
 
-v6monitor: 
-	arduino-cli monitor -p /dev/tty.usbmodem????
+# flash fw with openocd:
+v6load:
+	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-core0.cfg -s $(openocd_script) -c "program build/rp2040.rp2040.generic/syncmaker.ino.elf"
 
+v6monitor: 
+	arduino-cli monitor -p /dev/tty.usbmodem?????
+
+# start openocd debugger
+v6debug: 
+	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-core0.cfg -s $(openocd_script)
+
+gdb:
+	gdbgui -g 'arm-none-eabi-gdb -iex "target extended-remote localhost:3333"'
 
 #######################
 
@@ -34,8 +49,9 @@ v4clean:
 v4compile:
 	arduino-cli compile -v $(v4compileflags)
 
+#	arduino-cli upload --fqbn teensy:avr:teensy31 -p /dev/cu.usbmodem??????*
 v4load:
-	arduino-cli upload --fqbn teensy:avr:teensy31 -p /dev/cu.usbmodem??????*
+	teensy_loader_cli -v --mcu=mk20dx256 build/teensy:avr:teensy31/syncmaker.ino.hex
 
 v4monitor: 
 	arduino-cli monitor -p /dev/tty.usbmodem???????*
