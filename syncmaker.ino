@@ -296,8 +296,13 @@ void setup()
 
 #endif
 
+#ifdef TEENSY32
 	// IMU int pin is open-collector mode
 	pinMode(IMU_int, INPUT_PULLUP);
+#elif defined(PI_V6)
+	// IMU int pin is push-pull
+	pinMode(IMU_int, INPUT);
+#endif
 	attachInterrupt(IMU_int, imu_int, FALLING);
 	
   imu.begin();
