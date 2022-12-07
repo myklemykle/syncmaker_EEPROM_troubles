@@ -4,7 +4,7 @@ openocd_script := $(openocd_dir)/tcl
 openocd := $(openocd_dir)/src/openocd
 
 
-v6: v6compile v6upload
+v6: v6compile v6load
 
 v6img_uf2 := build/rp2040.rp2040.generic/$(target).ino.uf2
 v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb,freq=133,opt=Small   --build-property "build.extra_flags=-DPI_V6" # extra flags works here
@@ -30,10 +30,10 @@ v6monitor:
 	arduino-cli monitor -p /dev/tty.usbmodem?????
 
 # start openocd debugger
-v6debug: 
+v6ocd: 
 	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-core0.cfg -s $(openocd_script)
 
-gdb:
+v6gdb:
 	gdbgui -g 'arm-none-eabi-gdb -iex "target extended-remote localhost:3333"'
 
 #######################
