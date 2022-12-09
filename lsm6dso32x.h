@@ -32,6 +32,7 @@ private:
 	bool LSM6DSO32X_wake();
 	static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num);
 	static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val);
+	static bool set_reg(uint8_t selector, uint8_t addr, uint8_t val);
 
 	float cal[16]; // 0-8=offsets, 9=field strength, 10-15=soft iron map
 	int16_t accel_mag_raw[6];

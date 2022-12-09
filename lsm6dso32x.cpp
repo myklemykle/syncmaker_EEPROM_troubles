@@ -79,42 +79,44 @@ bool LSM6DSO32X_IMU::begin(){
   uint8_t temp; // actually signed ...
   uint8_t tempfrac;
 
-  Serial.print("LSM6DSO32X::begin: SPI slave on pin ");
-  Serial.println(SPI_cs);
-
-	SPIPORT.begin(false); // we seem to need to manage CS ourselves.
+  Dbg_print("LSM6DSO32X::begin: SPI slave on pin ");
+  Dbg_println(SPI_cs);
 
   // detect if chip is present
   if (!read_regs(SPI_cs, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
-  Serial.printf("LSM6DSO32X ID = %02X\n", buf);
+  Dbg_printf("LSM6DSO32X ID = %02X\n", buf);
   if ( (buf != 0x6CU) )
     return false;
 
 
   // // reset the device:
-  // ctrl3_c: "reboot memory" (first bit) and "software reset" (last bit)
-	// interrupts active low, defaults otherwise.
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL3_C, 0b10100101)) return false;
+  // ctrl3_c: "software reset" (last bit)
+	// defaults otherwise
+  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL3_C, 0b00000101)) return false;
 
-  // wait 1ms for reset to complete
-  delay(2);
+  // wait for reset to complete
+	// (datasheet says 35ms is "turn on time")
+  delay(35);
   // detect if chip is still with us
   if (!read_regs(SPI_cs, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
   if ( (buf != 0x6CU) ) {
-    Serial.println("gone after reset!");
+    Dbg_println("gone after reset!");
     return false;
 	} else {
-    Serial.println("reset unit");
+    Dbg_println("reset unit");
 	}
+	
+	// configure interrupts to active low (defaults otherwise)
+  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL3_C, 0b00100100)) return false;
 
 
   // get the temperature: OUT_TEMP_L/H
   // H is a signed integer celcius value, L is unsigned fractional 1/256ths of a degree celcius
   if (!read_regs(SPI_cs, LSM6DSO32X_OUT_TEMP_H, &temp, 1)) return false;
   if (!read_regs(SPI_cs, LSM6DSO32X_OUT_TEMP_L, &tempfrac, 1)) return false;
-  Serial.printf("temperature raw %i . %i\n", (int8_t)temp, tempfrac);
+  Dbg_printf("temperature raw %i . %i\n", (int8_t)temp, tempfrac);
 	// datasheet sec 4.3, table 4, teeny tiny footnote #3: temp sensor output is zero at 25 celcius ...
-  Serial.printf("temperature %f\n", ((int8_t)temp + 25 + ( tempfrac / 256.0)));
+  Dbg_printf("temperature %f\n", ((int8_t)temp + 25 + ( tempfrac / 256.0)));
 
   // configure components:
 
@@ -139,14 +141,10 @@ bool LSM6DSO32X_IMU::begin(){
   if (!write_reg(SPI_cs, LSM6DSO32X_CTRL2_G, 0b10001000)) return false;
 #endif
 
-
-#ifdef IMU_INTERRUPTS
   // configure interrupt 1 on accelerometer data ready
-  if (!write_reg(SPI_cs, LSM6DSO32X_INT1_CTRL, 0b00000001)) return false;
+	if (!write_reg(SPI_cs, LSM6DSO32X_INT1_CTRL, 0b00000001)) return false;
 	
-#endif
-
-  Serial.println("LSM6DSO32X configured");
+  Dbg_println("LSM6DSO32X configured");
   return true;
 }
 
@@ -156,7 +154,7 @@ void LSM6DSO32X_IMU::update()
 	int32_t alt;
 
 	if (LSM6DSO32X_read(accel_mag_raw)) { // accel + mag
-		//Serial.println("accel+mag");
+		//Dbg_println("accel+mag");
 		// newdata = 1;
 	}
 }
@@ -213,6 +211,25 @@ bool LSM6DSO32X_IMU::read_regs(uint8_t selector, uint8_t addr, uint8_t *data, ui
 	digitalWrite(selector, HIGH);
 	SPIPORT.endTransaction();
 	return true;
+}
+// for debugging purposes mostly:
+bool LSM6DSO32X_IMU::set_reg(uint8_t selector, uint8_t addr, uint8_t val)
+{
+	uint8_t buf;
+	if (! read_regs(selector, addr, &buf, 1)) return false;
+	if (buf == val) {
+		Dbg_printf("addr %x was already %x\n", addr, val);
+		return true;
+	} else {
+		Dbg_printf("changing addr %x from %x to %x\n", addr, buf, val);
+		if (! write_reg(selector, addr, val)) return false;
+		if (! read_regs(selector, addr, &buf, 1)) return false;
+		if (buf != val) {
+			Dbg_println("could not set register!");
+			return false;
+		}
+		return true;
+	}
 }
 
 
