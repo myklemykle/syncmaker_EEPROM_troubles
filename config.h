@@ -8,7 +8,7 @@
 // (these are defined in Makefile targets)
 //
 // is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
-//#define PI_V6 pleasebethelastone
+#define PI_V6 pleasebethelastone
 //
 //
 // HACK: the inscrutible arduino-cli lets me pass -DPI_V6 unmolested when compiling rp2040,
@@ -89,13 +89,16 @@
 #ifdef SDEBUG
 // Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.
 // is there some more normal solution for this?  Seems like this would be a common problem.
-#define Dbg_print(X) if(Serial) Serial.print(X)
-#define Dbg_print2(X, Y) if(Serial) Serial.print(X, Y)
-#define Dbg_println(X) if(Serial) Serial.println(X)
+// https://gcc.gnu.org/onlinedocs/cpp/Variadic-Macros.html 
+#define Dbg_println(...) if(Serial) Serial.println(__VA_ARGS__)
+#define Dbg_printf(...) if(Serial) Serial.printf(__VA_ARGS__)
+#define Dbg_print(...) if(Serial) Serial.print(__VA_ARGS__)
 #define Dbg_flush(X) if(Serial) Serial.flush()
+
 #else
-#define Dbg_print(X) {}
-#define Dbg_println(X) {}
+#define Dbg_println(...) {}
+#define Dbg_printf(...) {}
+#define Dbg_print(...) {}
 #define Dbg_flush(X) {}
 #endif
 
