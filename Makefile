@@ -7,7 +7,7 @@ openocd := $(openocd_dir)/src/openocd
 v6: v6compile v6load
 
 v6img_uf2 := build/rp2040.rp2040.generic/$(target).ino.uf2
-v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb,freq=133,opt=Small   --build-property "build.extra_flags=-DPI_V6" # extra flags works here
+v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb   --build-property "build.extra_flags=-DPI_V6" # extra flags works here
 
 v6compile: $(v6img_uf2)
 
