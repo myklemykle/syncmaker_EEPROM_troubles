@@ -29,6 +29,7 @@ const int SPI_clock = 14;
 const int SPI_cs = 13;
 const int SPI_miso = 12;
 const int SPI_mosi = 15;
+const int unusedPins[6] = { 7,16,25,27,28,29 };
 #elif defined(EVT4)
 const int button1Pin = 22;   // sw1
 const int button2Pin = 21;   // sw2

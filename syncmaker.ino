@@ -260,6 +260,7 @@ void imu_int_handler() {
 }
 
 void setup() {
+	uint8_t i;
 
 	  // turn on this helpful developer feature
   rp2040.enableDoubleResetBootloader();
@@ -289,8 +290,6 @@ void setup() {
   pinMode(PO_SWO, INPUT_PULLUP);
 
 
-
-
 #ifdef PI_V6
   //Serial.begin();  // adafruit tinyusb has no signature for this apparently
   Serial.begin(115200);  // but who knows what baud rate means on USB serial?
@@ -308,6 +307,15 @@ void setup() {
 #else
   Dbg_println("flashed for rev3 board");
 #endif
+
+#ifdef PI_V6
+	/////// CMOS chips must stabilize all unconnected pins, to avoid static glitches
+	for (i=0; i < std::size(unusedPins); i++){
+		/* Dbg_printf("disable pin %d\n", unusedPins[i]); */
+		pinMode(i, INPUT_PULLUP);
+	}
+#endif
+
 
   ///////////
   // initialize loop state:
@@ -453,7 +461,6 @@ void loop() {
 #ifdef PI_V6
   // TODO: check the resolution of the rp2040 analogRead
 #else
-  Dbg_print("@");  // DEBUG bad!
   // go to sleep if the PO_wake pin is low:
   awakePinState = analogRead(PO_wake);
 
