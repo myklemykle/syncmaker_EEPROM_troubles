@@ -485,6 +485,15 @@ void loop() {
   loops++;
 #endif
 
+	// check buttons:
+	if (btn1.update())
+		btn1pressed = (btn1.read() == LOW);
+	if (btn2.update())
+		btn2pressed = (btn2.read() == LOW);
+	if (btn3.update())
+		btn3pressed = (btn3.read() == LOW);
+
+
   // Read IMU data if ready:
   if (imu_ready) {  // on interrupt
     imu_ready = false;
@@ -498,14 +507,6 @@ void loop() {
     // shift inner loop state:
     CBNEXT(inertia);
 
-    // check buttons:
-    // TODO move to 2000hz section?
-    if (btn1.update())
-      btn1pressed = (btn1.read() == LOW);
-    if (btn2.update())
-      btn2pressed = (btn2.read() == LOW);
-    if (btn3.update())
-      btn3pressed = (btn3.read() == LOW);
 
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
     CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude
@@ -570,12 +571,6 @@ void loop() {
     /* Dbg_print(" during meaure of "); */
     /* Dbg_print(hc.measureLen); */
     /* Dbg_println("us"); */
-#ifndef NONSTOPBUTTON
-    // if both buttons are held down when play LED lit
-    if (BOTHPRESSED) {
-      CBSET(nonstop, true);
-    }
-#endif
   }
 
   // otherwise, if the play light just unlit,
@@ -662,9 +657,9 @@ void loop() {
   if (btn3pressed && btn3.fell()) {  // if NONSTOP button pressed,
     if (nonstop[0]) {
       CBSET(nonstop, false);
-      /* if (!decodedPlayLed[0]) {// if PO not currently playing, */
-      /* 	CBSET(playing, false); // stop when notstop is deactivated. */
-      /* } */
+      if (!decodedPlayLed[0]) {// if PO not currently playing,
+      	CBSET(playing, false); // stop when notstop is deactivated.
+      }
       // get it on the next loop
     } else {
       CBSET(nonstop, true);
