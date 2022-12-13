@@ -30,16 +30,17 @@
 #ifdef PI_V6
 
 // Adafruit TeensyUSB w/midi:
-#include <Adafruit_TinyUSB.h>
 #include <MIDI.h>
+#include <Adafruit_TinyUSB.h>
 
 // USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
 
 // Create a new instance of the (generic) Arduino MIDI Library,
 // and attach usb_midi as the transport.
-MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
+MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 // (jeesuz what a hairy-looking macro to do something pretty basic)
+// (what is this MIDI now? what type? what symbol? this is just weird.)
 
 #else
 
@@ -346,15 +347,29 @@ void setup() {
   pinMode(PO_SWDIO, INPUT_PULLUP);
   pinMode(PO_SWO, INPUT_PULLUP);
 
-
 #ifdef PI_V6
-  //Serial.begin();  // adafruit tinyusb has no signature for this apparently
-  Serial.begin(115200);  // but who knows what baud rate means on USB serial?
-#else
-  Serial.begin(115200);
+	/////// CMOS chips must stabilize all unconnected pins, to avoid static glitches
+	for (i=0; i < std::size(unusedPins); i++){
+		/* Dbg_printf("disable pin %d\n", unusedPins[i]); */
+		pinMode(i, INPUT_PULLUP);
+	}
 #endif
 
-  //delay(1000);
+
+#ifdef PI_V6
+  ///////
+  // USB MIDI startup
+	// 
+	// WARNING: apparently MIDI.begin() needs to happen before Serial.begin(), or else it fails silently.
+  //
+  // Initialize MIDI, and listen to all MIDI channels:
+  MIDI_USB.begin(MIDI_CHANNEL_OMNI);
+#endif
+
+	/////////////////
+	// USB serial port:
+  Serial.begin(115200);  // baud rate is ignored on USB serial.
+
   delay(2000);
 
 #ifdef PI_V6
@@ -364,15 +379,6 @@ void setup() {
 #else
   Dbg_println("flashed for rev3 board");
 #endif
-
-#ifdef PI_V6
-	/////// CMOS chips must stabilize all unconnected pins, to avoid static glitches
-	for (i=0; i < std::size(unusedPins); i++){
-		/* Dbg_printf("disable pin %d\n", unusedPins[i]); */
-		pinMode(i, INPUT_PULLUP);
-	}
-#endif
-
 
   ///////////
   // initialize loop state:
@@ -392,7 +398,7 @@ void setup() {
 
 #ifdef TEENSY32
   digitalWrite(SPI_cs, HIGH);
-  // Teensy AudioLibrary may have changed these, i change them back!
+  // Teensy AudioLibrary may have changed these. i change them back!
   SPIPORT.setMOSI(SPI_mosi);
   SPIPORT.setMISO(SPI_miso);
   SPIPORT.setSCK(SPI_clock);
@@ -464,15 +470,6 @@ void setup() {
 		hc.measureLen = _settings.measureLen;
   }
 
-#ifdef PI_V6
-  ///////
-  // USB MIDI setup
-  //
-
-  // Initialize MIDI, and listen to all MIDI channels
-  // This will also call usb_midi's begin()
-  MIDI.begin(MIDI_CHANNEL_OMNI);
-#endif
 
 #ifdef MIDITIMECODE
   mtc.setup();
@@ -596,7 +593,7 @@ void loop() {
 
     // MIDI Controllers should discard incoming MIDI messages.
 #ifdef PI_V6
-    while (MIDI.read(MIDI_CHANNEL_OMNI)) {
+    while (MIDI_USB.read(MIDI_CHANNEL_OMNI)) {
 #else
     while (usbMIDI.read()) {
 #endif
@@ -760,7 +757,7 @@ void loop() {
 			 I should find some other test cases than Live ...  */
 
 #ifdef PI_V6
-    MIDI.sendStart();
+    MIDI_USB.sendStart();
 #else
     usbMIDI.sendRealTime(usbMIDI.Start);
 #endif
@@ -776,7 +773,7 @@ void loop() {
 
 #ifdef MIDICLOCK
 #ifdef PI_V6
-    MIDI.sendStop();
+    MIDI_USB.sendStop();
 #else
     usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
@@ -1034,7 +1031,7 @@ void loop() {
         cc.frozen = false;
 #ifdef MIDICLOCK
 #ifdef PI_V6
-        MIDI.sendContinue();
+        MIDI_USB.sendContinue();
 #else
         usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
@@ -1050,7 +1047,7 @@ void loop() {
         cc.frozen = true;
 #ifdef MIDICLOCK
 #ifdef PI_V6
-        MIDI.sendStop();
+        MIDI_USB.sendStop();
 #else
         usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
@@ -1062,7 +1059,7 @@ void loop() {
       cc.frozen = false;
 #ifdef MIDICLOCK
 #ifdef PI_V6
-      MIDI.sendContinue();
+      MIDI_USB.sendContinue();
 #else
       usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
@@ -1098,7 +1095,7 @@ void loop() {
       if (!cc.frozen) {
         // emit MIDI clock!
 #ifdef PI_V6
-        MIDI.sendClock();
+        MIDI_USB.sendClock();
 #else
         usbMIDI.sendRealTime(usbMIDI.Clock);
 #endif
