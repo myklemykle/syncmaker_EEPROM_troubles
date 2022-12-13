@@ -1,4 +1,8 @@
-// EVT4 (and rev3) Pocket Integrator (PO daughterboard) firmware (c) 2021 mykle systems labs
+////////////////////////////
+// Pocket Integrator (PO daughterboard) firmware (c) 2022 mykle systems labs
+// This version compatible with EVT4, V6 and V7 boards.
+// (You must #define either EVT4 or PI_V6 ; define neither both nor neither.)
+//
 #include "config.h"
 #include "pins.h"
 #include <Arduino.h>
@@ -108,6 +112,10 @@ bool nonstopLedPWMState = false;
 #define NSLEDPWM_OFF 5000  // usec
 #endif
 
+#ifdef PI_V6
+const int pwmBrightness = 8; // out of 256? looks okay ...
+#endif
+
 #define BOTHPRESSED (btn1pressed && btn2pressed)
 #define EITHERPRESSED (btn1pressed || btn2pressed)
 #define EITHERNOTPRESSED (!BOTHPRESSED)
@@ -157,11 +165,55 @@ const int imuClockTick = 500;  // 2khz data rate
 
 
 
-// EEPROM
+// Storing/retriving settings: 
 #include <EEPROM.h>
 
+#ifndef PI_V6
 // only for rev1 historical reasons is this number not 0:
 const int eepromBase = 2000;
+#else
+const int eepromBase = 0;
+#endif
+
+// Settings object
+typedef struct {
+	uint16_t _flag;
+	unsigned int _version; 
+	unsigned long measureLen;	
+} _Settings;
+
+// This is a clue that we got non-garbled data:
+const uint16_t settingsFlag = 0x2323;
+// We'll bump this whenever we change the format of _Settings:
+const unsigned int settingsVersion = 1;
+
+_Settings _settings;
+
+bool initSettings(){
+	Dbg_println("init settings");
+	_settings = { settingsFlag, settingsVersion, 120 * TIMESCALE };
+	return true;
+}
+
+bool getSettings(){
+	Dbg_println("get settings");
+	EEPROM.get(eepromBase, _settings);
+	// For now reject any unknown version
+	Dbg_printf("flag = %x\n", _settings._flag);
+	Dbg_printf("ver  = %x\n", _settings._version);
+	Dbg_printf("len  = %d\n", _settings.measureLen);
+	return (_settings._flag == settingsFlag) && (_settings._version == settingsVersion);
+}
+
+bool putSettings(){
+	Dbg_println("put settings");
+	// TODO: make sure it's initialized?
+	EEPROM.put(eepromBase, _settings);
+#ifdef PI_V6
+	EEPROM.commit();
+#endif
+	return true;
+}
 
 
 // Human Clock:
@@ -265,6 +317,7 @@ void setup() {
 	  // turn on this helpful developer feature
   rp2040.enableDoubleResetBootloader();
 
+
   ///////
   // Pin setup:
   //
@@ -276,7 +329,11 @@ void setup() {
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
+#ifdef PI_V6
+	analogWrite(nonstopLedPin, 0);
+#else
   digitalWrite(nonstopLedPin, LOW);
+#endif
   pinMode(boardLedPin, OUTPUT);  // nonstop led
 #ifdef EVT4
   nonstopLedPWMClock = loopTimer;
@@ -385,17 +442,26 @@ void setup() {
   btn3.update();
   btn3pressed = (btn3.read() == LOW);
 
+	// get settings:
+#ifdef PI_V6
+	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
+#endif
+	if (! getSettings()) {
+		initSettings();
+	}
 
   ////////
   // Clock setup:
   //
   hc.downbeatTime = micros();  // now!
   // If buttons are held down when we boot, reset the default measure length
-  //if (BOTHPRESSED) {
-  if (1) {                            //DEBUG
-    hc.measureLen = 250 * TIMESCALE;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
+  if (BOTHPRESSED) {
+  //if (1) {                            //DEBUG
+    _settings.measureLen = hc.measureLen = 250 * TIMESCALE;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
+		putSettings();
   } else {
-    EEPROM.get(eepromBase, hc.measureLen);
+    /* EEPROM.get(eepromBase, hc.measureLen); */
+		hc.measureLen = _settings.measureLen;
   }
 
 #ifdef PI_V6
@@ -822,8 +888,15 @@ void loop() {
     }
 
   } else {
-    if (btn1.rose() || btn2.rose())           // if we just released the buttons,
-      EEPROM.put(eepromBase, hc.measureLen);  // save the new tempo to NVRAM.
+    if (btn1.rose() || btn2.rose()) {          // if we just released the buttons,
+      //EEPROM.put(eepromBase, hc.measureLen);  // save the new tempo to NVRAM.
+			_settings.measureLen = hc.measureLen;
+
+			// TODO: for RP2040 this is sort of a hack, flash is not EEPROM & I will wear out flash too fast if I put these settings as often as I have been.
+			// We should have some other strategy for saving the settings less often, but often enough.
+			// (ATM measureLen is the only setting, but there will be more ...)
+      putSettings();
+		}
 
     // not armed.
     hc.tapCount = 0;
@@ -878,7 +951,12 @@ void loop() {
 
   if (!nonstop[0]) {
     if (CBDIFF(nonstop)) {
+#ifdef PI_V6
+      analogWrite(nonstopLedPin, 0);
+#else
       digitalWrite(nonstopLedPin, LOW);
+#endif
+
     }
   } else {  // nonstop!
 #ifdef EVT4
@@ -897,12 +975,12 @@ void loop() {
     }
     digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW);
 #elif defined(PI_V6)
-    // TODO: dim this precisely with PWM/analogWrite
-    digitalWrite(nonstopLedPin, HIGH);
+    // precise dimming with PWM/analogWrite
+    analogWrite(nonstopLedPin, pwmBrightness);
 #else
-  digitalWrite(nonstopLedPin, HIGH);
-  // fix brightness in hardware, do something simple here.
-  // and/or: always put LEDs on PWM pins!
+		digitalWrite(nonstopLedPin, HIGH);
+		// fix brightness in hardware, do something simple here.
+		// and/or: always put LEDs on PWM pins!
 #endif
   }
 
@@ -1148,3 +1226,5 @@ void loop() {
 #endif
   }
 }
+
+
