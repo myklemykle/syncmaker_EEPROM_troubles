@@ -62,11 +62,13 @@ MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc
 //const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
 const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // a little more sensitive
 const int tapThreshold = 2 * COUNT_PER_G;
-CircularBuffer<long, 2> inertia;
+
+CircularBuffer<long, 3> inertia;
+#define SHAKEN (CBROSETHRU(inertia, shakeThreshold))
 // TODO: shaken should be the start of sound moment,
 // but try putting tapped at the apex-G moment; it may have better feel.
-#define SHAKEN (CBROSETHRU(inertia, shakeThreshold))
-#define TAPPED (CBROSETHRU(inertia, tapThreshold))
+//#define TAPPED (CBROSETHRU(inertia, tapThreshold))
+#define TAPPED ((inertia[0] > tapThreshold) && (inertia[0] < inertia[1]) && (inertia[1] >= inertia[2])) // when Gs just starting to drop
 
 
 // Sleep/hibernation:
@@ -855,18 +857,6 @@ void loop() {
             else
               hc.measureLen = tcAvg;
 
-            // if taps <= 7 (intervals <= 6), quantize BPM
-            if (hc.tapCount <= 7) {
-              // But when BPM gets "too low", quantization is probably inappropriate.
-              // For now, 30 BPM is the arbitrary threshhold
-              // TODO: experiment with this.
-              if (USEC2BPM(hc.measureLen) > 30) {
-                hc.measureLen = BPM2USEC(int(USEC2BPM(hc.measureLen)));
-                Dbg_print("quantized to ");          // DEBUG
-                Dbg_print(USEC2BPM(hc.measureLen));  // DEBUG
-                Dbg_println(" BPM");                 // DEBUG
-              }
-            }
           }
 
           // but there has to be a minimum meaure length.
@@ -884,8 +874,23 @@ void loop() {
       // armed but not tapping ...
     }
 
-  } else {
+  } else { 
+		// neither button is pressed ...
     if (btn1.rose() || btn2.rose()) {          // if we just released the buttons,
+
+			// if taps <= 8 (intervals <= 7), quantize BPM
+			if (hc.tapCount <= 8) {
+				// But when BPM gets "too low", quantization is probably inappropriate.
+				// For now, 30 BPM is the arbitrary threshhold
+				// TODO: experiment with this.
+				if (USEC2BPM(hc.measureLen) > 30) {
+					hc.measureLen = BPM2USEC(round(USEC2BPM(hc.measureLen)));
+					Dbg_print("quantized to ");          // DEBUG
+					Dbg_print(USEC2BPM(hc.measureLen));  // DEBUG
+					Dbg_println(" BPM");                 // DEBUG
+				}
+			}
+
       //EEPROM.put(eepromBase, hc.measureLen);  // save the new tempo to NVRAM.
 			_settings.measureLen = hc.measureLen;
 
