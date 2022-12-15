@@ -43,9 +43,9 @@ const uint8_t chip_addr=ICM42605_I2C_ADDR0;
 
 bool MotionSense::begin()
 {
-	unsigned char buf[NXP_MOTION_CAL_SIZE];
-	uint8_t i;
-	uint16_t crc;
+	// unsigned char buf[NXP_MOTION_CAL_SIZE];
+	// uint8_t i;
+	// uint16_t crc;
 
 #ifdef IMU_SPI
 	SPI.begin();
@@ -86,7 +86,6 @@ bool MotionSense::begin()
 void MotionSense::update()
 {
 	static elapsedMillis msec;
-	int32_t alt;
 
 	if (ICM42605_read(accel_mag_raw)) { // accel + mag
 		//Serial.println("accel+mag");
@@ -190,7 +189,7 @@ bool MotionSense::ICM42605_begin()
 	// Temperature in Degrees Centigrade = (TEMP_DATA / 132.48) + 25
 	if (!read_regs(chip_addr, ICM42605_TEMP_DATA1, t, 2)) return false;
 	Serial.printf("temperature raw %i / %i\n", t[0], t[1]);
-	Serial.printf("temperature %f\n", ((t[0]<<8 + t[1]) / 132.48) + 25.0);
+	Serial.printf("temperature %f\n", (((t[0]<<8) + t[1]) / 132.48) + 25.0);
 
 	// PWR_MGMT0: power up gyro and acc. Leave temperature sensor off.
 	// 0b00001111
