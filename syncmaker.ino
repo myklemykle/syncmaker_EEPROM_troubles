@@ -143,12 +143,11 @@ const unsigned long pwmOffTime = 150 * TIMESCALE;
 // But this should really be just 1ms ... once we fix measurement.
 
 // convert a time interval between beats to BPM:
-//#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) * 2.0 ) )
 // float: convert usecs to secs (1M to 1),
-// pulses to beats (2 to 1),
 // divide by 60 secs per minute
-#define USEC2BPM(interval) (30000000.0 / interval)  // same thing.  gives float result
-#define BPM2USEC(bpm) (30000000 / bpm)              // inverse.  gives float result if passed a float!
+//#define USEC2BPM(interval) ( 60.0 / ((interval / 1000000.0) ) )
+#define USEC2BPM(interval) (60000000.0 / interval)  // same thing.  gives float result
+#define BPM2USEC(bpm) (60000000 / bpm)              // inverse.  gives float result if passed a float!
 
 // Timers:
 elapsedMicros loopTimer;
@@ -259,9 +258,7 @@ CircularClock cc;
 
 #ifdef MIDICLOCK
 // Midi Clock msgs are supposed to be sent 24 times per beat.
-// Human Clock sends 1 sync pulse per 2 PO beats,
-// so we should send 12 midi clocks per sync pulse
-#define MIDICLOCKSPERPULSE 12.0
+#define MIDICLOCKSPERPULSE 24.0
 const long circleTicksPerClock = CC_INT_RES / MIDICLOCKSPERPULSE;
 #endif
 
@@ -315,8 +312,10 @@ void imu_int_handler() {
 }
 
 void setup() {
-
 #ifdef PI_V6
+
+	int i;
+
 	  // turn on this helpful developer feature
   rp2040.enableDoubleResetBootloader();
 #endif
