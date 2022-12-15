@@ -124,9 +124,12 @@ bool LSM6DSO32X_IMU::begin(){
   if (!write_reg(SPI_cs, LSM6DSO32X_FIFO_CTRL4, 0)) return false;
 
   // accel data rate & resolution: CTRL1_XL
-#ifdef IMU_8KHZ
+#ifdef IMU_6_666KHZ
   // rate = 6.66khz, res = +-8g
   if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10101000)) return false;
+# elif defined(IMU_3_333KHZ)
+  // rate = 3.33khz, res = +-8g
+  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10011000)) return false;
 #else
   // rate = 1.66khz, res = +-8g
   if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10001000)) return false;

@@ -69,7 +69,8 @@
 #define MCU_RP2040 /* mcu is raspPi */
 #define IMU_LSM6DSO32X /* imu from STMicro */
 #define SPIPORT SPI1 /* from RP2040's SPI.h */
-#define IMU_1_666KHZ 
+//#define IMU_1_666KHZ 
+#define IMU_3_333KHZ 
 #else
 #define TEENSY32 /* mcu is a NXP cortex-m4 */
 #define IMU_ICM42605 /* imu from TDK */
