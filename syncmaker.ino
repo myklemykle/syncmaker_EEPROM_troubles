@@ -225,7 +225,7 @@ bool putSettings(){
 typedef struct {
   unsigned long measureLen;
   unsigned long downbeatTime;
-  unsigned int tapCount = 0;
+  int tapCount = 0;
   unsigned long lastTapTime = 0;
 #define TAPBUFLEN 9
   CircularBuffer<long, TAPBUFLEN> tapIntervals;  // for running avg of previous tap intervals, to update measureLen
@@ -315,10 +315,11 @@ void imu_int_handler() {
 }
 
 void setup() {
-	uint8_t i;
 
+#ifdef PI_V6
 	  // turn on this helpful developer feature
   rp2040.enableDoubleResetBootloader();
+#endif
 
 
   ///////
@@ -503,7 +504,7 @@ void setup() {
                           // anyway I still get background noise when running off battery.
                           // TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 #else
-  // rp2040 todo
+  // rp2040 audio todo
 #endif
 
   sleep_setup();
@@ -1214,10 +1215,11 @@ void loop() {
     }
   }
 
-  // Protect against overflow of loopTimer.
+  // Protect against timer overflows
   // We could do this only every 1000 (or more!) measures,
-  // but we choose every 10,
+  // but we choose every 8,
   //	so that if it causes any audible bug, it'll be heard often!
+	// TODO: is this really necessary? for ints? 
   if (loopTimer > 9 * hc.measureLen) {
     //Dbg_println("PROTECTION!");//DEBUG
     loopTimer -= 8 * hc.measureLen;
