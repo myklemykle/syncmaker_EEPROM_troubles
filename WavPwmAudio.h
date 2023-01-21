@@ -14,7 +14,7 @@
 void WavPwmInit(unsigned char GpioPinChannelA);
 unsigned char WavPwmIsPlaying();
 void WavPwmStopAudio();
-unsigned char WavPwmPlayAudio(unsigned short WavPwmData[]);
+unsigned char WavPwmPlayAudio(short WavPwmData[]);
 
 
 // Audio buffer 2 channels for 2 seconds @ 22050 Hz Samples/Second.

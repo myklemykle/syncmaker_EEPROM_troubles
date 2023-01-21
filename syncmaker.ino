@@ -100,7 +100,9 @@ AudioConnection patchCord1(noise1, amp1);
 AudioConnection patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 #else
-// rp2040 audio on core1; see setup1(), core1(), WavPwmAudio.cpp 
+// rp2040 audio runs on core1
+// see setup1(), core1(), WavPwmAudio.cpp 
+static short AudioBuffer[AUDIO_BUFF_SIZE];
 #endif
 
 
@@ -518,9 +520,9 @@ void setup() {
 // rp2040 audio:
 
 ///////////////
-// Set up hardware interpolator 0 in blend mode for volume control:
+// Set up hardware interpolator 0 on core1 in blend mode for volume control:
 
-void interpSetup(){
+void interpSetup1(){
 	interp_config cfg = interp_default_config();
 	interp_config_set_blend(&cfg, true);
 	interp_set_config(interp0, 0, &cfg); // config lane 0
@@ -543,14 +545,13 @@ void interpSetup(){
 }
 
 void setup1(){
-	interpSetup();
+	interpSetup1();
 
 	// setup PWM output (TODO: rewrite this for selectable outputs ...)
 	WavPwmInit(ring1); // this inits both ring1 & (ring1 + 1), which thankfully is tip1
 }
 
 void loop1(){
-	unsigned short AudioBuffer[AUDIO_BUFF_SIZE];
   int i;
 
   Serial.printf("audio buf size = %d\n", AUDIO_BUFF_SIZE);
@@ -560,7 +561,7 @@ void loop1(){
   // fill buffer with white noise
   randomSeed(666);
   for(i=0; i<AUDIO_BUFF_SIZE; i++){
-    AudioBuffer[i] = random(WAV_PWM_COUNT);
+    AudioBuffer[i] = random(WAV_PWM_COUNT) - (WAV_PWM_COUNT / 2);
   }
 
   // Play audio from audio buffer to PWM pins.

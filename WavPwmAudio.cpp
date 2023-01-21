@@ -28,14 +28,18 @@
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
+#include "hardware/interp.h"
 #include "WavPwmAudio.h"
 
 
 
-static int wavPwmDmaCh = -1;
-static int loopCtrlDmaCh = -1;
+static int wavDataCh = -1;
+static int wavCtrlCh = -1;
+static int pwmDataCh = -1;
+static int pwmCtrlCh = -1;
 static unsigned int PwmSliceNum = 0;
-static unsigned short * address_pointer;
+static short * wavTablePtr, *testBufPtr;
+io_rw_32* interpPtr;
 
 
 
@@ -63,40 +67,57 @@ unsigned char WavPwmIsPlaying()
 	// so this DMA channel could be not-busy at that moment.  Odds of this are approx once in 133 megachances ... ultra low.
 	// but likely we can't expect multiple calls to dma_channel_is_busy to solve that, because the DMAs are moving
 	// targets. How to do this exactly right?
-   return dma_channel_is_busy(wavPwmDmaCh);
+   return dma_channel_is_busy(wavDataCh);
 }
 
 
 
 void WavPwmStopAudio()
 {
-   if (wavPwmDmaCh && dma_channel_is_busy(wavPwmDmaCh)) {
-      dma_channel_abort(wavPwmDmaCh);
-      dma_channel_abort(loopCtrlDmaCh);
+   if (wavDataCh && dma_channel_is_busy(wavDataCh)) {
+      dma_channel_abort(wavDataCh);
+      dma_channel_abort(wavCtrlCh);
+      dma_channel_abort(pwmDataCh);
+      dma_channel_abort(pwmCtrlCh);
 	 }
 }
 
 
 
-unsigned char WavPwmPlayAudio(unsigned short WavPwmData[])
+unsigned char WavPwmPlayAudio(short WavTable[])
 {
    unsigned char Result = false;
-   dma_channel_config wavPwmDmaChConfig, loopCtrlDmaChConfig;
-	 address_pointer = &WavPwmData[0];
+   dma_channel_config wavDataChConfig, wavCtrlChConfig, pwmDataChConfig, pwmCtrlChConfig;
+	 wavTablePtr = &WavTable[0];
+	 short testBuf[2];
+	 testBufPtr = &testBuf[0];
+	 interpPtr = &interp0->base[1];
 
-   if (wavPwmDmaCh < 0) { // if uninitialized
+   if (wavDataCh < 0) { // if uninitialized
 		 Serial.println("getting dma");
 		 Serial.flush();
-     wavPwmDmaCh = dma_claim_unused_channel(true);
+     wavDataCh = dma_claim_unused_channel(true);
 	 }
-   if (loopCtrlDmaCh < 0) { // if uninitialized
+   if (wavCtrlCh < 0) { // if uninitialized
 		 Serial.println("getting dma");
 		 Serial.flush();
-     loopCtrlDmaCh = dma_claim_unused_channel(true);
+     wavCtrlCh = dma_claim_unused_channel(true);
+	 }
+   if (pwmDataCh < 0) { // if uninitialized
+		 Serial.println("getting dma");
+		 Serial.flush();
+     pwmDataCh = dma_claim_unused_channel(true);
+	 }
+   if (pwmCtrlCh < 0) { // if uninitialized
+		 Serial.println("getting dma");
+		 Serial.flush();
+     pwmCtrlCh = dma_claim_unused_channel(true);
 	 }
 
-	 Serial.printf("pwm dma channel %d\n", wavPwmDmaCh);
-	 Serial.printf("loop dma channel %d\n", loopCtrlDmaCh);
+	 Serial.printf("pwm dma channel %d\n", wavDataCh);
+	 Serial.printf("loop dma channel %d\n", wavCtrlCh);
+	 Serial.printf("pwm dma channel %d\n", pwmDataCh);
+	 Serial.printf("loop dma channel %d\n", pwmCtrlCh);
 	 Serial.printf("pwm slice num %d\n", PwmSliceNum);
 	 Serial.flush();
 
@@ -108,7 +129,7 @@ unsigned char WavPwmPlayAudio(unsigned short WavPwmData[])
   /****************************************************/
  /* Don't start playing audio if DMA already active. */
 /****************************************************/
-   if (!dma_channel_is_busy(wavPwmDmaCh))
+   if (!dma_channel_is_busy(wavDataCh))
    {
       Result = true;
 
@@ -116,17 +137,17 @@ unsigned char WavPwmPlayAudio(unsigned short WavPwmData[])
 	// configure loop DMA channel, which resets the WAV DMA channel start address, then chains to it.
 	// ( https://vanhunteradams.com/Pico/DAC/DMA_DAC.html )
 	
-      loopCtrlDmaChConfig = dma_channel_get_default_config(loopCtrlDmaCh);
-      // channel_config_set_irq_quiet(&loopCtrlDmaChConfig, true); // why?
-      channel_config_set_read_increment(&loopCtrlDmaChConfig, false);
-      channel_config_set_write_increment(&loopCtrlDmaChConfig, false);
-      channel_config_set_transfer_data_size(&loopCtrlDmaChConfig, DMA_SIZE_32);
-			channel_config_set_chain_to(&loopCtrlDmaChConfig, wavPwmDmaCh); // chain to the wav PWM channel when finished.
+      wavCtrlChConfig = dma_channel_get_default_config(wavCtrlCh);
+      // channel_config_set_irq_quiet(&wavCtrlChConfig, true); // why?
+      channel_config_set_read_increment(&wavCtrlChConfig, false);
+      channel_config_set_write_increment(&wavCtrlChConfig, false);
+      channel_config_set_transfer_data_size(&wavCtrlChConfig, DMA_SIZE_32);
+			channel_config_set_chain_to(&wavCtrlChConfig, wavDataCh); // chain to the wav PWM channel when finished.
 			dma_channel_configure(
-        loopCtrlDmaCh,                          // Channel to be configured
-        &loopCtrlDmaChConfig,                                 // The configuration we just created
-        &dma_hw->ch[wavPwmDmaCh].read_addr,   // Write address (wav PWM channel read address)
-        &address_pointer,                   // Read address (POINTER TO AN ADDRESS)
+        wavCtrlCh,                          // Channel to be configured
+        &wavCtrlChConfig,                                 // The configuration we just created
+        &dma_hw->ch[wavDataCh].read_addr,   // Write address (wav PWM channel read address)
+        &wavTablePtr,                   // Read address (POINTER TO AN ADDRESS)
         1,                                  // transfer 32 bits one time.
         false                               // Don't start immediately
 			);
@@ -134,18 +155,58 @@ unsigned char WavPwmPlayAudio(unsigned short WavPwmData[])
   /****************************************************/
  /* Configure state machine DMA from WAV PWM memory. */
 /****************************************************/
-      wavPwmDmaChConfig = dma_channel_get_default_config(wavPwmDmaCh);
-      // channel_config_set_irq_quiet(&wavPwmDmaChConfig, true); // why?
-      channel_config_set_read_increment(&wavPwmDmaChConfig, true);
-      channel_config_set_write_increment(&wavPwmDmaChConfig, false);
-      channel_config_set_transfer_data_size(&wavPwmDmaChConfig, DMA_SIZE_32); // 32 bytes at a time (l & r 16-bit samples)
-      channel_config_set_dreq(&wavPwmDmaChConfig, pwm_get_dreq(PwmSliceNum)); // let PWM cycle request transfers
-			channel_config_set_chain_to(&wavPwmDmaChConfig, loopCtrlDmaCh); // chain to the loop-control channel when finished.
+      wavDataChConfig = dma_channel_get_default_config(wavDataCh);
+      // channel_config_set_irq_quiet(&wavDataChConfig, true); // why?
+      channel_config_set_read_increment(&wavDataChConfig, true);
+      channel_config_set_write_increment(&wavDataChConfig, false);
+      channel_config_set_transfer_data_size(&wavDataChConfig, DMA_SIZE_32); // 32 bytes at a time (l & r 16-bit samples)
+      channel_config_set_dreq(&wavDataChConfig, pwm_get_dreq(PwmSliceNum)); // let PWM cycle request transfers
+			channel_config_set_chain_to(&wavDataChConfig, wavCtrlCh); // chain to the loop-control channel when finished.
       dma_channel_configure(
-					wavPwmDmaCh,  // channel to config
-					&wavPwmDmaChConfig,  // this configuration
+					wavDataCh,  // channel to config
+					&wavDataChConfig,  // this configuration
+					//(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * PwmSliceNum)),  // write to pwm channel (pwm structures are 0x14 bytes wide)
+					&testBuf, // write to
+					//&interp0->base[1],
+					WavTable, 							// read from here (this value will be overwritten if we start the other loop first)
+					AUDIO_BUFF_SIZE / 2, 			
+					false);
+
+			//////
+			// pwm control channel
+      pwmCtrlChConfig = dma_channel_get_default_config(pwmCtrlCh);
+      // channel_config_set_irq_quiet(&pwmCtrlChConfig, true); // why?
+      channel_config_set_read_increment(&pwmCtrlChConfig, false);
+      channel_config_set_write_increment(&pwmCtrlChConfig, false);
+      channel_config_set_transfer_data_size(&pwmCtrlChConfig, DMA_SIZE_32);
+			channel_config_set_chain_to(&pwmCtrlChConfig, pwmDataCh); // chain to the pwm data channel when finished.
+			dma_channel_configure(
+        pwmCtrlCh,                          // Channel to be configured
+        &pwmCtrlChConfig,                                 // The configuration we just created
+        &dma_hw->ch[pwmDataCh].read_addr,   // Write address (pwm PWM channel read address)
+        //&wavTablePtr,                   // Read address (POINTER TO AN ADDRESS)
+        //&interpPtr,                   // Read address (POINTER TO AN ADDRESS)
+        &testBufPtr,                   // Read address (POINTER TO AN ADDRESS)
+        1,                                  // transfer 32 bits one time.
+        false                               // Don't start immediately
+			);
+
+			// pwm data channel ...
+      pwmDataChConfig = dma_channel_get_default_config(pwmDataCh);
+      // channel_config_set_irq_quiet(&pwmDataChConfig, true); // why?
+      channel_config_set_read_increment(&pwmDataChConfig, false);
+      channel_config_set_write_increment(&pwmDataChConfig, false);
+      channel_config_set_transfer_data_size(&pwmDataChConfig, DMA_SIZE_32); // 32 bytes at a time (l & r 16-bit samples)
+      channel_config_set_dreq(&pwmDataChConfig, pwm_get_dreq(PwmSliceNum)); // let PWM cycle request transfers
+			channel_config_set_chain_to(&pwmDataChConfig, pwmCtrlCh); // chain to the loop-control channel when finished.
+      dma_channel_configure(
+					pwmDataCh,  // channel to config
+					&pwmDataChConfig,  // this configuration
+					//&testBuf,  	// write to
 					(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * PwmSliceNum)),  // write to pwm channel (pwm structures are 0x14 bytes wide)
-					WavPwmData, 							// begin reading from here (but this will be overwritten if we start the other loop first)
+					//WavTable, 							// begin reading from here (but this will be overwritten if we start the other loop first)
+					&testBuf, // read from
+					//&interp0->base[1], // read from
 					AUDIO_BUFF_SIZE / 2, 			
 					false);
 
@@ -153,9 +214,9 @@ unsigned char WavPwmPlayAudio(unsigned short WavPwmData[])
   /**********************/
  /* Start WAV PWM DMA. */
 /**********************/
-      //dma_hw->ints0 = ( (1 << wavPwmDmaCh) & (1 << loopCtrlDmaCh) );
-      //dma_start_channel_mask(1 << wavPwmDmaCh);
-      dma_start_channel_mask(1 << loopCtrlDmaCh);
+      //dma_hw->ints0 = ( (1 << wavDataCh) & (1 << wavCtrlCh) );
+      dma_start_channel_mask( (1 << wavDataCh) | (1<<pwmDataCh) );
+      //dma_start_channel_mask(1 << wavCtrlCh);
    }
 
    return Result;
