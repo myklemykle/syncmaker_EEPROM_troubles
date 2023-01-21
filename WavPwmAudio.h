@@ -6,7 +6,9 @@
 
 
 #define WAV_SAMPLE_RATE          22050
-#define WAV_PWM_COUNT            (125000000 / WAV_SAMPLE_RATE)
+// WAV_PWM_COUNT = mcu frequency / sample rate = how many possible PWM values (bit depth basically)
+// TODO: poll the mcu to know its clock frequency? this assumes 133mhz:
+#define WAV_PWM_COUNT            (133000000 / WAV_SAMPLE_RATE)
 
 
 void WavPwmInit(unsigned char GpioPinChannelA);
@@ -20,7 +22,6 @@ unsigned char WavPwmPlayAudio(unsigned short WavPwmData[]);
 // looping artifact.  Longer than 2 seconds, for sure.)
 #define AUDIO_CHANNELS                 2
 #define AUDIO_PERIOD                   1
-//#define AUDIO_BUFF_SIZE                (AUDIO_CHANNELS * WAV_SAMPLE_RATE * AUDIO_PERIOD)
 #define AUDIO_BUFF_SIZE                (AUDIO_CHANNELS * WAV_SAMPLE_RATE * AUDIO_PERIOD)
 
 
