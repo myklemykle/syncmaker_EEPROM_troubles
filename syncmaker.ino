@@ -6,11 +6,35 @@
 #include "config.h"
 #include "pins.h"
 #include <Arduino.h>
-
 #include <elapsedMillis.h>
-
-// utils for handling loop variables:
 #include <CircularBuffer.h>
+#include "sleep.h"
+#include "Bounce2.h"
+#include <EEPROM.h>
+
+#ifdef PI_V6 // rp2040 version V6 & on
+///////////////
+// ST IMU
+#include "lsm6dso32x.h"
+// Adafruit TinyUSB w/midi:
+#include <MIDI.h>
+#include <Adafruit_TinyUSB.h>
+// rp2040 audio
+#include "WavPwmAudio.h"
+///////////////
+#else // teensy version EVT4 & earlier
+// TDK IMU
+#include "MotionSense.h"
+// Teensy audio!
+#include <Audio.h>
+///////////////
+#endif
+
+#ifdef MIDITIMECODE
+#include "miditimecode.h"
+#endif 
+
+// utils for handling loop variables, which are very short CircularBuffers:
 #define CBINIT(cb, val) \
   while (!cb.isFull()) cb.push(val)
 #define CBSET(cb, val) \
@@ -29,10 +53,6 @@
 
 #ifdef PI_V6
 
-// Adafruit TeensyUSB w/midi:
-#include <MIDI.h>
-#include <Adafruit_TinyUSB.h>
-
 // USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
 
@@ -50,10 +70,8 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 
 // IMU Gesture Detection:
 #ifdef PI_V6
-#include "lsm6dso32x.h"
 LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
 #else
-#include "MotionSense.h"
 MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
 
@@ -64,38 +82,28 @@ const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // a little more sensitive
 const int tapThreshold = 2 * COUNT_PER_G;
 
 CircularBuffer<long, 3> inertia;
+// shaken should be the start of sound moment,
 #define SHAKEN (CBROSETHRU(inertia, shakeThreshold))
-// TODO: shaken should be the start of sound moment,
 // but try putting tapped at the apex-G moment; it may have better feel.
 //#define TAPPED (CBROSETHRU(inertia, tapThreshold))
 #define TAPPED ((inertia[0] > tapThreshold) && (inertia[0] < inertia[1]) && (inertia[1] >= inertia[2])) // when Gs just starting to drop
 
 
-// Sleep/hibernation:
-#include "sleep.h"
-
 #ifdef TEENSY32
 // Teensy audio!
-#include <Audio.h>
 // GUItool: end automatically generated code
 AudioSynthNoiseWhite noise1;  //xy=110,301
 AudioAmplifier amp1;          //xy=231,298
-//AudioSynthWaveformDc     dc1;            //xy=262,375 //DEBUG
-//AudioMixer4              mixer1;         //xy=470,359
 AudioOutputAnalog dac1;  //xy=603,359 //DEBUG
 AudioConnection patchCord1(noise1, amp1);
-/* AudioConnection          patchCord2(amp1, 0, mixer1, 0); */  //DEBUG
-/* AudioConnection          patchCord3(dc1, 0, mixer1, 1); */   //DEBUG
-/* AudioConnection          patchCord4(mixer1, dac1); */        //DEBUG
 AudioConnection patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
 #else
-// TODO: rp2040 audio
+// rp2040 audio on core1; see setup1(), core1(), WavPwmAudio.cpp 
 #endif
 
 
 // Buttons:
-#include "Bounce2.h"
 const int debounceLen = 2;  // milliseconds
 
 // side buttons
@@ -168,7 +176,6 @@ const int imuClockTick = 500;  // 2khz data rate
 
 
 // Storing/retriving settings: 
-#include <EEPROM.h>
 
 #ifndef PI_V6
 // only for rev1 historical reasons is this number not 0:
@@ -263,7 +270,6 @@ const long circleTicksPerClock = CC_INT_RES / MIDICLOCKSPERPULSE;
 #endif
 
 #ifdef MIDITIMECODE
-#include "miditimecode.h"
 // How often to increment the MTC frame, (1/25 second, the minimum resolution of midi timecode)?
 // if we declare that 1 second of MTC equals 1 second of PO time at 120bpm, so 2 "beats" per second,
 // which is actually (when you set PO tempo to 120) one entire 16-note pattern per second,
@@ -314,12 +320,12 @@ void imu_int_handler() {
 void setup() {
 #ifdef PI_V6
 
-	int i;
+	  // fix startup weirdness
+  rp2040.idleOtherCore();
 
 	  // turn on this helpful developer feature
-  rp2040.enableDoubleResetBootloader();
+  /* rp2040.enableDoubleResetBootloader(); */
 #endif
-
 
   ///////
   // Pin setup:
@@ -332,25 +338,30 @@ void setup() {
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
+
+	// TODO: why do i have to do this at setup????
 #ifdef PI_V6
 	analogWrite(nonstopLedPin, 0);
 #else
   digitalWrite(nonstopLedPin, LOW);
 #endif
-  pinMode(boardLedPin, OUTPUT);  // nonstop led
+
 #ifdef EVT4
   nonstopLedPWMClock = loopTimer;
 #endif
 
+  pinMode(boardLedPin, OUTPUT);  // nonstop led
+
   pinMode(PO_play, INPUT);  // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
   pinMode(PO_wake, INPUT);
-  pinMode(PO_reset, INPUT_PULLUP);  // TODO: why do we still get resets when connecting?  need pullup on the PI board?
+  pinMode(PO_reset, INPUT_PULLUP);  // TODO: check v6: do we still get resets when physically connecting the boards? V6 added a pullup here ...
   pinMode(PO_SWCLK, INPUT_PULLUP);
   pinMode(PO_SWDIO, INPUT_PULLUP);
   pinMode(PO_SWO, INPUT_PULLUP);
 
 #ifdef PI_V6
 	/////// CMOS chips must stabilize all unconnected pins, to avoid static glitches
+	int i;
 	for (i=0; i < std::size(unusedPins); i++){
 		/* Dbg_printf("disable pin %d\n", unusedPins[i]); */
 		pinMode(i, INPUT_PULLUP);
@@ -372,7 +383,11 @@ void setup() {
 	// USB serial port:
   Serial.begin(115200);  // baud rate is ignored on USB serial.
 
-  delay(2000);
+	digitalWrite(led1Pin, HIGH);
+	digitalWrite(led2Pin, HIGH);
+  delay(2000); // waiting for USB host...
+	digitalWrite(led1Pin, LOW);
+	digitalWrite(led2Pin, LOW);
 
 #ifdef PI_V6
   Dbg_println("flashed for v6 board");
@@ -390,10 +405,10 @@ void setup() {
   CBINIT(decodedPlayLed, 0);
 
 
-
-  ///////
-  // IMU setup:
 #ifdef IMU_SPI
+  ///////
+  // SPI+IMU setup:
+
   // raise chipSelect line to select the only chip.
   // (no-op; the library toggles it on & off anyway)
   pinMode(SPI_cs, OUTPUT);
@@ -405,7 +420,7 @@ void setup() {
   SPIPORT.setMISO(SPI_miso);
   SPIPORT.setSCK(SPI_clock);
 	SPIPORT.begin();
-	digitalWrite(led4Pin, HIGH);//DEBUG
+	/* digitalWrite(led4Pin, HIGH);//DEBUG */
 #elif defined(PI_V6)
   // Dunno why the RP2040 version has different api here ... maybe not necessary/depreacted?
   SPIPORT.setRX(SPI_miso);
@@ -417,18 +432,9 @@ void setup() {
 
 #endif
 
-
-
-#ifdef TEENSY32
-  // IMU int pin is open-collector mode
   pinMode(IMU_int, INPUT_PULLUP);
-#elif defined(PI_V6)
-  // IMU int pin is push-pull, active low
-  pinMode(IMU_int, INPUT_PULLUP);
-#endif
-
   attachInterrupt(IMU_int, imu_int_handler, FALLING);
-
+	
   imu.begin();
 
 
@@ -464,11 +470,9 @@ void setup() {
   hc.downbeatTime = micros();  // now!
   // If buttons are held down when we boot, reset the default measure length
   if (BOTHPRESSED) {
-  //if (1) {                            //DEBUG
     _settings.measureLen = hc.measureLen = 250 * TIMESCALE;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
 		putSettings();
   } else {
-    /* EEPROM.get(eepromBase, hc.measureLen); */
 		hc.measureLen = _settings.measureLen;
   }
 
@@ -476,8 +480,6 @@ void setup() {
 #ifdef MIDITIMECODE
   mtc.setup();
 #endif
-
-
 
   loopTimer = 0;  // why?
 
@@ -503,11 +505,49 @@ void setup() {
                           // anyway I still get background noise when running off battery.
                           // TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 #else
-  // rp2040 audio todo
+	rp2040.restartCore1();
+  // see setup1() for rp2040 audio on second core
 #endif
 
   sleep_setup();
 }
+
+#ifndef TEENSY32
+
+// rp2040 audio:
+void setup1(){
+	WavPwmInit(ring1); // this inits both ring1 & (ring1 + 1), which thankfully is tip1
+}
+
+void loop1(){
+	unsigned short AudioBuffer[AUDIO_BUFF_SIZE];
+  int i;
+
+  Serial.printf("audio buf size = %d\n", AUDIO_BUFF_SIZE);
+  Serial.flush();
+
+  //////////
+  // fill buffer with white noise
+  randomSeed(666);
+  for(i=0; i<AUDIO_BUFF_SIZE; i++){
+    AudioBuffer[i] = random(WAV_PWM_COUNT);
+
+  // Play audio from audio buffer to PWM pins.
+  WavPwmPlayAudio(AudioBuffer);
+
+  while(true){
+		/* Serial.println("b3ng"); */
+    /* Serial.flush(); */
+  }
+    /* delay(500); */
+    /* Serial.println("b2ng"); */
+    /* Serial.flush(); */
+    delay(500);
+	}
+}
+
+#endif
+
 
 void loop() {
   static int ax, ay, az;
@@ -891,7 +931,6 @@ void loop() {
 				}
 			}
 
-      //EEPROM.put(eepromBase, hc.measureLen);  // save the new tempo to NVRAM.
 			_settings.measureLen = hc.measureLen;
 
 			// TODO: for RP2040 this is sort of a hack, flash is not EEPROM & I will wear out flash too fast if I put these settings as often as I have been.
@@ -1151,7 +1190,7 @@ void loop() {
   if (CBDIFF(pulseState)) {
     if (playing[0]) {
       // send sync pulse on both pins
-      digitalWrite(tip1, pulseState[0]);
+      /* digitalWrite(tip1, pulseState[0]); */ // TESTING audio on this pin atm.  TODO: UI to choose btwn audio & clock...
       digitalWrite(tip2, pulseState[0]);
     }
 
