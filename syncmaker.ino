@@ -14,6 +14,7 @@
 
 #ifdef PI_V6 // rp2040 version V6 & on
 ///////////////
+#include "hardware/interp.h"
 // ST IMU
 #include "lsm6dso32x.h"
 // Adafruit TinyUSB w/midi:
@@ -515,7 +516,36 @@ void setup() {
 #ifndef TEENSY32
 
 // rp2040 audio:
+
+///////////////
+// Set up hardware interpolator 0 in blend mode for volume control:
+
+void interpSetup(){
+	interp_config cfg = interp_default_config();
+	interp_config_set_blend(&cfg, true);
+	interp_set_config(interp0, 0, &cfg); // config lane 0
+	cfg = interp_default_config();
+	// interp_config_set_signed(&cfg, true);
+	interp_set_config(interp0, 1, &cfg); // config lane 1
+
+	// Volume levels will be from int 0 to  255:
+	interp0->base[0] = 0;
+	// base[1] will get the sample we're scaling ...
+	interp0->accum[1] = 255; // turn it all the way up for now ...
+
+	// TODO: deal with positive/negative values.
+	// Start by using signed ints in the noise table,
+	// then use interp features to maintain signage,
+	// and use interp0-> base2 to shift the result to the center of the signal range (Aref/2) .
+
+	// (If we don't do this we maybe wouldn't notice, because of the DC blocking on the output filter,
+	// but it might still lead to pops & clicks & possible diminished fidelity.)
+}
+
 void setup1(){
+	interpSetup();
+
+	// setup PWM output (TODO: rewrite this for selectable outputs ...)
 	WavPwmInit(ring1); // this inits both ring1 & (ring1 + 1), which thankfully is tip1
 }
 
@@ -531,6 +561,7 @@ void loop1(){
   randomSeed(666);
   for(i=0; i<AUDIO_BUFF_SIZE; i++){
     AudioBuffer[i] = random(WAV_PWM_COUNT);
+  }
 
   // Play audio from audio buffer to PWM pins.
   WavPwmPlayAudio(AudioBuffer);
@@ -538,7 +569,6 @@ void loop1(){
   while(true){
 		/* Serial.println("b3ng"); */
     /* Serial.flush(); */
-  }
     /* delay(500); */
     /* Serial.println("b2ng"); */
     /* Serial.flush(); */
@@ -622,7 +652,10 @@ void loop() {
 #endif
 
 #ifdef PI_V6
-    // TODO: make noise
+    // TODO: 
+		// setup a fifo to core1, stuff it with a volume level
+		// core1 then reads that and adjusts the accumulator in interp0
+		// then setup DMA channels to pump the audio through interp0
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
