@@ -7,7 +7,10 @@ openocd := $(openocd_dir)/src/openocd
 v6_build_path := build/v6
 v4_build_path := build/v4
 
-v6: v6compile v6load
+v6: v6compile v6load pause v6monitor
+
+pause:
+	sleep 1
 
 v6img_uf2 := build/rp2040.rp2040.generic/$(target).ino.uf2
 v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb   --build-property "build.extra_flags=-DPI_V6" --build-path $(v6_build_path) # extra flags works here
@@ -33,7 +36,7 @@ rdp:
 	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-rescue.cfg -s $(openocd_script) 
 
 v6monitor: 
-	arduino-cli monitor -p /dev/tty.usbmodem?????
+	arduino-cli monitor -p /dev/tty.usbmodem????
 
 # start openocd debugger
 v6ocd: 
