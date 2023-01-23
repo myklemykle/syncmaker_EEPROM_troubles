@@ -22,6 +22,7 @@
 #include <Adafruit_TinyUSB.h>
 // rp2040 audio
 #include "WavPwmAudio.h"
+#include "hardware/pwm.h"
 ///////////////
 #else // teensy version EVT4 & earlier
 // TDK IMU
@@ -102,7 +103,13 @@ AudioConnection patchCord2(amp1, dac1);
 #else
 // rp2040 audio runs on core1
 // see setup1(), core1(), WavPwmAudio.cpp 
-static short AudioBuffer[AUDIO_BUFF_SIZE];
+
+// This buffer stores our audio sample: white or pink noise for maraca.
+short sampleBuffer[SAMPLE_BUFF_SIZE];
+
+// We scale/process audio out of the sample buffer into this small buffer,
+// and DMA copies that to the PWM output.
+short transferBuffer[TRANSFER_BUFF_SIZE];
 #endif
 
 
@@ -342,7 +349,7 @@ void setup() {
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
 
-	// TODO: why do i have to do this at setup????
+	// TODO: why is this even here?
 #ifdef PI_V6
 	analogWrite(nonstopLedPin, 0);
 #else
@@ -508,7 +515,7 @@ void setup() {
                           // anyway I still get background noise when running off battery.
                           // TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 #else
-	rp2040.restartCore1();
+	rp2040.resumeOtherCore();
   // see setup1() for rp2040 audio on second core
 #endif
 
@@ -547,33 +554,84 @@ void interpSetup1(){
 void setup1(){
 	interpSetup1();
 
-	// setup PWM output (TODO: rewrite this for selectable outputs ...)
+  /* ////////// */
+  /* // fill buffer with white noise */
+  /* randomSeed(666); */
+  /* for(int i=0; i<SAMPLE_BUFF_SIZE; i++){ */
+  /*   sampleBuffer[i] = random(WAV_PWM_COUNT) - (WAV_PWM_COUNT / 2); */
+  /* } */
+
+	// for testing: fill buffer with sine waves
+  const float twoPI = 6.283;
+  const float scale = (WAV_PWM_COUNT + 1) / 2;
+
+  for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){
+    for(int j=0;j<AUDIO_CHANNELS; j++)
+      //sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence
+      sampleBuffer[i + j] = (int) (scale
+          * sin( (float)i / (float)SAMPLE_BUFF_SIZE * twoPI )  							// matching left & right
+          + scale);
+  }
+
+	/* // for testing: a square wave */
+  /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS) */
+  /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
+	/* 		if (i < (SAMPLE_BUFF_SIZE / 2)){ */
+	/* 			sampleBuffer[i + j] = WAV_PWM_COUNT; */
+	/* 		} else { */
+	/* 			sampleBuffer[i + j] = 0; */
+	/* 		} */
+	
+
+  /* Serial.printf("audio buf size = %d\n", SAMPLE_BUFF_SIZE); */ //DEBUG
+  /* Serial.flush(); */ //DEBUG
+
+	// Setup PWM output (TODO: rewrite this for selectable outputs ...)
+	// and start the PWM interrupts
 	WavPwmInit(ring1); // this inits both ring1 & (ring1 + 1), which thankfully is tip1
+
+  // Start DMA-ing audio from transfer buffer to PWM pins.
+  /* WavPwmPlayAudio(sampleBuffer, SAMPLE_BUFF_SIZE); */
+  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE);
 }
 
 void loop1(){
-  int i;
+	tweakPwm();
+}
 
-  Serial.printf("audio buf size = %d\n", AUDIO_BUFF_SIZE);
-  Serial.flush();
+// PWM tuning utility
+void tweakPwm(){
+	char c;
 
-  //////////
-  // fill buffer with white noise
-  randomSeed(666);
-  for(i=0; i<AUDIO_BUFF_SIZE; i++){
-    AudioBuffer[i] = random(WAV_PWM_COUNT) - (WAV_PWM_COUNT / 2);
-  }
+	static int position = 0;
 
-  // Play audio from audio buffer to PWM pins.
-  WavPwmPlayAudio(AudioBuffer);
+	static int step = 50;
 
-  while(true){
-		/* Serial.println("b3ng"); */
-    /* Serial.flush(); */
-    /* delay(500); */
-    /* Serial.println("b2ng"); */
-    /* Serial.flush(); */
-    delay(500);
+	if (Serial.available()){
+		c = Serial.read();
+		if (c == '+'){
+			for (int x = 0; x < step; x++) {
+				pwm_advance_count(0);
+			}
+			position+= step;
+			Serial.println(position);
+		} else if (c == '-') {
+			for (int x = 0; x < step; x++) {
+				pwm_retard_count(0);
+			}
+			position-= step;
+			Serial.println(position);
+		} else if (c == '*'){
+			step = step * 2;
+			Serial.print('*');
+			Serial.println(step);
+		} else if (c == '/') {
+			step = step / 2;
+			Serial.print('*');
+			Serial.println(step);
+		} else { 
+			Serial.print(c);
+		}
 	}
 }
 
