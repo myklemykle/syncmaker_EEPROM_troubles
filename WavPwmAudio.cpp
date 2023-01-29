@@ -40,6 +40,7 @@ static short * bufPtr;
 io_rw_32* interpPtr;
 extern short transferBuffer[TRANSFER_BUFF_SIZE];
 extern short sampleBuffer[SAMPLE_BUFF_SIZE];
+extern short volumeLevel = 0;
 
 // WavPwmInit() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
 // and then we refill the transfer buffer with TRANSFER_BUFF_SIZE more samples,
@@ -50,8 +51,28 @@ void pwm_int_handler(){
   pwm_clear_irq(0); // otherSliceNum
            
   for (int i=0; i<TRANSFER_BUFF_SIZE; i++){
-    transferBuffer[i] = sampleBuffer[sampleBuffCursor++];
-    if (sampleBuffCursor == SAMPLE_BUFF_SIZE)
+
+    //transferBuffer[i] = sampleBuffer[sampleBuffCursor++];
+		//
+		// scale sample through interp0
+    // interp0->base[1] = sampleBuffer[sampleBuffCursor++];
+		// transferBuffer[1] = interp0->peek[1]; 
+		//transferBuffer[1] = interp0->peek[1] + ((WAV_PWM_RANGE)/2); // shift to positive
+
+		/// ... not sold on that approach.
+
+		// for now, make the core do the work.
+		// (TODO: use interp1 for the clamping if we need to optimize)
+    transferBuffer[i] = (short)
+			MAX(0,
+				MIN(WAV_PWM_RANGE,
+					( (int)(sampleBuffer[sampleBuffCursor] * interp0->accum[1]) * 2 / WAV_PWM_RANGE)
+					+ ((WAV_PWM_RANGE)/2) // shift to positive
+				)
+			)
+			;
+
+    if (++sampleBuffCursor == SAMPLE_BUFF_SIZE)
       sampleBuffCursor = 0;
   }
 } 
@@ -143,7 +164,6 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
    unsigned char Result = false;
    dma_channel_config wavDataChConfig, wavCtrlChConfig;
 	 bufPtr = &buf[0];
-	 interpPtr = &interp0->base[1];
 
    if (wavDataCh < 0) { // if uninitialized
 		 Serial.println("getting dma");
@@ -206,7 +226,6 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
 					wavDataCh,  // channel to config
 					&wavDataChConfig,  // this configuration
 					(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * pwmSlice)),  // write to pwm channel (pwm structures are 0x14 bytes wide)
-					//&interp0->base[1],
 					buf, 							// read from here (this value will be overwritten if we start the other loop first)
 					bufLen / 2, 			// transfer exactly (samples/2) times (cuz 2 samples per transfer)
 					false);

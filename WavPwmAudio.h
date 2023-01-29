@@ -19,7 +19,8 @@
 												// with the output filter performance of V6, tho this won't matter much
 												// because our main output will be white noise. =)
 												// PDM could also improve this, if more sample resolution was needed.
-#define WAV_PWM_COUNT ((1024 * WAV_PWM_SCALE) - 1) 
+#define WAV_PWM_COUNT ((1024 * WAV_PWM_SCALE) - 1) // the PWM counter's setting
+#define WAV_PWM_RANGE ((1024 * WAV_PWM_SCALE)) 		
 #define WAV_SAMPLE_RATE  (133000000 / WAV_PWM_COUNT) 
 
 void WavPwmInit(unsigned char GpioPinChannelA);
@@ -39,7 +40,10 @@ unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen);
 // and then DMA will transfer from this buffer to the PWM.
 #define TRANSFER_WINDOW_SIZE  				8
 #define TRANSFER_BUFF_SIZE  					TRANSFER_WINDOW_SIZE * AUDIO_CHANNELS // 64 samples
-#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * (320 / WAV_PWM_SCALE) )
+//#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * (320 / WAV_PWM_SCALE) )
+//
+// that's fine for a waveform, but for noise we need a much larger buffer:
+#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * 10000)
 
 // The current test code creates one wave across the sample buffer, so SAMPLE_BUFF_SIZE 
 // determines pitch, so I need to somehow keep it constant when changing other variables

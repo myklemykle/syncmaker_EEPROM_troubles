@@ -520,8 +520,8 @@ void setup() {
 #endif
 
   sleep_setup();
-}
 
+}
 #ifndef TEENSY32
 
 // rp2040 audio:
@@ -532,56 +532,60 @@ void setup() {
 void interpSetup1(){
 	interp_config cfg = interp_default_config();
 	interp_config_set_blend(&cfg, true);
+	interp_config_set_signed(&cfg, true);
 	interp_set_config(interp0, 0, &cfg); // config lane 0
+
 	cfg = interp_default_config();
-	// interp_config_set_signed(&cfg, true);
+	interp_config_set_signed(&cfg, true); 
 	interp_set_config(interp0, 1, &cfg); // config lane 1
 
-	// Volume levels will be from int 0 to  255:
+	// Volume levels will be from int 0 to 255:
 	interp0->base[0] = 0;
 	// base[1] will get the sample we're scaling ...
 	interp0->accum[1] = 255; // turn it all the way up for now ...
 
-	// TODO: deal with positive/negative values.
-	// Start by using signed ints in the noise table,
-	// then use interp features to maintain signage,
-	// and use interp0-> base2 to shift the result to the center of the signal range (Aref/2) .
+	// TODO: use interp1 in clamp mode
+	// to shift results into positive (using base2)
+	// and clamp btwn 0 and WAV_PWM_RANGE (using clamp mode)
+	
+	// ALSO: handle vol levels above 255?
 
-	// (If we don't do this we maybe wouldn't notice, because of the DC blocking on the output filter,
-	// but it might still lead to pops & clicks & possible diminished fidelity.)
 }
 
 void setup1(){
 	interpSetup1();
 
-  /* ////////// */
-  /* // fill buffer with white noise */
-  /* randomSeed(666); */
-  /* for(int i=0; i<SAMPLE_BUFF_SIZE; i++){ */
-  /*   sampleBuffer[i] = random(WAV_PWM_COUNT) - (WAV_PWM_COUNT / 2); */
-  /* } */
-
-	// for testing: fill buffer with sine waves
-  const float twoPI = 6.283;
-  const float scale = (WAV_PWM_COUNT + 1) / 2;
-
-  for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){
-    for(int j=0;j<AUDIO_CHANNELS; j++)
-      //sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence
-      sampleBuffer[i + j] = (int) (scale
-          * sin( (float)i / (float)SAMPLE_BUFF_SIZE * twoPI )  							// matching left & right
-          + scale);
+  //////////
+  // fill buffer with white noise
+  randomSeed(666);
+  for(int i=0; i<SAMPLE_BUFF_SIZE; i++){
+    sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
   }
+
+	/* // for testing: a sine wave */
+  /* const float twoPI = 6.283; */
+  /* const float scale = (WAV_PWM_RANGE) / 2; */
+  /*  */
+  /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){ */
+  /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
+  /*     //sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence */
+  /*     sampleBuffer[i + j] = (int) (scale */
+  /*         // sin( (float)i / (float)SAMPLE_BUFF_SIZE * twoPI )  							// a single sine wave */
+  /*         * sin( (float)i*30 / (float)SAMPLE_BUFF_SIZE * twoPI )  					// 30 sine waves (in larger buffer) */
+  /*         // + scale // shift to positive  */
+	/* 				); */
+  /* } */
 
 	/* // for testing: a square wave */
   /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS) */
   /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
-	/* 		if (i < (SAMPLE_BUFF_SIZE / 2)){ */
-	/* 			sampleBuffer[i + j] = WAV_PWM_COUNT; */
+	/* 		//if (i < (SAMPLE_BUFF_SIZE / 2)){ // a single square wave */
+	/* 		if ((i*30)%SAMPLE_BUFF_SIZE < (SAMPLE_BUFF_SIZE / 2)){ // 30 square waves */
+	/* 			sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2; */
 	/* 		} else { */
-	/* 			sampleBuffer[i + j] = 0; */
+	/* 			sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2); */
 	/* 		} */
-	
+	/*  */
 
   /* Serial.printf("audio buf size = %d\n", SAMPLE_BUFF_SIZE); */ //DEBUG
   /* Serial.flush(); */ //DEBUG
@@ -596,8 +600,23 @@ void setup1(){
 }
 
 void loop1(){
-	tweakPwm();
+	static uint32_t volumeLevel1 = 0;
+	static short reportcount = 1500; 
+
+	// update the interpolater with the latest volume level
+	interp0->accum[1] = rp2040.fifo.pop();
+
+	reportcount--;
+	if (reportcount ==0){
+		reportcount = 1500;
+		Serial.printf("unscaled: %d\n",interp0->base[1]);
+		Serial.printf("scale: %d\n",interp0->accum[1]);
+		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
+	}
+
+	//tweakPwm();  // only for testing
 }
+
 
 // PWM tuning utility
 void tweakPwm(){
@@ -711,10 +730,9 @@ void loop() {
 #endif
 
 #ifdef PI_V6
-    // TODO: 
-		// setup a fifo to core1, stuff it with a volume level
-		// core1 then reads that and adjusts the accumulator in interp0
-		// then setup DMA channels to pump the audio through interp0
+		// send vol level to core 1:
+		rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE);
+		/* rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); */
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
