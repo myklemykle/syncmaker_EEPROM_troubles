@@ -5,6 +5,7 @@
 //
 #include "config.h"
 #include "pins.h"
+#include "settings.h"
 #include <Arduino.h>
 #include <elapsedMillis.h>
 #include <CircularBuffer.h>
@@ -147,17 +148,15 @@ Bounce btn4 = Bounce();
 bool btn4pressed = false;
 #endif
 
-// Important time intervals:
-const unsigned int TIMESCALE = 1000;  // uS per ms
-const unsigned long strobeOnLen = 500;
+// Important time intervals, in uS:
+const unsigned long strobeOnLen = 500; 
 
-const unsigned long strobeOffLen = 100 * TIMESCALE;
-const unsigned long pulseLen = 5 * TIMESCALE;
-const unsigned long minTapInterval = 100 * TIMESCALE;  // Ignore spurious double-taps!  (This enforces a max tempo.)
+const unsigned long strobeOffLen = 100 * 1000;
+const unsigned long pulseLen = 5 * 1000;
+const unsigned long minTapInterval = 100 * 1000;  // Ignore spurious double-taps!  (This enforces a max tempo.)
 
 // duration of the off-cycle of the Play button PWM wave
-//const unsigned long pwmOffTime = 100 * TIMESCALE;
-const unsigned long pwmOffTime = 150 * TIMESCALE;
+const unsigned long pwmOffTime = 150 * 1000;
 // But this should really be just 1ms ... once we fix measurement.
 
 // convert a time interval between beats to BPM:
@@ -183,56 +182,8 @@ const int imuClockTick = 500;  // 2khz data rate
 #endif
 
 
-
-
-// Storing/retriving settings: 
-
-#ifndef PI_V6
-// only for rev1 historical reasons is this number not 0:
-const int eepromBase = 2000;
-#else
-const int eepromBase = 0;
-#endif
-
-// Settings object
-typedef struct {
-	uint16_t _flag;
-	unsigned int _version; 
-	unsigned long measureLen;	
-} _Settings;
-
-// This is a clue that we got non-garbled data:
-const uint16_t settingsFlag = 0x2323;
-// We'll bump this whenever we change the format of _Settings:
-const unsigned int settingsVersion = 1;
-
-_Settings _settings;
-
-bool initSettings(){
-	Dbg_println("init settings");
-	_settings = { settingsFlag, settingsVersion, 120 * TIMESCALE };
-	return true;
-}
-
-bool getSettings(){
-	Dbg_println("get settings");
-	EEPROM.get(eepromBase, _settings);
-	// For now reject any unknown version
-	Dbg_printf("flag = %x\n", _settings._flag);
-	Dbg_printf("ver  = %x\n", _settings._version);
-	Dbg_printf("len  = %d\n", _settings.measureLen);
-	return (_settings._flag == settingsFlag) && (_settings._version == settingsVersion);
-}
-
-bool putSettings(){
-	Dbg_println("put settings");
-	// TODO: make sure it's initialized?
-	EEPROM.put(eepromBase, _settings);
-#ifdef PI_V6
-	EEPROM.commit();
-#endif
-	return true;
-}
+// our main Settings object:
+Settings _settings;
 
 
 // Human Clock:
@@ -470,8 +421,8 @@ void setup() {
 #ifdef PI_V6
 	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
 #endif
-	if (! getSettings()) {
-		initSettings();
+	if (! _settings.get()) {
+		_settings.init();
 	}
 
   ////////
@@ -480,10 +431,10 @@ void setup() {
   hc.downbeatTime = micros();  // now!
   // If buttons are held down when we boot, reset the default measure length
   if (BOTHPRESSED) {
-    _settings.measureLen = hc.measureLen = 250 * TIMESCALE;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
-		putSettings();
+    _settings.s.measureLen = hc.measureLen = 250 * 1000;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
+		_settings.put();
   } else {
-		hc.measureLen = _settings.measureLen;
+		hc.measureLen = _settings.s.measureLen;
   }
 
 
@@ -837,7 +788,7 @@ void loop() {
         break;
       case MGRP_C:
         // has to be off for more than the length of a wink ... 100ms?
-        if (playPinTimer > (100 * TIMESCALE)) {
+        if (playPinTimer > (100 * 1000)) {
           CBSET(playing, false);
           Dbg_println("STOP grp C");
         }
@@ -1041,12 +992,12 @@ void loop() {
 				}
 			}
 
-			_settings.measureLen = hc.measureLen;
+			_settings.s.measureLen = hc.measureLen;
 
 			// TODO: for RP2040 this is sort of a hack, flash is not EEPROM & I will wear out flash too fast if I put these settings as often as I have been.
 			// We should have some other strategy for saving the settings less often, but often enough.
 			// (ATM measureLen is the only setting, but there will be more ...)
-      putSettings();
+      _settings.put();
 		}
 
     // not armed.
