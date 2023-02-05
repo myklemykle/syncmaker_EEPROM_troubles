@@ -22,7 +22,7 @@
 #include <MIDI.h>
 #include <Adafruit_TinyUSB.h>
 // rp2040 audio
-#include "WavPwmAudio.h"
+#include "RP2040Audio.h"
 #include "hardware/pwm.h"
 ///////////////
 #else // teensy version EVT4 & earlier
@@ -93,6 +93,7 @@ CircularBuffer<long, 3> inertia;
 
 
 #ifdef TEENSY32
+
 // Teensy audio!
 // GUItool: end automatically generated code
 AudioSynthNoiseWhite noise1;  //xy=110,301
@@ -101,16 +102,20 @@ AudioOutputAnalog dac1;  //xy=603,359 //DEBUG
 AudioConnection patchCord1(noise1, amp1);
 AudioConnection patchCord2(amp1, dac1);
 // GUItool: end automatically generated code
+
 #else
+
 // rp2040 audio runs on core1
-// see setup1(), core1(), WavPwmAudio.cpp 
+// see setup1(), core1(), RP2040Audio.cpp 
+RP2040Audio audio;
 
+// C++ you so crazy!  Why do i have to redefine these?  Read the header file dude!
 // This buffer stores our audio sample: white or pink noise for maraca.
-short sampleBuffer[SAMPLE_BUFF_SIZE];
-
+extern short RP2040Audio::transferBuffer[TRANSFER_BUFF_SIZE];
 // We scale/process audio out of the sample buffer into this small buffer,
 // and DMA copies that to the PWM output.
-short transferBuffer[TRANSFER_BUFF_SIZE];
+extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SIZE];
+
 #endif
 
 
@@ -522,7 +527,7 @@ void setup1(){
   // fill buffer with white noise (signed)
   randomSeed(666);
   for(int i=0; i<SAMPLE_BUFF_SIZE; i++){
-    sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
+    audio.sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
   }
 
 	/* // for testing: a sine wave */
@@ -531,8 +536,8 @@ void setup1(){
   /*  */
   /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){ */
   /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
-  /*     //sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence */
-  /*     sampleBuffer[i + j] = (int) (scale */
+  /*     //audio.sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence */
+  /*     audio.sampleBuffer[i + j] = (int) (scale */
   /*         // sin( (float)i / (float)SAMPLE_BUFF_SIZE * twoPI )  							// a single sine wave */
   /*         * sin( (float)i*30 / (float)SAMPLE_BUFF_SIZE * twoPI )  					// 30 sine waves (in larger buffer) */
   /*         // + scale // shift to positive  */
@@ -544,9 +549,9 @@ void setup1(){
   /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
 	/* 		//if (i < (SAMPLE_BUFF_SIZE / 2)){ // a single square wave */
 	/* 		if ((i*30)%SAMPLE_BUFF_SIZE < (SAMPLE_BUFF_SIZE / 2)){ // 30 square waves */
-	/* 			sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2; */
+	/* 			audio.sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2; */
 	/* 		} else { */
-	/* 			sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2); */
+	/* 			audio.sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2); */
 	/* 		} */
 	/*  */
 
@@ -555,13 +560,12 @@ void setup1(){
 
 	// Setup PWM output (TODO: refac this for selectable outputs ...)
 	// and start the PWM interrupts
-	WavPwmInit();
+	audio.init();
 
   // Start DMA-ing audio from transfer buffer to PWM pins.
 	// TODO: maybe refac this as well ... it'd be cool to shut down any not in use DMAs, sleep them, etc.
-  /* WavPwmPlayAudio(sampleBuffer, SAMPLE_BUFF_SIZE); */
-  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE,0);
-  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE,1);
+  audio.play(0);
+  audio.play(1);
 }
 
 void loop1(){
@@ -579,44 +583,7 @@ void loop1(){
 		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
 	}
 
-	//tweakPwm();  // only for testing
-}
-
-
-// PWM tuning utility
-void tweakPwm(){
-	char c;
-
-	static int position = 0;
-
-	static int step = 50;
-
-	if (Serial.available()){
-		c = Serial.read();
-		if (c == '+'){
-			for (int x = 0; x < step; x++) {
-				pwm_advance_count(0);
-			}
-			position+= step;
-			Serial.println(position);
-		} else if (c == '-') {
-			for (int x = 0; x < step; x++) {
-				pwm_retard_count(0);
-			}
-			position-= step;
-			Serial.println(position);
-		} else if (c == '*'){
-			step = step * 2;
-			Serial.print('*');
-			Serial.println(step);
-		} else if (c == '/') {
-			step = step / 2;
-			Serial.print('*');
-			Serial.println(step);
-		} else { 
-			Serial.print(c);
-		}
-	}
+	//audio.tweak(); // only for testing/tuning
 }
 
 #endif

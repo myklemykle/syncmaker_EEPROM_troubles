@@ -29,60 +29,17 @@
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
 #include "hardware/interp.h"
-#include "WavPwmAudio.h"
+#include "RP2040Audio.h"
 #include "pins.h"
 
-
-
-// PI has two stereo output ports, PORT A and PORT B, aka ring1+tip1 & ring2+tip2
-// Each one is powered by a PWM generator and two DMA channels
-static int wavDataCh[2] = {-1, -1};
-static int wavCtrlCh[2] = {-1, -1};
-static unsigned int pwmSlice[2] = {0,0};
-static short * bufPtr;
-io_rw_32* interpPtr;
-extern short transferBuffer[TRANSFER_BUFF_SIZE];
-extern short sampleBuffer[SAMPLE_BUFF_SIZE];
-
-// WavPwmInit() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
-// and then we refill the transfer buffer with TRANSFER_BUFF_SIZE more samples,
-// which is TRANSFER_WINDOW_SIZE * number of channels.
-/* volatile static unsigned int sampleBuffCursor = 0; // index into sampleBuffer[] */
-void pwm_int_handler(){
-  static unsigned int sampleBuffCursor = 0;
-  pwm_clear_irq(0); // otherSliceNum
-           
-  for (int i=0; i<TRANSFER_BUFF_SIZE; i++){
-
-		// TODO: use interps to reduce cpu load here? clamp or blend?
-		transferBuffer[i] = ( sampleBuffer[sampleBuffCursor++] 
-				* interp0->accum[1] // scale numerator
-				/ WAV_PWM_RANGE     // scale denominator (TODO right shift here? or is the compiler smart?)
-				) + (WAV_PWM_RANGE/2) // shift to positive
-				;
-
-    if (sampleBuffCursor == SAMPLE_BUFF_SIZE)
-      sampleBuffCursor = 0;
-  }
-} 
+// C++, why you can't just read the header file jeez ...
+extern int RP2040Audio::wavDataCh[2];
+extern int RP2040Audio::wavCtrlCh[2];
+extern unsigned int RP2040Audio::pwmSlice[2];
+extern short * RP2040Audio::bufPtr;
 
 // This will get called once at startup to set up both stereo PWMs for both ports
-void WavPwmInit()
-{
-	//////////////////////////////
-	// gpio pin setup for PWM
-	// now done in main ...
-	//
-   // gpio_set_function(GpioPinChannelA, GPIO_FUNC_PWM);
-   // gpio_set_function(GpioPinChannelA + 1, GPIO_FUNC_PWM);
-   //
-	 // gpio_set_drive_strength(GpioPinChannelA, GPIO_DRIVE_STRENGTH_12MA);
-	 // gpio_set_drive_strength(GpioPinChannelA + 1, GPIO_DRIVE_STRENGTH_4MA); // no audible difference.  May be a thing for MIDI mode?
-
-	 // Played with these to try to trim overshoot of a square wave, saw no major change
-	 // gpio_set_slew_rate(GpioPinChannelA, GPIO_SLEW_RATE_SLOW);
-	 // gpio_set_slew_rate(GpioPinChannelA + 1, GPIO_SLEW_RATE_SLOW);
-
+void RP2040Audio::init(){
 	 ////////////////////////////
 	 // Set up PWM slices
 
@@ -119,13 +76,12 @@ void WavPwmInit()
    pwm_config_set_wrap(&tCfg, WAV_PWM_COUNT);
 	 pwm_init(TRIGGER_SLICE, &tCfg, false);
 	 pwm_set_irq_enabled(TRIGGER_SLICE, true);
-	irq_set_exclusive_handler(PWM_IRQ_WRAP, pwm_int_handler);
+	irq_set_exclusive_handler(PWM_IRQ_WRAP, &RP2040Audio::ISR);
 	irq_set_enabled(PWM_IRQ_WRAP, true);
 
 
 	 // adjust levels:
    pwm_set_both_levels(pwmSlice[0], 0, 0);
-   // pwm_set_both_levels(TRIGGER_SLICE, 0, 0); // not really meaningful but why not?
 
 	 // line them up:
 	 for(int i=0;i<2;i++) 
@@ -137,8 +93,7 @@ void WavPwmInit()
 }
 
 
-unsigned char WavPwmIsPlaying(unsigned char port)
-{
+bool RP2040Audio::isPlaying(unsigned char port){
 	// This is not perfect: approx 1 cycle per AUDIO_PERIOD seconds is when the loop control DMA resets this DMA,
 	// so this DMA channel could be not-busy at that moment.  Odds of this are approx once in 133 megachances ... ultra low.
 	// but likely we can't expect multiple calls to dma_channel_is_busy to solve that, because the DMAs are moving
@@ -147,8 +102,7 @@ unsigned char WavPwmIsPlaying(unsigned char port)
 }
 
 
-void WavPwmStopAudio(unsigned char port)
-{
+void RP2040Audio::pause(unsigned char port){
    if (wavDataCh[port] && dma_channel_is_busy(wavDataCh[port])) {
       dma_channel_abort(wavDataCh[port]);
       dma_channel_abort(wavCtrlCh[port]);
@@ -156,17 +110,9 @@ void WavPwmStopAudio(unsigned char port)
 	 }
 }
 
-// TODO:
-// shutdown & wakeup procedure
-// void WavPwmSleepAudio()
-// void WavPwmWakeAudio()
-
-
-unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen, unsigned char port)
-{
-   unsigned char Result = false;
+void RP2040Audio::play(unsigned char port){
    dma_channel_config wavDataChConfig, wavCtrlChConfig;
-	 bufPtr = &buf[0];
+	 bufPtr = &transferBuffer[0];
 
    if (wavDataCh[port] < 0) { // if uninitialized
 		 Serial.println("getting dma");
@@ -187,14 +133,13 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen, unsigned char po
   /*********************************************/
  /* Stop playing audio if DMA already active. */
 /*********************************************/
-   WavPwmStopAudio(port);
+   this->pause(port);
 
   /****************************************************/
  /* Don't start playing audio if DMA already active. */
 /****************************************************/
    if (!dma_channel_is_busy(wavDataCh[port]))
    {
-      Result = true;
 
 	//////
 	// configure loop DMA channel, which resets the WAV DMA channel start address, then chains to it.
@@ -229,8 +174,8 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen, unsigned char po
 					wavDataCh[port],  // channel to config
 					&wavDataChConfig,  // this configuration
 					(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * pwmSlice[port])),  // write to pwm channel (pwm structures are 0x14 bytes wide)
-					buf, 							// read from here (this value will be overwritten if we start the other loop first)
-					bufLen / 2, 			// transfer exactly (samples/2) times (cuz 2 samples per transfer)
+					transferBuffer, 							// read from here (this value will be overwritten if we start the other loop first)
+					TRANSFER_BUFF_SIZE / 2, 			// transfer exactly (samples/2) times (cuz 2 samples per transfer)
 					false);
 
   /**********************/
@@ -242,5 +187,75 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen, unsigned char po
 		 pwm_set_mask_enabled((1<<pwmSlice[port]) | (1<<TRIGGER_SLICE) | pwm_hw->en);
    }
 
-   return Result;
+}
+
+
+// constructor/initalizer cuz c++ is weird about this
+RP2040Audio::RP2040Audio(){
+	wavDataCh[0] = wavDataCh[1] = -1;
+	wavCtrlCh[0] = wavCtrlCh[1] = -1;
+	pwmSlice[0] = pwmSlice[1] = 0;
+}
+
+void RP2040Audio::ISR(){
+// WavPwmInit() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
+// and then we refill the transfer buffer with TRANSFER_BUFF_SIZE more samples,
+// which is TRANSFER_WINDOW_SIZE * number of channels.
+/* volatile static unsigned int sampleBuffCursor = 0; // index into sampleBuffer[] */
+  static unsigned int sampleBuffCursor = 0;
+  pwm_clear_irq(TRIGGER_SLICE);
+           
+  for (int i=0; i<TRANSFER_BUFF_SIZE; i++){
+
+		// TODO: use interps to reduce cpu load here? clamp or blend?
+		transferBuffer[i] = ( sampleBuffer[sampleBuffCursor++] 
+				* interp0->accum[1] // scale numerator
+				/ WAV_PWM_RANGE     // scale denominator (TODO right shift here? or is the compiler smart?)
+				) + (WAV_PWM_RANGE/2) // shift to positive
+				;
+
+    if (sampleBuffCursor == SAMPLE_BUFF_SIZE)
+      sampleBuffCursor = 0;
+  }
+}
+
+// PWM tuning utility
+// One would call this over and over again in a main loop.
+void RP2040Audio::tweak(){
+  char c;
+
+  static int position = 0;
+
+  static int step = 50;
+
+  if (Serial.available()){
+    c = Serial.read();
+    if (c == '+'){
+			// advance
+      for (int x = 0; x < step; x++) {
+        pwm_advance_count(0);
+      }
+      position+= step;
+      Serial.println(position);
+    } else if (c == '-') {
+			// retard
+      for (int x = 0; x < step; x++) {
+        pwm_retard_count(0);
+      }
+      position-= step;
+      Serial.println(position);
+    } else if (c == '*'){
+			// increase step size
+      step = step * 2;
+      Serial.print('*');
+      Serial.println(step);
+    } else if (c == '/') {
+			// decrease step size
+      step = step / 2;
+      Serial.print('*');
+      Serial.println(step);
+    } else {
+      Serial.print(c);
+    }
+  }
 }

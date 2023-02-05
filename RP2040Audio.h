@@ -23,11 +23,10 @@
 #define WAV_PWM_RANGE ((1024 * WAV_PWM_SCALE)) 		
 #define WAV_SAMPLE_RATE  (133000000 / WAV_PWM_COUNT) 
 
-void WavPwmInit();
-unsigned char WavPwmIsPlaying(unsigned char port);
-void WavPwmStopAudio(unsigned char port);
-unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen, unsigned char port);
-
+// void WavPwmInit();
+// unsigned char WavPwmIsPlaying(unsigned char port);
+// void WavPwmStopAudio(unsigned char port);
+// unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen, unsigned char port);
 
 // Sample buffer: 2 channels, because PWM outputs want to be stereo
 // (It's remarkable how long a white noise sample has to be before you can't detect some
@@ -45,45 +44,35 @@ unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen, unsi
 // that's fine for a waveform, but for noise we need a much larger buffer:
 #define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * 10000)
 
-// The current test code creates one wave across the sample buffer, so SAMPLE_BUFF_SIZE 
-// determines pitch, so I need to somehow keep it constant when changing other variables
-// if I want to A/B.
-//
-// Unfortunately there's a tiny bit of signal glitch when we reach the end of the txBuf;
-// might just be the noise created by core1 running the IMU.  Though we were supposed
-// to get good isolation from PS noise with that seperate analog supply ... it's
-// an open question what causes it, but there it is.  V8 may be better.
-//
-// Anyway there's two ways to clean that up. Making the txWin shorter drives it
-// above 16khz, or making it longer drives it below 30hz.  The former costs
-// more CPU (and power), the latter costs more memory.  ATM i'm doing the former,
-// with txWin of 8 samples at sample rate of 130khz, that noise is 
-// at 16250hz. Sorry, dogs ...
-//
-// (Were it not for the 2022 chip shortage, I'd just use a DAC.)
-
 // Here is a spare pwm slice that we can make a timer from:
 #define TRIGGER_SLICE 0
 
-// for later:
-//
-// class RP2040Audio {
-// 	public:
-// 		short transferBuffer[TRANSFER_BUFF_SIZE];
-// 		short sampleBuffer[SAMPLE_BUFF_SIZE];
-// 		void ISR();
-// 		bool init(); // allocate & configure PWM and DMA for both ports
-// 		bool play(unsigned char port); // turn on PWM & DMA
-// 		bool pause(unsigned char port); // halt PWM & DMA
-// 		bool isPlaying(unsigned char port);
-// 	private:
-// 		static int wavDataCh[2] = {-1, -1};
-// 		static int wavCtrlCh[2] = {-1, -1};
-// 		static unsigned int pwmSlice[2] = {0,0};
-// 		static short * bufPtr;
-// 		io_rw_32* interpPtr;
-// 		unsigned short volumeLevel = 0;
-// }
-//
+class RP2040Audio {
+	public:
+		static short transferBuffer[TRANSFER_BUFF_SIZE];
+		static short sampleBuffer[SAMPLE_BUFF_SIZE];
+
+		RP2040Audio();
+		static void ISR();
+		void init(); // allocate & configure PWM and DMA for both ports
+		// void play(short buf[], unsigned int bufLen, unsigned char port); // turn on PWM & DMA
+		void play(unsigned char port); // turn on PWM & DMA
+		void pause(unsigned char port); // halt PWM & DMA
+		bool isPlaying(unsigned char port);
+		void tweak(); // adjust the trigger pulse. for debugging purposes only. reads from Serial.
+		// TODO:
+		// void sleep()
+		// void wake()
+		
+	private:
+		static int wavDataCh[2];
+		static int wavCtrlCh[2];
+		static unsigned int pwmSlice[2];
+		static short * bufPtr;
+		io_rw_32* interpPtr;
+		unsigned short volumeLevel = 0;
+};
+
+
 
 #endif
