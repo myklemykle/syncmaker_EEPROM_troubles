@@ -20,6 +20,9 @@ v6compile: $(v6img_uf2)
 v6clean:
 	arduino-cli compile -v --clean $(v6compileflags)
 
+v6debug:
+	arduino-cli compile -v --optimize-for-debug $(v6compileflags)
+
 $(v6img_uf2): syncmaker.ino *.cpp *.h 
 	 arduino-cli compile -v $(v6compileflags)  
 
