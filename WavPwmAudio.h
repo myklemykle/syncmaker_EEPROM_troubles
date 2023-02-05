@@ -23,13 +23,13 @@
 #define WAV_PWM_RANGE ((1024 * WAV_PWM_SCALE)) 		
 #define WAV_SAMPLE_RATE  (133000000 / WAV_PWM_COUNT) 
 
-void WavPwmInit(unsigned char GpioPinChannelA);
-unsigned char WavPwmIsPlaying();
-void WavPwmStopAudio();
-unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen);
+void WavPwmInit();
+unsigned char WavPwmIsPlaying(unsigned char port);
+void WavPwmStopAudio(unsigned char port);
+unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen, unsigned char port);
 
 
-// Sample buffer: 2 channels for 2 seconds @ 22050 Hz Samples/Second.
+// Sample buffer: 2 channels, because PWM outputs want to be stereo
 // (It's remarkable how long a white noise sample has to be before you can't detect some
 // looping artifact.  Longer than 2 seconds, for sure.)
 #define AUDIO_CHANNELS                 2
@@ -39,7 +39,7 @@ unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen);
 // Core1 will use interpolator to scale samples from the sample buffer into this buffer,
 // and then DMA will transfer from this buffer to the PWM.
 #define TRANSFER_WINDOW_SIZE  				8
-#define TRANSFER_BUFF_SIZE  					TRANSFER_WINDOW_SIZE * AUDIO_CHANNELS // 64 samples
+#define TRANSFER_BUFF_SIZE  					TRANSFER_WINDOW_SIZE * AUDIO_CHANNELS // size in uint_16s 
 //#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * (320 / WAV_PWM_SCALE) )
 //
 // that's fine for a waveform, but for noise we need a much larger buffer:
@@ -65,5 +65,25 @@ unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen);
 // Here is a spare pwm slice that we can make a timer from:
 #define TRIGGER_SLICE 0
 
-#endif
+// for later:
+//
+// class RP2040Audio {
+// 	public:
+// 		short transferBuffer[TRANSFER_BUFF_SIZE];
+// 		short sampleBuffer[SAMPLE_BUFF_SIZE];
+// 		void ISR();
+// 		bool init(); // allocate & configure PWM and DMA for both ports
+// 		bool play(unsigned char port); // turn on PWM & DMA
+// 		bool pause(unsigned char port); // halt PWM & DMA
+// 		bool isPlaying(unsigned char port);
+// 	private:
+// 		static int wavDataCh[2] = {-1, -1};
+// 		static int wavCtrlCh[2] = {-1, -1};
+// 		static unsigned int pwmSlice[2] = {0,0};
+// 		static short * bufPtr;
+// 		io_rw_32* interpPtr;
+// 		unsigned short volumeLevel = 0;
+// }
+//
 
+#endif

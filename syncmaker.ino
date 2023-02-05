@@ -294,11 +294,22 @@ void setup() {
   pinMode(led1Pin, OUTPUT);           // led1
   pinMode(led2Pin, OUTPUT);           // led2
   pinMode(tip1, OUTPUT);              // j1 tip
+  pinMode(ring1, OUTPUT);              // j1 ring
   pinMode(tip2, OUTPUT);              // j2 tip
+  pinMode(ring2, OUTPUT);              // j2 ring
   pinMode(button1Pin, INPUT_PULLUP);  // sw1
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
+
+	/////////////
+	// configure our output jacks. (2x stereo = 4 channels)
+	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
+	// TODO: that ....
+	gpio_set_function(ring1, GPIO_FUNC_PWM);
+	gpio_set_function(tip1, GPIO_FUNC_PWM);
+	gpio_set_function(ring2, GPIO_FUNC_PWM);
+	gpio_set_function(tip2, GPIO_FUNC_PWM);
 
 	// TODO: why is this even here?
 #ifdef PI_V6
@@ -506,8 +517,9 @@ void interpSetup1(){
 void setup1(){
 	interpSetup1();
 
+
   //////////
-  // fill buffer with white noise
+  // fill buffer with white noise (signed)
   randomSeed(666);
   for(int i=0; i<SAMPLE_BUFF_SIZE; i++){
     sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
@@ -541,13 +553,15 @@ void setup1(){
   /* Serial.printf("audio buf size = %d\n", SAMPLE_BUFF_SIZE); */ //DEBUG
   /* Serial.flush(); */ //DEBUG
 
-	// Setup PWM output (TODO: rewrite this for selectable outputs ...)
+	// Setup PWM output (TODO: refac this for selectable outputs ...)
 	// and start the PWM interrupts
-	WavPwmInit(ring1); // this inits both ring1 & (ring1 + 1), which thankfully is tip1
+	WavPwmInit();
 
   // Start DMA-ing audio from transfer buffer to PWM pins.
+	// TODO: maybe refac this as well ... it'd be cool to shut down any not in use DMAs, sleep them, etc.
   /* WavPwmPlayAudio(sampleBuffer, SAMPLE_BUFF_SIZE); */
-  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE);
+  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE,0);
+  WavPwmPlayAudio(transferBuffer, TRANSFER_BUFF_SIZE,1);
 }
 
 void loop1(){
@@ -682,8 +696,9 @@ void loop() {
 
 #ifdef PI_V6
 		// send vol level to core 1:
-		rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE);
-		/* rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); */
+		//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
+		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
+		rp2040.fifo.push_nb(WAV_PWM_RANGE); // DEBUG: max volume
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator

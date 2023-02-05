@@ -30,17 +30,19 @@
 #include "hardware/dma.h"
 #include "hardware/interp.h"
 #include "WavPwmAudio.h"
+#include "pins.h"
 
 
 
-static int wavDataCh = -1;
-static int wavCtrlCh = -1;
-static unsigned int pwmSlice = 0;
+// PI has two stereo output ports, PORT A and PORT B, aka ring1+tip1 & ring2+tip2
+// Each one is powered by a PWM generator and two DMA channels
+static int wavDataCh[2] = {-1, -1};
+static int wavCtrlCh[2] = {-1, -1};
+static unsigned int pwmSlice[2] = {0,0};
 static short * bufPtr;
 io_rw_32* interpPtr;
 extern short transferBuffer[TRANSFER_BUFF_SIZE];
 extern short sampleBuffer[SAMPLE_BUFF_SIZE];
-extern short volumeLevel = 0;
 
 // WavPwmInit() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
 // and then we refill the transfer buffer with TRANSFER_BUFF_SIZE more samples,
@@ -52,38 +54,28 @@ void pwm_int_handler(){
            
   for (int i=0; i<TRANSFER_BUFF_SIZE; i++){
 
-    //transferBuffer[i] = sampleBuffer[sampleBuffCursor++];
-		//
-		// scale sample through interp0
-    // interp0->base[1] = sampleBuffer[sampleBuffCursor++];
-		// transferBuffer[1] = interp0->peek[1]; 
-		//transferBuffer[1] = interp0->peek[1] + ((WAV_PWM_RANGE)/2); // shift to positive
+		// TODO: use interps to reduce cpu load here? clamp or blend?
+		transferBuffer[i] = ( sampleBuffer[sampleBuffCursor++] 
+				* interp0->accum[1] // scale numerator
+				/ WAV_PWM_RANGE     // scale denominator (TODO right shift here? or is the compiler smart?)
+				) + (WAV_PWM_RANGE/2) // shift to positive
+				;
 
-		/// ... not sold on that approach.
-
-		// for now, make the core do the work.
-		// (TODO: use interp1 for the clamping if we need to optimize)
-    transferBuffer[i] = (short)
-			MAX(0,
-				MIN(WAV_PWM_RANGE,
-					( (int)(sampleBuffer[sampleBuffCursor] * interp0->accum[1]) * 2 / WAV_PWM_RANGE)
-					+ ((WAV_PWM_RANGE)/2) // shift to positive
-				)
-			)
-			;
-
-    if (++sampleBuffCursor == SAMPLE_BUFF_SIZE)
+    if (sampleBuffCursor == SAMPLE_BUFF_SIZE)
       sampleBuffCursor = 0;
   }
 } 
 
-void WavPwmInit(unsigned char GpioPinChannelA)
+// This will get called once at startup to set up both stereo PWMs for both ports
+void WavPwmInit()
 {
 	//////////////////////////////
 	// gpio pin setup for PWM
-   gpio_set_function(GpioPinChannelA, GPIO_FUNC_PWM);
-   gpio_set_function(GpioPinChannelA + 1, GPIO_FUNC_PWM);
-
+	// now done in main ...
+	//
+   // gpio_set_function(GpioPinChannelA, GPIO_FUNC_PWM);
+   // gpio_set_function(GpioPinChannelA + 1, GPIO_FUNC_PWM);
+   //
 	 // gpio_set_drive_strength(GpioPinChannelA, GPIO_DRIVE_STRENGTH_12MA);
 	 // gpio_set_drive_strength(GpioPinChannelA + 1, GPIO_DRIVE_STRENGTH_4MA); // no audible difference.  May be a thing for MIDI mode?
 
@@ -92,11 +84,12 @@ void WavPwmInit(unsigned char GpioPinChannelA)
 	 // gpio_set_slew_rate(GpioPinChannelA + 1, GPIO_SLEW_RATE_SLOW);
 
 	 ////////////////////////////
-	 // Set up two PWM slices
+	 // Set up PWM slices
 
 	 // pwmSlice converts samples to PWM audio on gpio pins
-   pwmSlice = pwm_gpio_to_slice_num(GpioPinChannelA);
-	 //
+   pwmSlice[0] = pwm_gpio_to_slice_num(ring1);
+   pwmSlice[1] = pwm_gpio_to_slice_num(ring2);
+	 
 	 // triggerSlice generates an interrupt in sync with that one,
 	 // but is scaled to only once per TRANSFER_BUFF_SIZE samples.
 	 // It triggers a refill of the transfer buffer.  It is just
@@ -105,15 +98,21 @@ void WavPwmInit(unsigned char GpioPinChannelA)
 	 // use slice 0 here, which corresponds to gpio 0&1 or 16&17,
 	 // which I happen to know I'm not using in V6.
 
-	 // halt them both:
-	 pwm_set_enabled(pwmSlice, false);
+	 // halt:
+	 // TODO: needed? was chasing a bug with this, fixed elsewhere ...
+	 for(int i=0;i<2;i++)
+		 pwm_set_enabled(pwmSlice[i], false);
 	 pwm_set_enabled(TRIGGER_SLICE, false);
 
-	 // initialize them:
-	 pwm_config pCfg = pwm_get_default_config();
-   pwm_config_set_wrap(&pCfg, WAV_PWM_COUNT);
-	 pwm_init(pwmSlice, &pCfg, false);
-	 pwm_set_irq_enabled(pwmSlice, false);
+
+	 // initialize:
+	 pwm_config pCfg;
+	 for(int i=0;i<2;i++) {
+		 pCfg = pwm_get_default_config();
+		 pwm_config_set_wrap(&pCfg, WAV_PWM_COUNT);
+		 pwm_init(pwmSlice[i], &pCfg, false);
+		 pwm_set_irq_enabled(pwmSlice[i], false);
+	 }
 
 	 pwm_config tCfg = pwm_get_default_config();
    pwm_config_set_clkdiv_int_frac(&tCfg, (int)TRANSFER_WINDOW_SIZE, 0);
@@ -125,71 +124,75 @@ void WavPwmInit(unsigned char GpioPinChannelA)
 
 
 	 // adjust levels:
-   pwm_set_both_levels(pwmSlice, 0, 0);
+   pwm_set_both_levels(pwmSlice[0], 0, 0);
    // pwm_set_both_levels(TRIGGER_SLICE, 0, 0); // not really meaningful but why not?
 
 	 // line them up:
-	 pwm_set_counter(pwmSlice, 0);
+	 for(int i=0;i<2;i++) 
+		 pwm_set_counter(pwmSlice[i], 0);
 	 pwm_set_counter(TRIGGER_SLICE, 28);  // as measured on scope.
 
-	 // make them go:
+	 // don't make them go yet. Turn on DMA first!
 	 //pwm_set_mask_enabled((1<<pwmSlice) | (1<<TRIGGER_SLICE) | pwm_hw->en);
-	 // turn on DMA first!
 }
 
 
-unsigned char WavPwmIsPlaying()
+unsigned char WavPwmIsPlaying(unsigned char port)
 {
 	// This is not perfect: approx 1 cycle per AUDIO_PERIOD seconds is when the loop control DMA resets this DMA,
 	// so this DMA channel could be not-busy at that moment.  Odds of this are approx once in 133 megachances ... ultra low.
 	// but likely we can't expect multiple calls to dma_channel_is_busy to solve that, because the DMAs are moving
 	// targets. How to do this exactly right?
-   return dma_channel_is_busy(wavDataCh);
+   return dma_channel_is_busy(wavDataCh[port]);
 }
 
 
-
-void WavPwmStopAudio()
+void WavPwmStopAudio(unsigned char port)
 {
-   if (wavDataCh && dma_channel_is_busy(wavDataCh)) {
-      dma_channel_abort(wavDataCh);
-      dma_channel_abort(wavCtrlCh);
+   if (wavDataCh[port] && dma_channel_is_busy(wavDataCh[port])) {
+      dma_channel_abort(wavDataCh[port]);
+      dma_channel_abort(wavCtrlCh[port]);
+			pwm_set_enabled(pwmSlice[port], false);
 	 }
 }
 
+// TODO:
+// shutdown & wakeup procedure
+// void WavPwmSleepAudio()
+// void WavPwmWakeAudio()
 
 
-unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
+unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen, unsigned char port)
 {
    unsigned char Result = false;
    dma_channel_config wavDataChConfig, wavCtrlChConfig;
 	 bufPtr = &buf[0];
 
-   if (wavDataCh < 0) { // if uninitialized
+   if (wavDataCh[port] < 0) { // if uninitialized
 		 Serial.println("getting dma");
 		 Serial.flush();
-     wavDataCh = dma_claim_unused_channel(true);
+     wavDataCh[port] = dma_claim_unused_channel(true);
 	 }
-   if (wavCtrlCh < 0) { // if uninitialized
+   if (wavCtrlCh[port] < 0) { // if uninitialized
 		 Serial.println("getting dma");
 		 Serial.flush();
-     wavCtrlCh = dma_claim_unused_channel(true);
+     wavCtrlCh[port] = dma_claim_unused_channel(true);
 	 }
 
-	 Serial.printf("pwm dma channel %d\n", wavDataCh);
-	 Serial.printf("loop dma channel %d\n", wavCtrlCh);
-	 Serial.printf("pwm slice num %d\n", pwmSlice);
+	 Serial.printf("pwm dma channel %d\n", wavDataCh[port]);
+	 Serial.printf("loop dma channel %d\n", wavCtrlCh[port]);
+	 Serial.printf("pwm slice num %d\n", pwmSlice[port]);
 	 Serial.flush();
 
   /*********************************************/
  /* Stop playing audio if DMA already active. */
 /*********************************************/
-   WavPwmStopAudio();
+   WavPwmStopAudio(port);
 
   /****************************************************/
  /* Don't start playing audio if DMA already active. */
 /****************************************************/
-   if (!dma_channel_is_busy(wavDataCh))
+   if (!dma_channel_is_busy(wavDataCh[port]))
    {
       Result = true;
 
@@ -197,16 +200,16 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
 	// configure loop DMA channel, which resets the WAV DMA channel start address, then chains to it.
 	// ( https://vanhunteradams.com/Pico/DAC/DMA_DAC.html )
 	
-      wavCtrlChConfig = dma_channel_get_default_config(wavCtrlCh);
+      wavCtrlChConfig = dma_channel_get_default_config(wavCtrlCh[port]);
       // channel_config_set_irq_quiet(&wavCtrlChConfig, true); // why?
       channel_config_set_read_increment(&wavCtrlChConfig, false);
       channel_config_set_write_increment(&wavCtrlChConfig, false);
       channel_config_set_transfer_data_size(&wavCtrlChConfig, DMA_SIZE_32);
-			channel_config_set_chain_to(&wavCtrlChConfig, wavDataCh); // chain to the wav PWM channel when finished.
+			channel_config_set_chain_to(&wavCtrlChConfig, wavDataCh[port]); // chain to the wav PWM channel when finished.
 			dma_channel_configure(
-        wavCtrlCh,                          // Channel to be configured
+        wavCtrlCh[port],                          // Channel to be configured
         &wavCtrlChConfig,                                 // The configuration we just created
-        &dma_hw->ch[wavDataCh].read_addr,   // Write address (wav PWM channel read address)
+        &dma_hw->ch[wavDataCh[port]].read_addr,   // Write address (wav PWM channel read address)
         &bufPtr,                   // Read address (POINTER TO AN ADDRESS) ... contains the address that this DMA writes to the other DMA's read-address.
         1,                                  // transfer 32 bits one time.
         false                               // Don't start immediately
@@ -215,17 +218,17 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
   /****************************************************/
  /* Configure state machine DMA from WAV PWM memory. */
 /****************************************************/
-      wavDataChConfig = dma_channel_get_default_config(wavDataCh);
+      wavDataChConfig = dma_channel_get_default_config(wavDataCh[port]);
       // channel_config_set_irq_quiet(&wavDataChConfig, true); // why?
       channel_config_set_read_increment(&wavDataChConfig, true);
       channel_config_set_write_increment(&wavDataChConfig, false);
       channel_config_set_transfer_data_size(&wavDataChConfig, DMA_SIZE_32); // 32 bytes at a time (l & r 16-bit samples)
-      channel_config_set_dreq(&wavDataChConfig, pwm_get_dreq(pwmSlice)); // let PWM cycle request transfers
-			channel_config_set_chain_to(&wavDataChConfig, wavCtrlCh); // chain to the loop-control channel when finished.
+      channel_config_set_dreq(&wavDataChConfig, pwm_get_dreq(pwmSlice[port])); // let PWM cycle request transfers
+			channel_config_set_chain_to(&wavDataChConfig, wavCtrlCh[port]); // chain to the loop-control channel when finished.
       dma_channel_configure(
-					wavDataCh,  // channel to config
+					wavDataCh[port],  // channel to config
 					&wavDataChConfig,  // this configuration
-					(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * pwmSlice)),  // write to pwm channel (pwm structures are 0x14 bytes wide)
+					(void*)(PWM_BASE + PWM_CH0_CC_OFFSET + (0x14 * pwmSlice[port])),  // write to pwm channel (pwm structures are 0x14 bytes wide)
 					buf, 							// read from here (this value will be overwritten if we start the other loop first)
 					bufLen / 2, 			// transfer exactly (samples/2) times (cuz 2 samples per transfer)
 					false);
@@ -233,10 +236,10 @@ unsigned char WavPwmPlayAudio(short buf[], unsigned int bufLen)
   /**********************/
  /* Start WAV PWM DMA. */
 /**********************/
-      dma_start_channel_mask(1 << wavCtrlCh);
+      dma_start_channel_mask(1 << wavCtrlCh[port]);
 
 			// start the PWM to generate the DREQ signals for the DMA:
-		 pwm_set_mask_enabled((1<<pwmSlice) | (1<<TRIGGER_SLICE) | pwm_hw->en);
+		 pwm_set_mask_enabled((1<<pwmSlice[port]) | (1<<TRIGGER_SLICE) | pwm_hw->en);
    }
 
    return Result;
