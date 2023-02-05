@@ -520,66 +520,32 @@ void interpSetup1(){
 }
 
 void setup1(){
-	interpSetup1();
+	// interpSetup1();
 
+	// put some noise in the buffer:
+	audio.fillWithNoise();
+	/* audio.fillWithSine(30); */ // testing
+	/* audio.fillWithSquare(30); */ // testing
 
-  //////////
-  // fill buffer with white noise (signed)
-  randomSeed(666);
-  for(int i=0; i<SAMPLE_BUFF_SIZE; i++){
-    audio.sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
-  }
-
-	/* // for testing: a sine wave */
-  /* const float twoPI = 6.283; */
-  /* const float scale = (WAV_PWM_RANGE) / 2; */
-  /*  */
-  /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){ */
-  /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
-  /*     //audio.sampleBuffer[i + j] = scale; // DEBUG test: no wave, should give silence */
-  /*     audio.sampleBuffer[i + j] = (int) (scale */
-  /*         // sin( (float)i / (float)SAMPLE_BUFF_SIZE * twoPI )  							// a single sine wave */
-  /*         * sin( (float)i*30 / (float)SAMPLE_BUFF_SIZE * twoPI )  					// 30 sine waves (in larger buffer) */
-  /*         // + scale // shift to positive  */
-	/* 				); */
-  /* } */
-
-	/* // for testing: a square wave */
-  /* for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS) */
-  /*   for(int j=0;j<AUDIO_CHANNELS; j++) */
-	/* 		//if (i < (SAMPLE_BUFF_SIZE / 2)){ // a single square wave */
-	/* 		if ((i*30)%SAMPLE_BUFF_SIZE < (SAMPLE_BUFF_SIZE / 2)){ // 30 square waves */
-	/* 			audio.sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2; */
-	/* 		} else { */
-	/* 			audio.sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2); */
-	/* 		} */
-	/*  */
-
-  /* Serial.printf("audio buf size = %d\n", SAMPLE_BUFF_SIZE); */ //DEBUG
-  /* Serial.flush(); */ //DEBUG
-
-	// Setup PWM output (TODO: refac this for selectable outputs ...)
-	// and start the PWM interrupts
+	// Setup PWM outputs & interrupt handler
 	audio.init();
 
   // Start DMA-ing audio from transfer buffer to PWM pins.
-	// TODO: maybe refac this as well ... it'd be cool to shut down any not in use DMAs, sleep them, etc.
   audio.play(0);
   audio.play(1);
 }
 
 void loop1(){
-	static uint32_t volumeLevel1 = 0;
 	static short reportcount = 1500; 
 
 	// update the interpolater with the latest volume level
-	interp0->accum[1] = rp2040.fifo.pop();
+	interp0->accum[1] = rp2040.fifo.pop(); // blocks at IMU interrupt rate
 
 	reportcount--;
 	if (reportcount ==0){
 		reportcount = 1500;
-		Serial.printf("unscaled: %d\n",interp0->base[1]);
-		Serial.printf("scale: %d\n",interp0->accum[1]);
+		/* Serial.printf("unscaled: %d\n",interp0->base[1]); */
+		/* Serial.printf("scale: %d\n",interp0->accum[1]); */
 		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
 	}
 

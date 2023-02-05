@@ -205,6 +205,40 @@ void RP2040Audio::ISR() {
   }
 }
 
+//////////
+// fill buffer with white noise (signed)
+void RP2040Audio::fillWithNoise(){
+  randomSeed(666);
+  for(int i=0; i<SAMPLE_BUFF_SIZE; i++){
+    sampleBuffer[i] = random(WAV_PWM_RANGE) - (WAV_PWM_RANGE / 2);
+  }
+}
+
+// fill buffer with sine waves
+void RP2040Audio::fillWithSine(uint count){
+  const float twoPI = 6.283;
+  const float scale = (WAV_PWM_RANGE) / 2;
+
+  for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){
+    for(int j=0;j<AUDIO_CHANNELS; j++)
+      sampleBuffer[i + j] = (int) (scale
+          * sin( (float)i * count / (float)SAMPLE_BUFF_SIZE * twoPI ) 
+         );
+  }
+}
+
+// fill buffer with square waves
+void RP2040Audio::fillWithSquare(uint count){
+  for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS)
+    for(int j=0;j<AUDIO_CHANNELS; j++)
+     if ((i*count)%SAMPLE_BUFF_SIZE < (SAMPLE_BUFF_SIZE / 2)){ 
+       sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2;
+     } else {
+       sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2);
+     }
+
+}
+
 // PWM tuning utility
 // One would call this over and over again in a main loop.
 void RP2040Audio::tweak() {

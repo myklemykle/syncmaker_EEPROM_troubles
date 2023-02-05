@@ -59,6 +59,9 @@ public:
   void play(unsigned char port);   // turn on PWM & DMA
   void pause(unsigned char port);  // halt PWM & DMA
   bool isPlaying(unsigned char port);
+	void fillWithNoise();
+	void fillWithSine(uint count);
+	void fillWithSquare(uint count);
   void tweak();  // adjust the trigger pulse. for debugging purposes only. reads from Serial.
 	// TODO:
 	// void sleep()
