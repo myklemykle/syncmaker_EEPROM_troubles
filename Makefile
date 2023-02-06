@@ -39,7 +39,7 @@ rdp:
 	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-rescue.cfg -s $(openocd_script) 
 
 v6monitor: 
-	arduino-cli monitor -p /dev/tty.usbmodem????
+	arduino-cli monitor -p /dev/tty.usbmodem???*
 
 # start openocd debugger
 v6ocd: 
