@@ -18,6 +18,7 @@ const int tip1 = 19; 	// tip1 / l_sync_out
 const int tip2 = 21; 		// tip2 / r_sync_out
 const int ring1 = 18;
 const int ring2 = 20;
+const int outPins[4] = { tip1, ring1, tip2, ring2 };
 const int PO_play = 4; 		// goes high on PO play (runs to play LED)
 const int PO_wake = 26;			// goes low when PO sleeps I think  gpio26/adc0
 const int PO_reset = 22;			
