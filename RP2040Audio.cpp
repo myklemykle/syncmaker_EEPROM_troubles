@@ -193,6 +193,7 @@ void RP2040Audio::ISR() {
   for (int i = 0; i < TRANSFER_BUFF_SIZE; i++) {
 
     // TODO: use interps to reduce cpu load here? clamp or blend?
+		// TODO: clamp somehow!
     transferBuffer[i] = (sampleBuffer[sampleBuffCursor++]
                          * interp0->accum[1]  // scale numerator
                          / WAV_PWM_RANGE      // scale denominator (TODO right shift here? or is the compiler smart?)
