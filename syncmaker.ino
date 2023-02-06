@@ -315,12 +315,14 @@ void setup() {
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
 
+#ifdef PI_V6
 	/////////////
 	// configure our output jacks. (2x stereo = 4 channels)
 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
-	// TODO: more complete here.
+	// TODO: handle the midi option
 	for(int i=0;i<4;i++)
 		gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_AUDIO ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
+#endif
 	
 
 	// TODO: why is this even here?
