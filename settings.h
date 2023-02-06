@@ -16,16 +16,16 @@
 // We'll bump this whenever we change the format of _Settings:
 #define SETTINGSVERSION 2
 
+#define OUTMODE_MIDI 0
+#define OUTMODE_SYNC 1
+#define OUTMODE_AUDIO 2
+
 // Settings object
-typedef enum { trsMidi, sync, shaker } outChannelMode;
 typedef struct {
 	uint16_t _flag;
 	unsigned int _version; 
 	unsigned long measureLen;	
-	struct {
-		outChannelMode tipMode;
-		outChannelMode ringMode;
-	} out[2];
+	unsigned char outs[4];
 } _Settings;
 
 class Settings { 

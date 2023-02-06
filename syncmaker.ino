@@ -293,6 +293,14 @@ void setup() {
   /* rp2040.enableDoubleResetBootloader(); */
 #endif
 
+	// get settings:
+#ifdef PI_V6
+	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
+#endif
+	if (! _settings.get()) {
+		_settings.init();
+	}
+
   ///////
   // Pin setup:
   //
@@ -310,11 +318,10 @@ void setup() {
 	/////////////
 	// configure our output jacks. (2x stereo = 4 channels)
 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
-	// TODO: that ....
-	gpio_set_function(ring1, GPIO_FUNC_PWM);
-	gpio_set_function(tip1, GPIO_FUNC_PWM);
-	gpio_set_function(ring2, GPIO_FUNC_PWM);
-	gpio_set_function(tip2, GPIO_FUNC_PWM);
+	// TODO: more complete here.
+	for(int i=0;i<4;i++)
+		gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_AUDIO ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
+	
 
 	// TODO: why is this even here?
 #ifdef PI_V6
@@ -432,14 +439,6 @@ void setup() {
   btn3.interval(debounceLen);
   btn3.update();
   btn3pressed = (btn3.read() == LOW);
-
-	// get settings:
-#ifdef PI_V6
-	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
-#endif
-	if (! _settings.get()) {
-		_settings.init();
-	}
 
   ////////
   // Clock setup:
@@ -629,9 +628,9 @@ void loop() {
 
 #ifdef PI_V6
 		// send vol level to core 1:
-		//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
+		rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
 		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
-		rp2040.fifo.push_nb(WAV_PWM_RANGE); // DEBUG: max volume
+		//rp2040.fifo.push_nb(WAV_PWM_RANGE); // DEBUG: max volume
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
@@ -1198,9 +1197,10 @@ void loop() {
   // Pulse if PLAYING
   if (CBDIFF(pulseState)) {
     if (playing[0]) {
-      // send sync pulse on both pins
-      /* digitalWrite(tip1, pulseState[0]); */ // TESTING audio on this pin atm.  TODO: UI to choose btwn audio & clock...
-      digitalWrite(tip2, pulseState[0]);
+      // send sync pulse on whatever pins are configured for sync
+			for(int i=0;i<4;i++)
+				if (_settings.s.outs[i] == OUTMODE_SYNC)
+					digitalWrite(outPins[i], pulseState[0]);
     }
 
     // print benchmarks when pulse goes high.

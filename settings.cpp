@@ -7,8 +7,8 @@ bool Settings::init(){
 	s = { 
 		SETTINGSFLAG, 
 		SETTINGSVERSION, 
-		120 * 1000, // uS
-		{ {shaker, sync}, {shaker, sync} } 
+		500 * 1000, // uS
+		{ OUTMODE_SYNC, OUTMODE_AUDIO, OUTMODE_SYNC, OUTMODE_AUDIO }
 	};
 	return true;
 }
@@ -21,10 +21,10 @@ bool Settings::get(){
 	Dbg_printf("ver  = %x\n", s._version);
 	Dbg_printf("len  = %d\n", s.measureLen);
 	Dbg_printf("outs:  = %d,%d/%d,%d\n", 
-			s.out[0].tipMode,
-			s.out[0].ringMode,
-			s.out[1].tipMode,
-			s.out[0].ringMode
+			s.outs[0],
+			s.outs[1],
+			s.outs[2],
+			s.outs[3]
 			);
 	return (s._flag == SETTINGSFLAG) && (s._version == SETTINGSVERSION);
 }
