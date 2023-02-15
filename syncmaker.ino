@@ -1,4 +1,4 @@
-////////////////////////////
+//////////////////////////// // Teensy 3.2:
 // Pocket Integrator (PO daughterboard) firmware (c) 2022 mykle systems labs
 // This version compatible with EVT4, V6 and V7 boards.
 // (You must #define either EVT4 or PI_V6 ; define neither both nor neither.)
@@ -124,7 +124,7 @@ const int debounceLen = 2;  // milliseconds
 
 // side buttons
 Bounce btn1 = Bounce();
-Bounce btn2 = Bounce();
+Bounce btn2 = Bounce(); // Teensy 3.2
 bool btn1pressed = false, btn2pressed = false;
 
 // nonstop button
@@ -307,9 +307,12 @@ void setup() {
   pinMode(led1Pin, OUTPUT);           // led1
   pinMode(led2Pin, OUTPUT);           // led2
   pinMode(tip1, OUTPUT);              // j1 tip
-  pinMode(ring1, OUTPUT);              // j1 ring
   pinMode(tip2, OUTPUT);              // j2 tip
+#ifndef TEENSY32
+	// teensy has both of these connected to the DAC
+  pinMode(ring1, OUTPUT);              // j1 ring
   pinMode(ring2, OUTPUT);              // j2 ring
+#endif
   pinMode(button1Pin, INPUT_PULLUP);  // sw1
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
@@ -1199,10 +1202,16 @@ void loop() {
   // Pulse if PLAYING
   if (CBDIFF(pulseState)) {
     if (playing[0]) {
+#ifdef MCU_RP2040
       // send sync pulse on whatever pins are configured for sync
 			for(int i=0;i<4;i++)
 				if (_settings.s.outs[i] == OUTMODE_SYNC)
 					digitalWrite(outPins[i], pulseState[0]);
+#else // Teensy 3.2:
+			// send sync pulse on tip1 & tip2
+			digitalWrite(tip1, pulseState[0]);
+			digitalWrite(tip2, pulseState[0]);
+#endif
     }
 
     // print benchmarks when pulse goes high.

@@ -6,16 +6,17 @@
 #ifdef MCU_RP2040
 // rp2040 sleep libs here
 #else
-// MK20DX256VLH7 can use Snooze library.
-#include <Snooze.h>
-SnoozeDigital s_digital;
-SnoozeTimer s_timer;
-SnoozeBlock s_config(s_timer);
+// // MK20DX256VLH7 can use Snooze library.
+// #include <Snooze.h>
+// SnoozeDigital s_digital;
+// SnoozeTimer s_timer;
+// SnoozeBlock s_config(s_timer);
 #endif
 
-// This is the codec power supply that's regulated lower than the main supply.
-// i'm reading this as 778 when on usb power & awake ... 
-// then down to 300-ish when board sleeps.
+// How we detect sleep:
+// This pin connects to the PO codec power supply, regulated lower than the main supply.
+// On Teensy 3.2, analogRead() shows this as 778 when on usb power & awake,
+// then down to 300-ish when Pocket Operator sleeps.
 const unsigned int awakePinThreshold = 400;
 
 // call from setup()

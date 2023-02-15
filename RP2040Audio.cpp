@@ -9,6 +9,10 @@
 //
 // Thanks Jason! Thanks Van!
 //
+//
+
+// don't compile this for Teensy:
+#ifdef MCU_RP2040
 
 #include <Arduino.h>
 #include "pico/stdlib.h"
@@ -280,3 +284,8 @@ void RP2040Audio::tweak() {
     }
   }
 }
+
+
+
+
+#endif

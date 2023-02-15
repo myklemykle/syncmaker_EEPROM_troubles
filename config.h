@@ -8,7 +8,7 @@
 // (these are defined in Makefile targets)
 //
 // is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
-#define PI_V6 pleasebethelastone
+//#define PI_V6 pleasebethelastone
 //
 //
 // HACK: the inscrutible arduino-cli lets me pass -DPI_V6 unmolested when compiling rp2040,
