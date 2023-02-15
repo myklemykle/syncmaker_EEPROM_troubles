@@ -173,7 +173,8 @@ bool MotionSense::ICM42605_begin()
 	// delay(2);
 	// // detect if chip is still with us
 	// if (!read_regs(chip_addr, ICM42605_WHO_AM_I, &b, 1)) return false;
-	// if (b != 0x42) {
+	// if ( (b != 0x42) 
+	// 		&& (b != 0x6F) ) { // ICM42652 (expensive pin-compatible upgrade, in stock @ DK)
 	// 	Serial.println("gone after reset!");
 	// 	return false;
 	// } else {
