@@ -22,7 +22,7 @@
                                                     // PDM could also improve this, if more sample resolution was needed.
 #define WAV_PWM_COUNT ((1024 * WAV_PWM_SCALE) - 1)  // the PWM counter's setting
 #define WAV_PWM_RANGE ((1024 * WAV_PWM_SCALE))
-#define WAV_SAMPLE_RATE (133000000 / WAV_PWM_COUNT)
+#define WAV_SAMPLE_RATE (133000000 / WAV_PWM_RANGE)
 
 // void WavPwmInit();
 // unsigned char WavPwmIsPlaying(unsigned char port);
@@ -36,14 +36,14 @@
 #define AUDIO_PERIOD 1
 #define SAMPLE_SIZE 2  //bytes
 
-// Core1 will use interpolator to scale samples from the sample buffer into this buffer,
-// and then DMA will transfer from this buffer to the PWM.
+// Core1 scales samples from the sample buffer into this buffer,
+// while DMA transfers from this buffer to the PWM.
 #define TRANSFER_WINDOW_SIZE 8
 #define TRANSFER_BUFF_SIZE TRANSFER_WINDOW_SIZE* AUDIO_CHANNELS  // size in uint_16s
 //#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * (320 / WAV_PWM_SCALE) )
 //
 // that's fine for a waveform, but for noise we need a much larger buffer:
-#define SAMPLE_BUFF_SIZE (TRANSFER_WINDOW_SIZE * 10000)
+#define SAMPLE_BUFF_SIZE (TRANSFER_WINDOW_SIZE * 10000) // about 1.6 secs at WAV_PWM_SCALE = 1
 
 // Here is a spare pwm slice that we can make a timer from:
 #define TRIGGER_SLICE 0
