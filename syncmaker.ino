@@ -13,7 +13,7 @@
 #include "Bounce2.h"
 #include <EEPROM.h>
 
-#ifdef PI_V6 // rp2040 version V6 & on
+#ifdef PI_V6 // rp2040 versions V6, V7, V8
 ///////////////
 #include "hardware/interp.h"
 // ST IMU
@@ -36,6 +36,14 @@
 #ifdef MIDITIMECODE
 #include "miditimecode.h"
 #endif 
+
+///////////////
+// Command Parser
+//////////////
+#include <CommandParser.h>
+extern void cmd_setup();
+extern void cmd_update();
+
 
 // utils for handling loop variables, which are very short CircularBuffers:
 #define CBINIT(cb, val) \
@@ -81,7 +89,7 @@ MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc
 #define COUNT_PER_G 4096                    // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16  // gyro units
 //const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
-const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // a little more sensitive
+const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // 0.85 * COUNT_PER_G ... a little more sensitive
 const int tapThreshold = 2 * COUNT_PER_G;
 
 CircularBuffer<long, 3> inertia;
@@ -271,6 +279,7 @@ unsigned long decodedPlayOnTime = 0, decodedPlayOffTime = 0;
 
 unsigned char poModelGroup = MGRP_AUTO;
 
+boolean showStats = true;
 #ifdef SDEBUG
 // tracking of CPU performance
 unsigned int loops = 0;  // # of main loop cycles between beats
@@ -324,7 +333,8 @@ void setup() {
 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
 	// TODO: handle the midi option
 	for(int i=0;i<4;i++)
-		gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_AUDIO ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
+		//gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_SHAKE ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
+		gpio_set_function(outPins[i], OUTMODE_IS_AUDIO(_settings.s.outs[i]) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
 #endif
 	
 
@@ -492,7 +502,10 @@ void setup() {
 
   sleep_setup();
 
+	cmd_setup();
 }
+
+
 #ifndef TEENSY32
 
 // rp2040 audio:
@@ -541,6 +554,7 @@ void setup1(){
 
 void loop1(){
 	static short reportcount = 1500; 
+	static int32_t level;
 
 	// update the interpolater with the latest volume level
 	interp0->accum[1] = rp2040.fifo.pop(); // blocks at IMU interrupt rate
@@ -572,6 +586,8 @@ void loop() {
   bool targetNear, targetAhead;
 
   static int midiMeasuresRemaining = 0;
+
+	float volumeLevel;
 
 #ifdef PI_V6
   // TODO: check the resolution of the rp2040 analogRead
@@ -631,16 +647,33 @@ void loop() {
     /* 	Dbg_println(inertia[0]); */
 #endif
 
+		// This funny formula gives a float value for volume:
+		// it's the difference between intertia and the minimum inertial threshhold (shakeThreshold),
+		// scaled to Gs (/COUNT_PER_G),
+		// then divided by 3 (/3) .
+		// It can't go below 0, but what's the max?
+		// If the IMU is sensitive to 8gs, and the threshhold is 0.8 gs,
+		// then the max is 7.2/3 
+		// (I got to this formula through tweaking and listening, but it's kinda obscure.)
+		volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0);
+
 #ifdef PI_V6
 		// send vol level to core 1:
-		rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
+		rp2040.fifo.push_nb(volumeLevel * WAV_PWM_RANGE); 
+		//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
 		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
 		//rp2040.fifo.push_nb(WAV_PWM_RANGE); // DEBUG: max volume
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
     //amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
-    amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
+    //amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
+		if (_settings.s.outs[0] == OUTMODE_NOISE) {
+			amp1.gain(1.0); // for testing
+		} else {
+			amp1.gain(volumeLevel);
+		}
+
 #endif
 
     ///////////////////////////////////
@@ -648,12 +681,17 @@ void loop() {
 
     // MIDI Controllers should discard incoming MIDI messages.
 #ifdef PI_V6
-    while (MIDI_USB.read(MIDI_CHANNEL_OMNI)) {
+    while (MIDI_USB.read(MIDI_CHANNEL_OMNI)) 
+			{ // read & ignore incoming messages 
+			}
 #else
-    while (usbMIDI.read()) {
+    while (usbMIDI.read()) 
+			{ // read & ignore incoming messages 
+			}
 #endif
-      // read & ignore incoming messages
-    }
+
+		// Read serial commands
+		cmd_update();
   }
 
 #ifdef MIDITIMECODE
@@ -1215,7 +1253,8 @@ void loop() {
     }
 
     // print benchmarks when pulse goes high.
-    if (pulseState[0] == HIGH) {
+    if (showStats && pulseState[0] == HIGH) {
+      /* Dbg_printf("stats: %s  ", (showStats ? "y" : "n")); */
       Dbg_print(awakeTimer);
       Dbg_print(':');
       Dbg_print(loopTimer);
