@@ -61,9 +61,12 @@ v4clean:
 v4compile:
 	arduino-cli compile -v $(v4compileflags)
 
-#	arduino-cli upload --fqbn teensy:avr:teensy31 -p /dev/cu.usbmodem??????*
 v4load:
-	teensy_loader_cli -v --mcu=mk20dx256 $(v4_build_path)/$(target).ino.hex
+	echo sorry, still broken. use Arduino App to program Teensy. 
+	# this doesn't work, dunno why. maybe more args?
+	#arduino-cli upload --fqbn teensy:avr:teensy31 -p /dev/cu.usbmodem??????*
+	# meanwhile, is this loader installed? what's the status of it?
+	#teensy_loader_cli -v --mcu=mk20dx256 $(v4_build_path)/$(target).ino.hex 
 
 v4monitor: 
 	arduino-cli monitor -p /dev/tty.usbmodem???????*
