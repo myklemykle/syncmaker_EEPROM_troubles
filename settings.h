@@ -16,6 +16,7 @@
 // We'll bump this whenever we change the format of _Settings:
 #define SETTINGSVERSION 2
 
+// output channel modes
 #define OUTMODE_MIDI 0
 #define OUTMODE_SYNC 1
 #define OUTMODE_SHAKE 2
@@ -28,10 +29,16 @@
 #define OUTMODE_IS_AUDIO(o) ( OUTMODE_SHAKE <= o <= OUTMODE_SQUARE )
 
 // indicies of the channel settings in the outs[] array:
-#define OUTCHANNEL_TIP1 0;
-#define OUTCHANNEL_RING1 1;
-#define OUTCHANNEL_TIP2 2;
-#define OUTCHANNEL_RING2 3;
+#define OUTCHANNEL_TIP1 0
+#define OUTCHANNEL_RING1 1
+#define OUTCHANNEL_TIP2 2
+#define OUTCHANNEL_RING2 3
+
+// possible test tones:
+#define TESTTONE_NOISE 0
+#define TESTTONE_SINE 1
+#define TESTTONE_SQUARE 2
+#define TESTTONE_OFF 3
 
 // Settings object
 typedef struct {

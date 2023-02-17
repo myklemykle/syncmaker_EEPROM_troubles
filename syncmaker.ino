@@ -44,23 +44,49 @@
 extern void cmd_setup();
 extern void cmd_update();
 
+// for controlling the test tone:
+char testTone = TESTTONE_OFF;
 
-// utils for handling loop variables, which are very short CircularBuffers:
+/////////////////////////////
+// Some utils for handling loop variables, which are very short CircularBuffers
+// for comparing this loop's value to the previous loop's value.
+// The most recent value will be in cb[0], the previous in cb[1], etc.
+////////////////////////////
+// init the buffer with one value in all positions:
 #define CBINIT(cb, val) \
   while (!cb.isFull()) cb.push(val)
+
+// change the current value without touching the previous value:
 #define CBSET(cb, val) \
   { \
     cb.shift(); \
     cb.unshift(val); \
   }
+
+// update the value (current becomes previous)
 #define CBPUSH(cb, val) (cb.unshift(val))
-#define CBGET(cb, val) (cb[0])
-#define CBFELL(cb) (cb[0] < cb[1])  // also works for bools in C++ because TRUE = 1 and FALSE = 0
-#define CBFELLTHRU(cb, val) (cb[0] <= val && cb[1] > val)
-#define CBROSE(cb) (cb[0] > cb[1])
-#define CBROSETHRU(cb, val) (cb[0] > val && cb[1] <= val)
-#define CBDIFF(cb) (cb[0] != cb[1])
+
+// update the current value to match the previous value
 #define CBNEXT(cb) (cb.unshift(cb[0]))
+
+// get the current value
+#define CBGET(cb, val) (cb[0])
+
+// test: current value is less than previous
+#define CBFELL(cb) (cb[0] < cb[1])  // also works for bools in C++ because TRUE = 1 and FALSE = 0
+
+// test: current value is below val, and previous value was above it
+#define CBFELLTHRU(cb, val) (cb[0] <= val && cb[1] > val)
+
+// test: current value is more than previous
+#define CBROSE(cb) (cb[0] > cb[1])
+
+// test: current value is above val, and previous value was below it
+#define CBROSETHRU(cb, val) (cb[0] > val && cb[1] <= val)
+
+// test: value changed (current != previous) 
+#define CBDIFF(cb) (cb[0] != cb[1])
+
 
 #ifdef PI_V6
 
@@ -589,6 +615,7 @@ void loop() {
 
 	float volumeLevel;
 
+
 #ifdef PI_V6
   // TODO: check the resolution of the rp2040 analogRead
 #else
@@ -659,18 +686,20 @@ void loop() {
 
 #ifdef PI_V6
 		// send vol level to core 1:
-		rp2040.fifo.push_nb(volumeLevel * WAV_PWM_RANGE); 
-		//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
-		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
-		//rp2040.fifo.push_nb(WAV_PWM_RANGE); // DEBUG: max volume
+		if (testTone != TESTTONE_OFF) {
+			rp2040.fifo.push_nb(WAV_PWM_RANGE); 
+			//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
+		} else {
+			//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
+			rp2040.fifo.push_nb(volumeLevel * WAV_PWM_RANGE); 
+		}
 #endif
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
-    //amp1.gain(max((inertia[0] - shakeThreshold)/(3.0 * COUNT_PER_G), 0.10)); // DEBUG (always on, to listen for audio dropouts)
-    //amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
-		if (_settings.s.outs[0] == OUTMODE_NOISE) {
+		if (testTone != TESTTONE_OFF) {
 			amp1.gain(1.0); // for testing
 		} else {
+			//amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
 			amp1.gain(volumeLevel);
 		}
 
@@ -1240,7 +1269,7 @@ void loop() {
   // Pulse if PLAYING
   if (CBDIFF(pulseState)) {
     if (playing[0]) {
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
       // send sync pulse on whatever pins are configured for sync
 			for(int i=0;i<4;i++)
 				if (_settings.s.outs[i] == OUTMODE_SYNC)
