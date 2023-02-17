@@ -1,16 +1,6 @@
 // TODO: license
-// (See WavPwmAudio.cpp)
-//
-
-#ifndef __WAV_PWM_AUDIO_H
-#define __WAV_PWM_AUDIO_H
-
-
-// //#define WAV_SAMPLE_RATE          22048 // mult of 16
-//
-// // WAV_PWM_COUNT = mcu frequency / sample rate = how many possible PWM values (bit depth basically)
-// // TODO: poll the mcu to know its clock frequency? this assumes 133mhz:
-// #define WAV_PWM_COUNT            (133000000 / WAV_SAMPLE_RATE)
+#ifndef __RP2040AUDIO_H
+#define __RP2040AUDIO_H
 
 #define WAV_PWM_SCALE 1                             // the tradeoff btwn bit depth & sample rate. 1 = 10 bit, 2 = 11 bit ... \
                                                     // 10-bit audio has the advantage that the sample rate is up at 130khz, \
@@ -23,11 +13,6 @@
 #define WAV_PWM_COUNT ((1024 * WAV_PWM_SCALE) - 1)  // the PWM counter's setting
 #define WAV_PWM_RANGE ((1024 * WAV_PWM_SCALE))
 #define WAV_SAMPLE_RATE (133000000 / WAV_PWM_RANGE)
-
-// void WavPwmInit();
-// unsigned char WavPwmIsPlaying(unsigned char port);
-// void WavPwmStopAudio(unsigned char port);
-// unsigned char WavPwmPlayAudio(short sampleBuf[], unsigned int sampleBufLen, unsigned char port);
 
 // Sample buffer: 2 channels, because PWM outputs want to be stereo
 // (It's remarkable how long a white noise sample has to be before you can't detect some
@@ -79,4 +64,4 @@ private:
 
 
 
-#endif
+#endif  // __RP2040AUDIO_H
