@@ -3,7 +3,7 @@
 
 // Sleep/hibernation:
 //
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 // rp2040 sleep libs here
 #else
 // // MK20DX256VLH7 can use Snooze library.

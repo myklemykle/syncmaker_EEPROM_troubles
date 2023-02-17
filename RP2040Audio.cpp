@@ -12,22 +12,23 @@
 //
 
 // don't compile this for Teensy:
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 
-#include <Arduino.h>
+#include <Arduino.h> // for Serial
 #include "pico/stdlib.h"
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
 #include "hardware/interp.h"
-#include "RP2040Audio.h"
 #include "pins.h"
+#include "RP2040Audio.h"
 
 // C++, why you can't just read the header file jeez ...
 extern int RP2040Audio::wavDataCh[2];
 extern int RP2040Audio::wavCtrlCh[2];
 extern unsigned int RP2040Audio::pwmSlice[2];
 extern short* RP2040Audio::bufPtr;
+
 
 // This gets called once at startup to set up both stereo PWMs for both ports
 void RP2040Audio::init() {
@@ -286,6 +287,4 @@ void RP2040Audio::tweak() {
 }
 
 
-
-
-#endif
+#endif // TARGET_RP2040

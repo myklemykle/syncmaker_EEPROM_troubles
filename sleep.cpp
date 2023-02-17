@@ -4,7 +4,7 @@
 #include "Bounce2.h"
 #include <elapsedMillis.h>
 
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 
 #include "RP2040Audio.h"
 
@@ -36,7 +36,7 @@ extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 M
 // the PO awake pin going high.
 
 void sleep_setup(){
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 	// TODO
 #else // TEENSY
   ////////////
@@ -76,16 +76,16 @@ unsigned int powerNap(){
 	imu.sleep();
 
 	// attach to buttons for button wakeup
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 	// TODO
-#else
+#else // TEENSY
 	s_config += s_digital;
 	s_config += s_timer;
 #endif
 
 	do {
 		// sleep N seconds or until right button wakes us
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 	// TODO
 #else
 		who = Snooze.deepSleep(s_config);
@@ -98,7 +98,7 @@ unsigned int powerNap(){
 	} while (awakePinState < awakePinThreshold && (! btn2pressed));
 
 	// detach from buttons
-#ifdef MCU_RP2040
+#ifdef TARGET_RP2040
 	// TODO
 #else
 	s_config -= s_digital;
