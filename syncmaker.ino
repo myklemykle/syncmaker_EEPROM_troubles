@@ -46,6 +46,7 @@ extern void cmd_update();
 
 // for controlling the test tone:
 char testTone = TESTTONE_OFF;
+float testLevel = 1.0;
 
 /////////////////////////////
 // Some utils for handling loop variables, which are very short CircularBuffers
@@ -507,7 +508,7 @@ void setup() {
   // Teensy Audio setup:
   AudioMemory(2);
   dac1.analogReference(EXTERNAL);  // 3.3v p2p (but see below)
-  noise1.amplitude(2);
+  noise1.amplitude(2);	/// umm why not 1? 
   amp1.gain(0);
   /* dc1.amplitude(0); */                     //DEBUG
   /* mixer1.gain(0, 1); // noise1 -> amp1 */  //DEBUG
@@ -687,7 +688,7 @@ void loop() {
 #ifdef PI_V6
 		// send vol level to core 1:
 		if (testTone != TESTTONE_OFF) {
-			rp2040.fifo.push_nb(WAV_PWM_RANGE); 
+			rp2040.fifo.push_nb(testLevel * WAV_PWM_RANGE); 
 			//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
 		} else {
 			//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
@@ -697,7 +698,7 @@ void loop() {
 #ifdef TEENSY32
     // use the inertia (minus gravity) to set the volume of the pink noise generator
 		if (testTone != TESTTONE_OFF) {
-			amp1.gain(1.0); // for testing
+			amp1.gain(testLevel); // for testing
 		} else {
 			//amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
 			amp1.gain(volumeLevel);
