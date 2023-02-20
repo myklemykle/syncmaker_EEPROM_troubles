@@ -30,8 +30,27 @@ extern unsigned int RP2040Audio::pwmSlice[2];
 extern short* RP2040Audio::bufPtr;
 
 
+void setup_interp1_clamp(){
+		interp_config cfg = interp_default_config();
+    interp_config_set_clamp(&cfg, true);
+    interp_config_set_shift(&cfg, 2);
+    // set mask according to new position of sign bit..
+    interp_config_set_mask(&cfg, 0, 29);
+    // ...so that the shifted value is correctly sign extended
+    interp_config_set_signed(&cfg, true);
+    interp_set_config(interp1, 0, &cfg);
+
+		interp1->base[0] = 0 - (WAV_PWM_RANGE / 2);;
+    interp1->base[1] = (WAV_PWM_RANGE / 2) -1;
+}
+
 // This gets called once at startup to set up both stereo PWMs for both ports
 void RP2040Audio::init() {
+	/////////////////////////
+	// set up interp1 for clamping (used by ISR)
+	//
+	setup_interp1_clamp();
+
   ////////////////////////////
   // Set up PWM slices
 
@@ -197,14 +216,15 @@ void RP2040Audio::ISR() {
 
   for (int i = 0; i < TRANSFER_BUFF_SIZE; i++) {
 
-    // TODO: use interps to reduce cpu load here? clamp or blend?
-		// TODO: clamp somehow!
-    transferBuffer[i] = (sampleBuffer[sampleBuffCursor++]
-                         * interp0->accum[1]  // scale numerator
+    // Since amplitude can go over max, use interpolator #1 in clamp mode
+		// to hard-limit the signal.
+    interp1->accum[0] = (sampleBuffer[sampleBuffCursor++]
+                         * interp0->accum[1]  // scale numerator (can be from 0 to ... more than 1.)
                          / WAV_PWM_RANGE      // scale denominator (TODO right shift here? or is the compiler smart?)
                          )
-                        + (WAV_PWM_RANGE / 2)  // shift to positive
       ;
+		// TODO: set up interp0 to perform this add?
+		transferBuffer[i] = interp1->peek[0] + (WAV_PWM_RANGE / 2);  // shift to positive
 
     if (sampleBuffCursor == SAMPLE_BUFF_SIZE)
       sampleBuffCursor = 0;
@@ -212,6 +232,11 @@ void RP2040Audio::ISR() {
 }
 
 //////////
+//
+// These basic utils generate signals in the sampleBuffer.
+// In every case it's signed values between -(WAV_PWM_RANGE/2) 
+// and WAV_PWM_COUNT
+//
 // fill buffer with white noise (signed)
 void RP2040Audio::fillWithNoise(){
   randomSeed(666);
@@ -242,7 +267,6 @@ void RP2040Audio::fillWithSquare(uint count){
      } else {
        sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2);
      }
-
 }
 
 // PWM tuning utility
