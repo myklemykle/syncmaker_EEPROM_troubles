@@ -25,6 +25,11 @@
 // while DMA transfers from this buffer to the PWM.
 #define TRANSFER_WINDOW_SIZE 8
 #define TRANSFER_BUFF_SIZE TRANSFER_WINDOW_SIZE* AUDIO_CHANNELS  // size in uint_16s
+																																 
+// IMPORTANT:
+// SAMPLE_BUFF_SIZE must be a multiple of TRANSFER_WINDOW_SIZE, because the ISR only 
+// checks for overrun once per TRANSFER_WINDOW_SIZE.  (For efficiency.)
+//
 //#define SAMPLE_BUFF_SIZE 	( TRANSFER_WINDOW_SIZE * (320 / WAV_PWM_SCALE) )
 //
 // that's fine for a waveform, but for noise we need a much larger buffer:
