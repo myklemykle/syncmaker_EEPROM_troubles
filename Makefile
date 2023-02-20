@@ -3,11 +3,13 @@ openocd_dir := ../openocd
 openocd_script := $(openocd_dir)/tcl
 openocd := $(openocd_dir)/src/openocd
 
+gdb := arm-none-eabi-gdb
 
 v6_build_path := build/v6
 v4_build_path := build/v4
 
 v6: v6compile v6load pause v6monitor
+
 
 pause:
 	sleep 1
@@ -46,7 +48,7 @@ v6ocd:
 	$(openocd) -f interface/picoprobe.cfg -f target/rp2040-core0.cfg -s $(openocd_script)
 
 v6gdb:
-	gdbgui -g 'arm-none-eabi-gdb -iex "target extended-remote localhost:3333"'
+	gdbgui -g '$(gdb) -iex "target extended-remote localhost:3333" $(v6_build_path)/$(target).ino.elf ' $(v6_build_path)/$(target).ino.elf
 
 #######################
 
