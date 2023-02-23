@@ -52,6 +52,7 @@ public:
   bool isPlaying(unsigned char port);
 	void fillWithNoise();
 	void fillWithSine(uint count);
+	void fillWithSaw(uint count);
 	void fillWithSquare(uint count);
   void tweak();  // adjust the trigger pulse. for debugging purposes only. reads from Serial.
 	// TODO:

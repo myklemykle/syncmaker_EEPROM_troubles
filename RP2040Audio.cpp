@@ -33,10 +33,6 @@ extern short* RP2040Audio::bufPtr;
 void setup_interp1_clamp(){
 		interp_config cfg = interp_default_config();
     interp_config_set_clamp(&cfg, true);
-    interp_config_set_shift(&cfg, 2);
-    // set mask according to new position of sign bit..
-    interp_config_set_mask(&cfg, 0, 29);
-    // ...so that the shifted value is correctly sign extended
     interp_config_set_signed(&cfg, true);
     interp_set_config(interp1, 0, &cfg);
 
@@ -206,11 +202,12 @@ RP2040Audio::RP2040Audio() {
   pwmSlice[0] = pwmSlice[1] = 0;
 }
 
+extern volatile uint32_t iVolumeLevel;
+
+// init() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
+// then this ISR refills the transfer buffer with TRANSFER_BUFF_SIZE more samples,
+// which is TRANSFER_WINDOW_SIZE * number of channels.
 void RP2040Audio::ISR() {
-  // WavPwmInit() sets up an interrupt every TRANSFER_WINDOW_SIZE output samples,
-  // and then we refill the transfer buffer with TRANSFER_BUFF_SIZE more samples,
-  // which is TRANSFER_WINDOW_SIZE * number of channels.
-  /* volatile static unsigned int sampleBuffCursor = 0; // index into sampleBuffer[] */
   static unsigned int sampleBuffCursor = 0;
   pwm_clear_irq(TRIGGER_SLICE);
 
@@ -218,8 +215,12 @@ void RP2040Audio::ISR() {
 
     // Since amplitude can go over max, use interpolator #1 in clamp mode
 		// to hard-limit the signal.
-    interp1->accum[0] = (sampleBuffer[sampleBuffCursor++]
-                         * interp0->accum[1]  // scale numerator (can be from 0 to ... more than 1.)
+    interp1->accum[0] = 
+											(short)( 
+													(long) (
+														sampleBuffer[sampleBuffCursor++]
+														 * iVolumeLevel  // scale numerator (can be from 0 to more than WAV_PWM_RANGE
+														)
                          / WAV_PWM_RANGE      // scale denominator (TODO right shift here? or is the compiler smart?)
                          )
       ;
@@ -267,6 +268,25 @@ void RP2040Audio::fillWithSquare(uint count){
      } else {
        sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2);
      }
+}
+
+// fill buffer with sawtooth waves running negative to positive
+// (Still slightly buggy ...)
+void RP2040Audio::fillWithSaw(uint count){
+  const float twoPI = 6.283;
+  const float scale = (WAV_PWM_RANGE) / 2;
+
+  for (int i=0; i<SAMPLE_BUFF_SIZE; i+= AUDIO_CHANNELS){
+    for(int j=0;j<AUDIO_CHANNELS; j++)
+      sampleBuffer[i + j] = (int) 
+
+				// i 																																// 0 -> SAMPLE_BUFF_SIZE-1
+				// i / (SAMPLE_BUFF_SIZE - 1) 																			// 0 -> 1
+				// i * WAV_PWM_RANGE / (SAMPLE_BUFF_SIZE -1) 												// 0 -> WAV_PWM_RANGE
+				// (i * count) * WAV_PWM_RANGE / (SAMPLE_BUFF_SIZE -1) 							// 0 -> count*WAV_PWM_RANGE
+				(i * count * WAV_PWM_RANGE / (SAMPLE_BUFF_SIZE -1) ) % WAV_PWM_RANGE // 0 -> WAV_PWM_RANGE, count times
+					- (WAV_PWM_RANGE / 2); // shift to 50% negative
+  }
 }
 
 // PWM tuning utility

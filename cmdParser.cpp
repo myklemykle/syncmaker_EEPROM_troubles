@@ -82,19 +82,6 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	}
 	else if (strmatch(args[1].asString, "shake")){
 		mode = OUTMODE_SHAKE;
-		// TODO: update sample
-	// }
-	// else if (strmatch(args[1].asString, "noise")){   // obsolete: use 'test tone' instead.
-	// 	mode = OUTMODE_NOISE;
-	// 	// TODO: update sample
-	// }
-	// else if (strmatch(args[1].asString, "sine")){
-	// 	mode = OUTMODE_SINE;
-	// 	// TODO: update sample
-	// }
-	// else if (strmatch(args[1].asString, "square")){
-	// 	mode = OUTMODE_SQUARE;
-	// 	// TODO: update sample
 	} else {
 		strlcpy(response, "error: bad mode", MyCommandParser::MAX_RESPONSE_SIZE);
 		return;
@@ -109,14 +96,14 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 }
 
 
-// indices in this array must match TESTTTONE_* defines in settings.h
-const char* testtoneNames[4] = { "noise", "sine", "square", "off" };
+const char* testtoneNames[TESTTONE_COUNT] = TESTTONE_NAMES ;
 extern char testTone;
 
 
-void _test_tone(MyCommandParser::Argument *args, char *response) {
-	for(int i=0;i<4;i++) {
-		if (strmatch(args[1].asString, testtoneNames[i])){
+//void _test_tone(MyCommandParser::Argument *args, char *response) {
+void _test_tone(char *type, char *response) {
+	for(int i=0;i<TESTTONE_COUNT;i++) {
+		if (strmatch(type, testtoneNames[i])){
 			if (i != testTone) {
 				// maybe update the wave table
 				switch (i) {
@@ -138,6 +125,11 @@ void _test_tone(MyCommandParser::Argument *args, char *response) {
 							audio.fillWithSquare(110);
 #endif
 						break;
+					case TESTTONE_SAW:
+#ifdef PI_V6
+							audio.fillWithSaw(110);
+#endif
+						break;
 					case TESTTONE_OFF:
 						if (testTone != TESTTONE_NOISE) {
 							// refill with noise
@@ -156,27 +148,57 @@ void _test_tone(MyCommandParser::Argument *args, char *response) {
 	strlcpy(response, "error: bad test tone", MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
-void cmd_test(MyCommandParser::Argument *args, char *response) {
-	if (strmatch(args[0].asString, "tone")){
-		_test_tone(args, response);
-	} else {
-		strlcpy(response, "error: bad test", MyCommandParser::MAX_RESPONSE_SIZE);
-	}
+void cmd_test_tone(MyCommandParser::Argument *args, char *response) {
+	_test_tone(args[1].asString, response);
 }
+
+void cmd_testtone(MyCommandParser::Argument *args, char *response) {
+	_test_tone(args[0].asString, response);
+}
+
+extern float testLevel;
+
+void cmd_testlevel(MyCommandParser::Argument *args, char *response) {
+	double lvl = args[0].asDouble;
+	if ( lvl < 0 || lvl > 1000) {
+		strlcpy(response, "error: bad test level", MyCommandParser::MAX_RESPONSE_SIZE);
+		return;
+	}
+
+	testLevel = lvl / 100.0;
+	snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "level %f/%f\n", lvl, testLevel);
+}
+
+// this more general approach isn't compatible with commandParser's arg handling ...
+//
+// void cmd_test(MyCommandParser::Argument *args, char *response) {
+// 	if (strmatch(args[0].asString, "tone")){
+// 		cmd_test_tone(args, response);
+// 	// } else if (strmatch(args[0].asString, "level")){
+// 	// 	cmd_test_level(args, response);
+// 	} else {
+// 		strlcpy(response, "error: bad test", MyCommandParser::MAX_RESPONSE_SIZE);
+// 	}
+// }
 
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
   parser.registerCommand("stats", "u", &cmd_stats);
   parser.registerCommand("set", "ss", &cmd_set);
-  parser.registerCommand("test", "ss", &cmd_test);
+	
+  parser.registerCommand("testtone", "s", &cmd_testtone);
+  parser.registerCommand("tt", "s", &cmd_testtone);
+
+  parser.registerCommand("testlevel", "u", &cmd_testlevel);
+  parser.registerCommand("tl", "d", &cmd_testlevel);
 }
 
 void cmd_update() {
   if (Serial.available()) {
     char line[128];
 		// NOTE: this is going to block unless the serial port was line-buffered;
-		// we shouldn't assume that.
+		// we're presuming it is, maybe we shouldn't  ...
     size_t lineLength = Serial.readBytesUntil('\n', line, 127);
     line[lineLength] = '\0';
 

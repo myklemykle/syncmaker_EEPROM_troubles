@@ -35,10 +35,13 @@
 #define OUTCHANNEL_RING2 3
 
 // possible test tones:
-#define TESTTONE_NOISE 0
+#define TESTTONE_OFF 0
 #define TESTTONE_SINE 1
 #define TESTTONE_SQUARE 2
-#define TESTTONE_OFF 3
+#define TESTTONE_SAW 3
+#define TESTTONE_NOISE 4
+#define TESTTONE_NAMES { "off", "sine", "square", "saw", "noise" }
+#define TESTTONE_COUNT 5 // including "off"
 
 // Settings object
 typedef struct {
