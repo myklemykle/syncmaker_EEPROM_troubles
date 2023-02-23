@@ -1,6 +1,6 @@
-//////////////////////////// // Teensy 3.2:
-// Pocket Integrator (PO daughterboard) firmware (c) 2022 mykle systems labs
-// This version compatible with EVT4, V6 and V7 boards.
+//////////////////////////// 
+// Pocket Integrator (PO daughterboard) firmware (c) 2022-2023 MSL
+// This version compatible with EVT4 based on Teensy 3.2, or V6+ boards based on RP2040
 // (You must #define either EVT4 or PI_V6 ; define neither both nor neither.)
 //
 #include "config.h"
@@ -116,7 +116,7 @@ MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc
 #define COUNT_PER_G 4096                    // accelerometer units
 #define COUNT_PER_DEG_PER_SEC_PER_COUNT 16  // gyro units
 //const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
-const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // 0.85 * COUNT_PER_G ... a little more sensitive
+const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // 0.85 * COUNT_PER_G ... a little less sensitive
 const int tapThreshold = 2 * COUNT_PER_G;
 
 CircularBuffer<long, 3> inertia;
@@ -539,37 +539,34 @@ void setup() {
 
 ///////////////
 // Set up hardware interpolator 0 on core1 in blend mode for volume control:
-
-void interpSetup1(){
-	interp_config cfg = interp_default_config();
-	interp_config_set_blend(&cfg, true);
-	interp_config_set_signed(&cfg, true);
-	interp_set_config(interp0, 0, &cfg); // config lane 0
-
-	cfg = interp_default_config();
-	interp_config_set_signed(&cfg, true); 
-	interp_set_config(interp0, 1, &cfg); // config lane 1
-
-	// Volume levels will be from int 0 to 255:
-	interp0->base[0] = 0;
-	// base[1] will get the sample we're scaling ...
-	interp0->accum[1] = 255; // turn it all the way up for now ...
-
-	// TODO: use interp1 in clamp mode
-	// to shift results into positive (using base2)
-	// and clamp btwn 0 and WAV_PWM_RANGE (using clamp mode)
-	
-	// ALSO: handle vol levels above 255?
-
-}
+/*  */
+/* void interpSetup1(){ */
+/* 	interp_config cfg = interp_default_config(); */
+/* 	interp_config_set_blend(&cfg, true); */
+/* 	interp_config_set_signed(&cfg, true); */
+/* 	interp_set_config(interp0, 0, &cfg); // config lane 0 */
+/*  */
+/* 	cfg = interp_default_config(); */
+/* 	interp_config_set_signed(&cfg, true);  */
+/* 	interp_set_config(interp0, 1, &cfg); // config lane 1 */
+/*  */
+/* 	// Volume levels will be from int 0 to 255: */
+/* 	interp0->base[0] = 0; */
+/* 	// base[1] will get the sample we're scaling ... */
+/* 	interp0->accum[1] = 255; // turn it all the way up for now ... */
+/*  */
+/* 	// TODO: use interp1 in clamp mode */
+/* 	// to shift results into positive (using base2) */
+/* 	// and clamp btwn 0 and WAV_PWM_RANGE (using clamp mode) */
+/* 	 */
+/* 	// ALSO: handle vol levels above 255? */
+/*  */
+/* } */
 
 void setup1(){
-	// interpSetup1();
 
 	// put some noise in the buffer:
 	audio.fillWithNoise();
-	/* audio.fillWithSine(30); */ // testing
-	/* audio.fillWithSquare(30); */ // testing
 
 	// Setup PWM outputs & interrupt handler
 	audio.init();
@@ -579,16 +576,18 @@ void setup1(){
   audio.play(1);
 }
 
+volatile uint32_t iVolumeLevel;
+
 void loop1(){
 	static short reportcount = 1500; 
-	static int32_t level;
 
 	// update the interpolater with the latest volume level
-	interp0->accum[1] = rp2040.fifo.pop(); // blocks at IMU interrupt rate
+	iVolumeLevel = rp2040.fifo.pop(); // this blocks at IMU interrupt rate
 
 	reportcount--;
 	if (reportcount ==0){
 		reportcount = 1500;
+		//Dbg_printf("iVol: %d\n", iVolumeLevel);
 		/* Serial.printf("unscaled: %d\n",interp0->base[1]); */
 		/* Serial.printf("scale: %d\n",interp0->accum[1]); */
 		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
@@ -614,7 +613,7 @@ void loop() {
 
   static int midiMeasuresRemaining = 0;
 
-	float volumeLevel;
+	static float volumeLevel;
 
 
 #ifdef PI_V6
@@ -668,7 +667,7 @@ void loop() {
 
 
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-    CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude
+    CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
 
 #ifdef SDEBUG
     /* if (inertia[0] > shakeThreshold)  */
@@ -676,23 +675,28 @@ void loop() {
 #endif
 
 		// This funny formula gives a float value for volume:
-		// it's the difference between intertia and the minimum inertial threshhold (shakeThreshold),
-		// scaled to Gs (/COUNT_PER_G),
-		// then divided by 3 (/3) .
-		// It can't go below 0, but what's the max?
+		// it's the difference between momentary intertia and a minimum inertial threshhold (shakeThreshold),
+		// both of which are scaled to Gs at the configured resolution of the IMU (COUNT_PER_G),
+		// then divided by 3gs (/3.0 * COUNT_PER_G) , a volume-attenuating coefficient that I apparently found in my ass.
+
+		// The result can't go below 0, but what's the max?
 		// If the IMU is sensitive to 8gs, and the threshhold is 0.8 gs,
-		// then the max is 7.2/3 
+		// then the max is 7.2/3  = 2.4
+		// (Testing shows i can hear an audible increase in noise volume from overamplifying up to about 3.0,
+		// so that could be an ideal threshhold.)
 		// (I got to this formula through tweaking and listening, but it's kinda obscure.)
-		volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0);
+
+		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
+		volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please!
 
 #ifdef PI_V6
 		// send vol level to core 1:
 		if (testTone != TESTTONE_OFF) {
-			rp2040.fifo.push_nb(testLevel * WAV_PWM_RANGE); 
+			rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
 			//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
 		} else {
 			//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
-			rp2040.fifo.push_nb(volumeLevel * WAV_PWM_RANGE); 
+			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
 		}
 #endif
 #ifdef TEENSY32
@@ -1000,12 +1004,13 @@ void loop() {
     if (btn1.rose() || btn2.rose()) {          // if we just released the buttons,
 
 			// if taps <= 8 (intervals <= 7), quantize BPM
-			if (hc.tapCount <= 8) {
+			if (2 <= hc.tapCount && hc.tapCount <= 8) {
 				// But when BPM gets "too low", quantization is probably inappropriate.
 				// For now, 30 BPM is the arbitrary threshhold
 				// TODO: experiment with this.
 				if (USEC2BPM(hc.measureLen) > 30) {
 					hc.measureLen = BPM2USEC(round(USEC2BPM(hc.measureLen)));
+					Dbg_printf("tapcount %d, ", hc.tapCount);
 					Dbg_print("quantized to ");          // DEBUG
 					Dbg_print(USEC2BPM(hc.measureLen));  // DEBUG
 					Dbg_println(" BPM");                 // DEBUG
@@ -1014,9 +1019,11 @@ void loop() {
 
 			_settings.s.measureLen = hc.measureLen;
 
-			// TODO: for RP2040 this is sort of a hack, flash is not EEPROM & I will wear out flash too fast if I put these settings as often as I have been.
-			// We should have some other strategy for saving the settings less often, but often enough.
-			// (ATM measureLen is the only setting, but there will be more ...)
+			// TODO: for RP2040 this is sort of a hack, flash is not EEPROM & will wear out flash too fast 
+			// if I put these settings as often as I have been. (atm, on every button release!)
+			// We should have some other strategy for saving the settings less often, but often enough:
+			// mark settings as dirty somehow,
+			// save, if dirty, on some time interval and/or at stop.
       _settings.put();
 		}
 
@@ -1330,6 +1337,8 @@ void loop() {
       Dbg_print(ay);
       Dbg_print(", ");
       Dbg_print(az);
+			Dbg_print("; vol ");
+			Dbg_print(volumeLevel);
       //		if (btn3pressed)  // DEBUG */
       //			Dbg_print(" Boink!"); // DEBUG */
 
