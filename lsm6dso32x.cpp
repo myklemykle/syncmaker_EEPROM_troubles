@@ -23,7 +23,7 @@
 // SPIPORT is defined in config.h ...
 
 // NOTE: 
-// "chip_addr" in SPI mode is the number of the GPIO pin that asserts CS for the chip --
+// "chip_addr" in SPI mode is the GPIO pin that asserts CS for the chip --
 // kind of squeezing SPI's foot into I2C's shoe, but it fits.
 	
 const uint8_t chip_addr=SPI_cs;
@@ -32,11 +32,20 @@ const SPISettings spiconf(10000000, MSBFIRST, SPI_MODE3);
 
 
 bool LSM6DSO32X_IMU::sleep() {
-	//TODO
+	uint8_t buf;
+	//TODO: CTRL4_C bit 1 high enables gyroscope Sleep mode ?  is that better?
+	
+	_gyro_off();
+	_accel_off();
+	
 	return true;
 }
+
 bool LSM6DSO32X_IMU::wake() {
 	//TODO
+	
+	_accel_on();
+	_gyro_on();
 	return true;
 }
 bool LSM6DSO32X_IMU::available() {
@@ -74,16 +83,66 @@ void LSM6DSO32X_IMU::readMotionSensor(int& ax, int& ay, int& az, int& gx, int& g
 // #undef DEG_PER_SEC_PER_COUNT
 // #undef UT_PER_COUNT
 
+bool LSM6DSO32X_IMU::_accel_off(){
+	uint8_t buf;
+	//CTRL1_XL 0b0000xxxx : power down accelerometer 
+  if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
+	buf = buf | 0b00001111 ; // mask the top four bits
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, buf)) return false;
+	return true;
+}
+
+bool LSM6DSO32X_IMU::_accel_on(){
+	uint8_t buf;
+  // accel data rate & resolution: CTRL1_XL
+#ifdef IMU_6_666KHZ
+  // rate = 6.66khz, res = +-8g
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10101000)) return false;
+# elif defined(IMU_3_333KHZ)
+  // rate = 3.33khz, res = +-8g
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10011000)) return false;
+#else
+  // rate = 1.66khz, res = +-8g
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10001000)) return false;
+#endif
+	return true;
+}
+
+bool LSM6DSO32X_IMU::_gyro_off(){
+	uint8_t buf;
+
+	//CTRL2_G 0b0000xxxx : power down gyroscope
+  if (!read_regs(chip_addr, LSM6DSO32X_CTRL2_G, &buf, 1)) return false;
+	buf = buf | 0b00001111 ; // mask the top four bits
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, buf)) return false;
+	return true;
+}
+
+bool LSM6DSO32X_IMU::_gyro_on(){
+	uint8_t buf;
+
+  // gyro data rate & resolution:
+#ifdef IMU_8KHZ
+  // rate = 6.66khz, res = +-1000 deg/sec
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, 0b10101000)) return false;
+#else
+  // rate = 1.66khz, res = +-8g
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, 0b10001000)) return false;
+#endif
+	return true;
+
+}
+
 bool LSM6DSO32X_IMU::begin(){
 	uint8_t buf;
   uint8_t temp; // actually signed ...
   uint8_t tempfrac;
 
   Dbg_print("LSM6DSO32X::begin: SPI slave on pin ");
-  Dbg_println(SPI_cs);
+  Dbg_println(chip_addr);
 
   // detect if chip is present
-  if (!read_regs(SPI_cs, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
   Dbg_printf("LSM6DSO32X ID = %02X\n", buf);
   if ( (buf != 0x6CU) )
     return false;
@@ -92,13 +151,13 @@ bool LSM6DSO32X_IMU::begin(){
   // // reset the device:
   // ctrl3_c: "software reset" (last bit)
 	// defaults otherwise
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL3_C, 0b00000101)) return false;
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL3_C, 0b00000101)) return false;
 
   // wait for reset to complete
 	// (datasheet says 35ms is "turn on time")
   delay(35);
   // detect if chip is still with us
-  if (!read_regs(SPI_cs, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_WHO_AM_I, &buf, 1)) return false;
   if ( (buf != 0x6CU) ) {
     Dbg_println("gone after reset!");
     return false;
@@ -107,13 +166,13 @@ bool LSM6DSO32X_IMU::begin(){
 	}
 	
 	// configure interrupts to active low (defaults otherwise)
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL3_C, 0b00100100)) return false;
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL3_C, 0b00100100)) return false;
 
 
   // get the temperature: OUT_TEMP_L/H
   // H is a signed integer celcius value, L is unsigned fractional 1/256ths of a degree celcius
-  if (!read_regs(SPI_cs, LSM6DSO32X_OUT_TEMP_H, &temp, 1)) return false;
-  if (!read_regs(SPI_cs, LSM6DSO32X_OUT_TEMP_L, &tempfrac, 1)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUT_TEMP_H, &temp, 1)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUT_TEMP_L, &tempfrac, 1)) return false;
   Dbg_printf("temperature raw %i . %i\n", (int8_t)temp, tempfrac);
 	// datasheet sec 4.3, table 4, teeny tiny footnote #3: temp sensor output is zero at 25 celcius ...
   Dbg_printf("temperature %f\n", ((int8_t)temp + 25 + ( tempfrac / 256.0)));
@@ -121,31 +180,18 @@ bool LSM6DSO32X_IMU::begin(){
   // configure components:
 
   // disable FIFO
-  if (!write_reg(SPI_cs, LSM6DSO32X_FIFO_CTRL4, 0)) return false;
+  if (!write_reg(chip_addr, LSM6DSO32X_FIFO_CTRL4, 0)) return false;
 
-  // accel data rate & resolution: CTRL1_XL
-#ifdef IMU_6_666KHZ
-  // rate = 6.66khz, res = +-8g
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10101000)) return false;
-# elif defined(IMU_3_333KHZ)
-  // rate = 3.33khz, res = +-8g
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10011000)) return false;
-#else
-  // rate = 1.66khz, res = +-8g
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL1_XL, 0b10001000)) return false;
-#endif
+	if (! _accel_on()) return false;
 
-  // gyro data rate & resolution:
-#ifdef IMU_8KHZ
-  // rate = 6.66khz, res = +-1000 deg/sec
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL2_G, 0b10101000)) return false;
-#else
-  // rate = 1.66khz, res = +-8g
-  if (!write_reg(SPI_cs, LSM6DSO32X_CTRL2_G, 0b10001000)) return false;
-#endif
+	if (! _gyro_on()) return false;
+
 
   // configure interrupt 1 on accelerometer data ready
-	if (!write_reg(SPI_cs, LSM6DSO32X_INT1_CTRL, 0b00000001)) return false;
+	if (!write_reg(chip_addr, LSM6DSO32X_INT1_CTRL, 0b00000001)) return false;
+
+
+	//TODO: CTRL4_C bit 5 high: disable I2C (should i always do that? any savings?)
 	
   Dbg_println("LSM6DSO32X configured");
   return true;

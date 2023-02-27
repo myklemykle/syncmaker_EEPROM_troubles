@@ -30,9 +30,15 @@ private:
 	bool LSM6DSO32X_read(int16_t *data);
 	bool LSM6DSO32X_sleep();
 	bool LSM6DSO32X_wake();
+	// TODO: why are these bool methods static?
 	static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num);
 	static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val);
 	static bool set_reg(uint8_t selector, uint8_t addr, uint8_t val);
+
+	bool _gyro_off();
+	bool _gyro_on();
+	bool _accel_off();
+	bool _accel_on();
 
 	float cal[16]; // 0-8=offsets, 9=field strength, 10-15=soft iron map
 	int16_t accel_mag_raw[6];
