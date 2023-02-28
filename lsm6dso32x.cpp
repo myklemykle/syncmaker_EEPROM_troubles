@@ -42,12 +42,14 @@ bool LSM6DSO32X_IMU::sleep() {
 }
 
 bool LSM6DSO32X_IMU::wake() {
-	//TODO
 	
-	_accel_on();
-	_gyro_on();
-	return true;
+	// _accel_on();
+	// _gyro_on();
+	//
+	// seems to need the whole shebang to come back:
+	return begin();
 }
+
 bool LSM6DSO32X_IMU::available() {
 	update();
 	return true;
@@ -84,27 +86,36 @@ void LSM6DSO32X_IMU::readMotionSensor(int& ax, int& ay, int& az, int& gx, int& g
 // #undef UT_PER_COUNT
 
 bool LSM6DSO32X_IMU::_accel_off(){
-	uint8_t buf;
 	//CTRL1_XL 0b0000xxxx : power down accelerometer 
-  if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
-	buf = buf | 0b00001111 ; // mask the top four bits
-  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, buf)) return false;
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b00001000)) return false;
 	return true;
 }
 
 bool LSM6DSO32X_IMU::_accel_on(){
 	uint8_t buf;
-  // accel data rate & resolution: CTRL1_XL
+
+  // // accel data rate & resolution: CTRL1_XL
+  // if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
+	// not getting valid result?
+  Dbg_println(buf);
+
+	// 10xx: 4g scale
+	// xx0x: lpf disable
+	// xxx0: ununsed
+	buf = 0b00001000;
+
 #ifdef IMU_6_666KHZ
   // rate = 6.66khz, res = +-8g
-  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10101000)) return false;
+	buf = buf | 0b10100000;
+
 # elif defined(IMU_3_333KHZ)
   // rate = 3.33khz, res = +-8g
-  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10011000)) return false;
+	buf = buf | 0b10010000;
 #else
   // rate = 1.66khz, res = +-8g
-  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, 0b10001000)) return false;
+	buf = buf | 0b10000000;
 #endif
+  if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, buf)) return false;
 	return true;
 }
 
@@ -113,7 +124,7 @@ bool LSM6DSO32X_IMU::_gyro_off(){
 
 	//CTRL2_G 0b0000xxxx : power down gyroscope
   if (!read_regs(chip_addr, LSM6DSO32X_CTRL2_G, &buf, 1)) return false;
-	buf = buf | 0b00001111 ; // mask the top four bits
+	buf = buf & 0b00001111 ; // mask the top four bits
   if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, buf)) return false;
 	return true;
 }
@@ -126,7 +137,7 @@ bool LSM6DSO32X_IMU::_gyro_on(){
   // rate = 6.66khz, res = +-1000 deg/sec
   if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, 0b10101000)) return false;
 #else
-  // rate = 1.66khz, res = +-8g
+  // rate = 1.66khz, res = ?
   if (!write_reg(chip_addr, LSM6DSO32X_CTRL2_G, 0b10001000)) return false;
 #endif
 	return true;

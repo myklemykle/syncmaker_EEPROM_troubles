@@ -724,8 +724,6 @@ void loop() {
 			}
 #endif
 
-		// Read serial commands
-		cmd_update();
   }
 
 #ifdef MIDITIMECODE
@@ -1349,6 +1347,9 @@ void loop() {
       loops = imus = 0;
 #endif
     }
+
+		// Read serial commands when pulse goes high:
+		cmd_update();
   }
 
   // Protect against timer overflows

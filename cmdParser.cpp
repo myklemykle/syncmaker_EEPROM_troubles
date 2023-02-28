@@ -46,13 +46,34 @@ void cmd_stats(MyCommandParser::Argument *args, char *response) {
 	}
 }
 
+/////////////////////////
+// sleep tests:
+//
+#ifdef PI_V6
+#include "lsm6dso32x.h"
+extern LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
+#else
+#include "MotionSense.h"
+extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
+#endif
+
+void cmd_sleep(MyCommandParser::Argument *args, char *response) {
+	imu.sleep();
+	strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
+}
+
+void cmd_wake(MyCommandParser::Argument *args, char *response) {
+	imu.wake();
+	strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
+}
+
 // 
 // set tip1|tip2|ring1|ring2 off/midi/sync/shake/noise/sine/square
 // 
 void cmd_set(MyCommandParser::Argument *args, char *response) {
 	char chan;
-	char mode;
 	
+	char mode;
 	if (strmatch(args[0].asString, "tip1")){
 		chan = OUTCHANNEL_TIP1;
 	}
@@ -192,6 +213,9 @@ void cmd_setup() {
 
   parser.registerCommand("testlevel", "u", &cmd_testlevel);
   parser.registerCommand("tl", "d", &cmd_testlevel);
+
+	parser.registerCommand("sleep","",&cmd_sleep);
+	parser.registerCommand("wake","",&cmd_wake);
 }
 
 void cmd_update() {
