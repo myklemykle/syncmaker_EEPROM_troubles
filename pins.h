@@ -70,7 +70,7 @@ const int SPI_miso = 12;
 const int SPI_mosi = 15;
 const int unusedPins[7] = { 7,16,17,25,27,28,29 };
 
-#elif defined(EVT4)
+#elif PI_REV == 4
 const int button1Pin = 22;   // sw1
 const int button2Pin = 21;   // sw2
 const int boardLedPin = 13;	// builtin led on Teensy 3.2

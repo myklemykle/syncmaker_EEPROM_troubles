@@ -7,22 +7,34 @@
 // 1) the big question: what board are we building for?
 // (these are defined in Makefile targets)
 //
-// is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
 //#define PI_V6 pleasebethelastone
-//
-//
+
+// is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
+#ifdef PI_V6
+#define PI_REV 6
+
+#elif defined(PI_V9)
+#define PI_REV 9
+
 // HACK: the inscrutible arduino-cli lets me pass -DPI_V6 unmolested when compiling rp2040,
 // but swallows/erases/loses all my build options when compiling Teensy.  
 // So I can't just -DEVT4. But I can do this, assuming i support no other Teensy3.2 platform:
-#ifdef ARDUINO_TEENSY32
+#elif defined(ARDUINO_TEENSY32)
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
 #define EVT4 itsathing
-#endif
+#define PI_REV 4
 
 //	
 // or is it REV3: I2C comms, IMU interrupt 2
 // (rev3 is the default when no other board is defined)
+// This has not been tested in a while and should be officially dropped ...
 //
+#else
+#define PI_REV 3
+
+#endif
+
+
 
 ////////////////////
 // 1.5) are we hardcoding for a particular model of Pocket Operator?
@@ -65,26 +77,29 @@
 
 #include <SPI.h>
 
-#ifdef PI_V6
-//#define MCU_RP2040 /* mcu is raspPi */
+// Is IMU on the SPI bus? (used to be i2c)
+#if PI_REV >= 4
+#define IMU_SPI cuzitsgroovy!
+#endif
+
+#if PI_REV >= 6 		/* RP2040 versions */
 #define IMU_LSM6DSO32X /* imu from STMicro */
 #define SPIPORT SPI1 /* from RP2040's SPI.h */
 //#define IMU_1_666KHZ 
-#define IMU_3_333KHZ 
-#else
-#define TEENSY32 /* mcu is a NXP cortex-m4 */
-#define IMU_ICM42605 /* imu from TDK */
-#define SPIPORT SPI // from Teensy's SPI.h 
+#define IMU_3_333KHZ  /* imu update rate */
 #endif
 
 
-// using SPI for IMU?  (default is i2c)
-#if defined(EVT4) || defined(PI_V6)
-#define IMU_SPI cuzitsgroovy!
+#if PI_REV == 4 		/* Teensy 3.2 version: */
+#define TEENSY32 		/* mcu is a NXP cortex-m4 */
+#define IMU_ICM42605 /* imu from TDK */
+#define SPIPORT SPI  /* from Teensy's SPI.h */
 // I don't yet perceive any improvement over 2khz, for the record
 //#define IMU_8KHZ fasterpussycat!
 //#define IMU_4KHZ gospeedracer
+#define NONSTOP_HACK // bit-banging PWM on the too-bright LED on that rev:
 #endif
+
 
 #ifdef SDEBUG
 // Teensy will eventually hang on a clogged output buffer if we Serial.print() without USB plugged in.

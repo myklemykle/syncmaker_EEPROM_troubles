@@ -65,7 +65,7 @@ unsigned int powerNap(){
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
 	digitalWrite(boardLedPin, LOW);
-#ifdef EVT4
+#if PI_REV >= 4
 	digitalWrite(nonstopLedPin, LOW);
 #endif
 

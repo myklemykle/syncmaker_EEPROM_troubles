@@ -166,7 +166,7 @@ bool btn1pressed = false, btn2pressed = false;
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
 
-#ifdef EVT4
+#ifdef NONSTOP_HACK
 // bit-banging PWM, to dim the nonstop LED on EVT4 boards:
 unsigned long nonstopLedPWMClock;
 bool nonstopLedPWMState = false;
@@ -372,7 +372,7 @@ void setup() {
   digitalWrite(nonstopLedPin, LOW);
 #endif
 
-#ifdef EVT4
+#ifdef NONSTOP_HACK
   nonstopLedPWMClock = loopTimer;
 #endif
 
@@ -417,7 +417,7 @@ void setup() {
 
 #ifdef PI_V6
   Dbg_println("flashed for v6 board");
-#elif defined(EVT4)
+#elif PI_REV == 4
   Dbg_println("flashed for EVT4 board");
 #else
   Dbg_println("flashed for rev3 board");
@@ -1086,7 +1086,7 @@ void loop() {
 
     }
   } else {  // nonstop!
-#ifdef EVT4
+#ifdef NONSTOP_HACK
     // ghetto PWM because the LED is too bright on this board ...
     // blink on & off every N usec
     if (nonstopLedPWMState) {                            // is on now
@@ -1294,7 +1294,7 @@ void loop() {
       Dbg_print(':');
       Dbg_print(loopTimer);
       Dbg_print(':');
-#ifdef EVT4
+#ifdef NONSTOP_HACK
       //Dbg_print(nonstopLedPWMClock);  // DEBUG
       //Dbg_print(':');  // DEBUG
 #endif
@@ -1362,7 +1362,7 @@ void loop() {
     loopTimer -= 8 * hc.measureLen;
     hc.downbeatTime -= 8 * hc.measureLen;
     hc.lastTapTime -= 8 * hc.measureLen;
-#ifdef EVT4
+#ifdef NONSTOP_HACK
     nonstopLedPWMClock -= 8 * hc.measureLen;
 #endif
   }
