@@ -15,7 +15,7 @@ v6: v6compile v6load pause v6monitor
 pause:
 	sleep 1
 
-v6img_uf2 := build/rp2040.rp2040.generic/$(target).ino.uf2
+v6img_uf2 := $(v6_build_path)/$(target).ino.uf2
 # v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb   --build-property "build.extra_flags=-DPI_V6" --build-path $(v6_build_path) # extra flags works here
 # v8 needs this extra flag:
 v6compileflags := --fqbn rp2040:rp2040:generic   --board-options usbstack=tinyusb,boot2=boot2_generic_03h_4_padded_checksum   --build-property "build.extra_flags=-DPI_V6" --build-path $(v6_build_path) # extra flags works here
