@@ -33,7 +33,7 @@ bool Settings::put(){
 	Dbg_println("put settings");
 	// TODO: make sure it's initialized?
 	EEPROM.put(SETTINGSEEPROMBASE, s);
-#ifdef PI_V6
+#ifdef MCU_RP2040
 	EEPROM.commit();
 #endif
 	return true;

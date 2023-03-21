@@ -2,8 +2,8 @@
 #define syncmaster_settings_h
 
 
-#ifndef PI_V6
-// only for rev1 historical reasons is this number not 0:
+#if PI_REV < 6
+// long long ago, this was to avoid overwriting SensorFusion library's calibration data:
 #define SETTINGSEEPROMBASE 2000
 #else
 #define SETTINGSEEPROMBASE 0

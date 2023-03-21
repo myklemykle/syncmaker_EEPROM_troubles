@@ -48,7 +48,7 @@ public:
 		/* Dbg_print("/"); */
 		/* Dbg_println(fragment); */
 
-#ifdef PI_V6
+#ifdef MIDI_RP2040
 		MIDI.sendTimeCodeQuarterFrame(currentPiece, fragment);
 #else
 		usbMIDI.sendTimeCodeQuarterFrame(currentPiece, fragment);
@@ -62,7 +62,7 @@ public:
 		byte buf[10] = {0xF0, 0x7F, 0x7F, 0x01, 0x01, 
 			nowPos[0],nowPos[1],nowPos[2],nowPos[3], 
 			0xF7};
-#ifdef PI_V6
+#ifdef MIDI_RP2040
 		MIDI.sendSysEx(10, buf, true);    // 'true' == buffer already starts with 0xF0 & ends with 0xF7)
 #else
 		usbMIDI.sendSysEx(10, buf, true); // 'true' == buffer already starts with 0xF0 & ends with 0xF7)

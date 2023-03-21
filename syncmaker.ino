@@ -1,7 +1,7 @@
 //////////////////////////// 
 // Pocket Integrator (PO daughterboard) firmware (c) 2022-2023 MSL
 // This version compatible with EVT4 based on Teensy 3.2, or V6+ boards based on RP2040
-// (You must #define either EVT4 or PI_V6 ; define neither both nor neither.)
+// (PI_REV defines an integer: 4 for EVT4, 6 or higher for the RP@)$) series)
 //
 #include "config.h"
 #include "pins.h"
@@ -13,24 +13,27 @@
 #include "Bounce2.h"
 #include <EEPROM.h>
 
-#ifdef PI_V6 // rp2040 versions V6, V7, V8
-///////////////
-#include "hardware/interp.h"
-// ST IMU
-#include "lsm6dso32x.h"
+#ifdef MIDI_RP2040
 // Adafruit TinyUSB w/midi:
 #include <MIDI.h>
 #include <Adafruit_TinyUSB.h>
+#endif
+
+#ifdef AUDIO_RP2040
 // rp2040 audio
 #include "RP2040Audio.h"
 #include "hardware/pwm.h"
-///////////////
-#else // teensy version EVT4 & earlier
-// TDK IMU
-#include "MotionSense.h"
+#elif defined(AUDIO_TEENSY)
 // Teensy audio!
 #include <Audio.h>
-///////////////
+#endif
+
+#ifdef IMU_LSM6DSO32X
+// ST IMU
+#include "lsm6dso32x.h"
+#elif defined(IMU_ICM42605)
+// TDK IMU
+#include "MotionSense.h"
 #endif
 
 #ifdef MIDITIMECODE
@@ -89,7 +92,7 @@ float testLevel = 1.0;
 #define CBDIFF(cb) (cb[0] != cb[1])
 
 
-#ifdef PI_V6
+#ifdef MIDI_RP2040
 
 // USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
@@ -102,14 +105,14 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 
 #else
 
-// usbMIDI -- defined automatically by Teensy libs.
+// usbMIDI is defined automatically by Teensy libs.
 
 #endif
 
 // IMU Gesture Detection:
-#ifdef PI_V6
+#ifdef IMU_LSM6DSO32X
 LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
-#else
+#elif defined(IMU_ICM42605)
 MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
 
@@ -174,7 +177,7 @@ bool nonstopLedPWMState = false;
 #define NSLEDPWM_OFF 5000  // usec
 #endif
 
-#ifdef PI_V6
+#ifdef PWM_LED_BRIGHNESS
 const int pwmBrightness = 8; // out of 256? looks okay ...
 #endif
 
@@ -182,7 +185,7 @@ const int pwmBrightness = 8; // out of 256? looks okay ...
 #define EITHERPRESSED (btn1pressed || btn2pressed)
 #define EITHERNOTPRESSED (!BOTHPRESSED)
 
-#ifdef PI_V6
+#ifdef BUTTON4
 // reset button
 Bounce btn4 = Bounce();
 bool btn4pressed = false;
@@ -320,7 +323,7 @@ void imu_int_handler() {
 }
 
 void setup() {
-#ifdef PI_V6
+#ifdef MCU_RP2040
 
 	  // fix startup weirdness
   rp2040.idleOtherCore();
@@ -330,7 +333,7 @@ void setup() {
 #endif
 
 	// get settings:
-#ifdef PI_V6
+#ifdef MCU_RP2040
 	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
 #endif
 	if (! _settings.get()) {
@@ -354,7 +357,7 @@ void setup() {
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
 
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 	/////////////
 	// configure our output jacks. (2x stereo = 4 channels)
 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
@@ -366,7 +369,7 @@ void setup() {
 	
 
 	// TODO: why is this even here?
-#ifdef PI_V6
+#ifdef PWM_LED_BRIGHNESS
 	analogWrite(nonstopLedPin, 0);
 #else
   digitalWrite(nonstopLedPin, LOW);
@@ -385,7 +388,12 @@ void setup() {
   pinMode(PO_SWDIO, INPUT_PULLUP);
   pinMode(PO_SWO, INPUT_PULLUP);
 
-#ifdef PI_V6
+#if PI_REV >= 9
+	// turn on the analog reference regulator:
+	digitalWrite(Aref_enable, HIGH);
+#endif
+
+#ifdef MCU_RP2040
 	/////// CMOS chips must stabilize all unconnected pins, to avoid static glitches
 	int i;
 	for (i=0; i < std::size(unusedPins); i++){
@@ -395,9 +403,9 @@ void setup() {
 #endif
 
 
-#ifdef PI_V6
+#ifdef MIDI_RP2040
   ///////
-  // USB MIDI startup
+  // USB MIDI startup for RP2040
 	// 
 	// WARNING: apparently MIDI.begin() needs to happen before Serial.begin(), or else it fails silently.
   //
@@ -415,8 +423,15 @@ void setup() {
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
 
-#ifdef PI_V6
+#if PI_REV == 9
+  Dbg_println("flashed for v9 board");
+#elif PI_REV == 8
+  Dbg_println("flashed for v8 board");
+#elif PI_REV == 7
+  Dbg_println("flashed for v7 board");
+#elif PI_REV == 6
   Dbg_println("flashed for v6 board");
+// HISTORIC NOTE: rev 5 (with Microchip MCU) never got as far as firmware
 #elif PI_REV == 4
   Dbg_println("flashed for EVT4 board");
 #else
@@ -446,8 +461,7 @@ void setup() {
   SPIPORT.setMISO(SPI_miso);
   SPIPORT.setSCK(SPI_clock);
 	SPIPORT.begin();
-	/* digitalWrite(led4Pin, HIGH);//DEBUG */
-#elif defined(PI_V6)
+#elif defined(MCU_RP2040)
   // Dunno why the RP2040 version has different api here ... maybe not necessary/depreacted?
   SPIPORT.setRX(SPI_miso);
   SPIPORT.setTX(SPI_mosi);
@@ -616,7 +630,7 @@ void loop() {
 	static float volumeLevel;
 
 
-#ifdef PI_V6
+#ifdef MCU_RP2040
   // TODO: check the resolution of the rp2040 analogRead
 #else
   // go to sleep if the PO_wake pin is low:
@@ -642,7 +656,6 @@ void loop() {
   // count loop rate:
   loops++;
 #endif
-
 	// check buttons:
 	if (btn1.update())
 		btn1pressed = (btn1.read() == LOW);
@@ -689,7 +702,7 @@ void loop() {
 		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
 		volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please!
 
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 		// send vol level to core 1:
 		if (testTone != TESTTONE_OFF) {
 			rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
@@ -698,8 +711,7 @@ void loop() {
 			//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
 			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
 		}
-#endif
-#ifdef TEENSY32
+#elif defined(AUDIO_TEENSY)
     // use the inertia (minus gravity) to set the volume of the pink noise generator
 		if (testTone != TESTTONE_OFF) {
 			amp1.gain(testLevel); // for testing
@@ -714,7 +726,7 @@ void loop() {
     // other things to be done at IMU interrupt rate (2000hz) :
 
     // MIDI Controllers should discard incoming MIDI messages.
-#ifdef PI_V6
+#ifdef MIDI_RP2040
     while (MIDI_USB.read(MIDI_CHANNEL_OMNI)) 
 			{ // read & ignore incoming messages 
 			}
@@ -881,7 +893,7 @@ void loop() {
 			 so it's not really a problem.  Nevertheless,
 			 I should find some other test cases than Live ...  */
 
-#ifdef PI_V6
+#ifdef MIDI_RP2040
     MIDI_USB.sendStart();
 #else
     usbMIDI.sendRealTime(usbMIDI.Start);
@@ -897,7 +909,7 @@ void loop() {
     // user just pressed play button to stop PO.
 
 #ifdef MIDICLOCK
-#ifdef PI_V6
+#ifdef MIDI_RP2040
     MIDI_USB.sendStop();
 #else
     usbMIDI.sendRealTime(usbMIDI.Stop);
@@ -1078,7 +1090,7 @@ void loop() {
 
   if (!nonstop[0]) {
     if (CBDIFF(nonstop)) {
-#ifdef PI_V6
+#ifdef PWM_LED_BRIGHNESS
       analogWrite(nonstopLedPin, 0);
 #else
       digitalWrite(nonstopLedPin, LOW);
@@ -1101,13 +1113,11 @@ void loop() {
       }
     }
     digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW);
-#elif defined(PI_V6)
+#elif defined(PWM_LED_BRIGHNESS)
     // precise dimming with PWM/analogWrite
     analogWrite(nonstopLedPin, pwmBrightness);
 #else
 		digitalWrite(nonstopLedPin, HIGH);
-		// fix brightness in hardware, do something simple here.
-		// and/or: always put LEDs on PWM pins!
 #endif
   }
 
@@ -1160,7 +1170,7 @@ void loop() {
       if (cc.frozen) {
         cc.frozen = false;
 #ifdef MIDICLOCK
-#ifdef PI_V6
+#ifdef MIDI_RP2040
         MIDI_USB.sendContinue();
 #else
         usbMIDI.sendRealTime(usbMIDI.Continue);
@@ -1176,7 +1186,7 @@ void loop() {
       if (!cc.frozen) {
         cc.frozen = true;
 #ifdef MIDICLOCK
-#ifdef PI_V6
+#ifdef MIDI_RP2040
         MIDI_USB.sendStop();
 #else
         usbMIDI.sendRealTime(usbMIDI.Stop);
@@ -1188,7 +1198,7 @@ void loop() {
     if (cc.frozen) {
       cc.frozen = false;
 #ifdef MIDICLOCK
-#ifdef PI_V6
+#ifdef MIDI_RP2040
       MIDI_USB.sendContinue();
 #else
       usbMIDI.sendRealTime(usbMIDI.Continue);
@@ -1224,7 +1234,7 @@ void loop() {
     if (playing[0]) {
       if (!cc.frozen) {
         // emit MIDI clock!
-#ifdef PI_V6
+#ifdef MIDI_RP2040
         MIDI_USB.sendClock();
 #else
         usbMIDI.sendRealTime(usbMIDI.Clock);

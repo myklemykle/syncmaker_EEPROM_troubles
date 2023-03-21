@@ -7,11 +7,10 @@
 // 1) the big question: what board are we building for?
 // (these are defined in Makefile targets)
 //
-//#define PI_V6 pleasebethelastone
 
 // is it v6/v7: RP2040, misc pin changes, SPI but a different IMU, added bottom button & JTAG header
-#ifdef PI_V6
-#define PI_REV 6
+#ifdef PI_V6 				// the symbol PI_V* is deprecated;
+#define PI_REV 6 		// PI_REV stores an integer instead.
 
 #elif defined(PI_V9)
 #define PI_REV 9
@@ -21,7 +20,7 @@
 // So I can't just -DEVT4. But I can do this, assuming i support no other Teensy3.2 platform:
 #elif defined(ARDUINO_TEENSY32)
 // is it EVT4: SPI comms, IMU interrupt 1, misc pin changes, added nonstop button and light.
-#define EVT4 itsathing
+#define EVT4 itsathing 		// symbol EVT4 is deprecated too.
 #define PI_REV 4
 
 //	
@@ -83,21 +82,29 @@
 #endif
 
 #if PI_REV >= 6 		/* RP2040 versions */
+#define MCU_RP2040
 #define IMU_LSM6DSO32X /* imu from STMicro */
-#define SPIPORT SPI1 /* from RP2040's SPI.h */
+#define SPIPORT SPI1   /* the default SPI device name, from RP2040's SPI.h */
 //#define IMU_1_666KHZ 
 #define IMU_3_333KHZ  /* imu update rate */
+#define AUDIO_RP2040
+#define MIDI_RP2040
+#define BUTTON4 					/* from v6 on, we have a fourth (reset) button */
+#define PWM_LED_BRIGHNESS /* from v6 on, all the LEDs are on analog pins */
 #endif
 
 
 #if PI_REV == 4 		/* Teensy 3.2 version: */
+#define MCU_NXP
 #define TEENSY32 		/* mcu is a NXP cortex-m4 */
 #define IMU_ICM42605 /* imu from TDK */
-#define SPIPORT SPI  /* from Teensy's SPI.h */
+#define SPIPORT SPI  /* default from Teensy's SPI.h */
 // I don't yet perceive any improvement over 2khz, for the record
 //#define IMU_8KHZ fasterpussycat!
 //#define IMU_4KHZ gospeedracer
 #define NONSTOP_HACK // bit-banging PWM on the too-bright LED on that rev:
+#define AUDIO_TEENSY
+#define MIDI_TEENSY
 #endif
 
 

@@ -11,6 +11,8 @@
 //
 //
 
+#include "config.h"
+
 // don't compile this for Teensy:
 #ifdef TARGET_RP2040
 

@@ -8,7 +8,7 @@
 #include "settings.h"
 #include <CommandParser.h>
 
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 #include "RP2040Audio.h"
 #endif
 
@@ -19,7 +19,7 @@ MyCommandParser parser;
 extern bool showStats;
 extern Settings _settings;
 
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 extern RP2040Audio audio;
 // extern short RP2040Audio::transferBuffer[TRANSFER_BUFF_SIZE];
 // extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SIZE];
@@ -49,10 +49,10 @@ void cmd_stats(MyCommandParser::Argument *args, char *response) {
 /////////////////////////
 // sleep tests:
 //
-#ifdef PI_V6
+#ifdef IMU_LSM6DSO32X
 #include "lsm6dso32x.h"
 extern LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
-#else
+#elif defined(IMU_ICM42605)
 #include "MotionSense.h"
 extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
@@ -71,7 +71,7 @@ void cmd_wake(MyCommandParser::Argument *args, char *response) {
 // set tip1|tip2|ring1|ring2 off/midi/sync/shake/noise/sine/square
 // 
 void cmd_set(MyCommandParser::Argument *args, char *response) {
-	char chan;
+	byte chan;
 	
 	char mode;
 	if (strmatch(args[0].asString, "tip1")){
@@ -131,30 +131,30 @@ void _test_tone(char *type, char *response) {
 					case TESTTONE_NOISE:
 						if (testTone != TESTTONE_OFF) {
 							// fill with noise
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 							audio.fillWithNoise();
 #endif
 						}
 						break;
 					case TESTTONE_SINE:
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 							audio.fillWithSine(110);
 #endif
 						break;
 					case TESTTONE_SQUARE:
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 							audio.fillWithSquare(110);
 #endif
 						break;
 					case TESTTONE_SAW:
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 							audio.fillWithSaw(110);
 #endif
 						break;
 					case TESTTONE_OFF:
 						if (testTone != TESTTONE_NOISE) {
 							// refill with noise
-#ifdef PI_V6
+#ifdef AUDIO_RP2040
 							audio.fillWithNoise();
 #endif
 						}

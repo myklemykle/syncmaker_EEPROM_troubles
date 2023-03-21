@@ -23,10 +23,10 @@ extern unsigned int awakePinState;
 extern Bounce btn1, btn2;
 extern bool btn1pressed, btn2pressed;
 extern elapsedMicros awakeTimer;
-#ifdef PI_V6
+#ifdef IMU_LSM6DSO32X
 #include "lsm6dso32x.h"
 extern LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
-#else
+#elif defined(IMU_ICM42605)
 #include "MotionSense.h"
 extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
@@ -36,7 +36,7 @@ extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 M
 // the PO awake pin going high.
 
 void sleep_setup(){
-#ifdef TARGET_RP2040
+#ifdef MCU_RP2040
 	// TODO
 #else // TEENSY
   ////////////
@@ -75,12 +75,17 @@ unsigned int powerNap(){
 	// sleep accelerometer
 	imu.sleep();
 
-	// attach to buttons for button wakeup
+	// attach an ISR to buttons for button wakeup
 #ifdef TARGET_RP2040
 	// TODO
 #else // TEENSY
 	s_config += s_digital;
 	s_config += s_timer;
+#endif
+
+#if PI_REV >= 9
+	// power down analog reference
+	digitalWrite(Aref_enable, LOW);
 #endif
 
 	do {
@@ -96,6 +101,11 @@ unsigned int powerNap(){
 		btn2.update();
 		btn2pressed = (btn2.read() == LOW);
 	} while (awakePinState < awakePinThreshold && (! btn2pressed));
+
+#if PI_REV >= 9
+	// power up analog reference
+	digitalWrite(Aref_enable, HIGH);
+#endif
 
 	// detach from buttons
 #ifdef TARGET_RP2040
