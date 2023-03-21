@@ -179,7 +179,7 @@ bool nonstopLedPWMState = false;
 #endif
 
 #ifdef PWM_LED_BRIGHNESS
-const int pwmBrightness = 256; // out of 1024
+const int pwmBrightness = 1024; // out of 1024
 #endif
 
 #define BOTHPRESSED (btn1pressed && btn2pressed)
@@ -193,7 +193,8 @@ bool btn4pressed = false;
 #endif
 
 // Important time intervals, in uS:
-const unsigned long strobeOnLen = 500; 
+//const unsigned long strobeOnLen = 500; 
+const unsigned long strobeOnLen = 3 * 1000;
 
 const unsigned long strobeOffLen = 100 * 1000;
 const unsigned long pulseLen = 5 * 1000;
@@ -334,6 +335,9 @@ void setup() {
 
 	  // turn on this helpful developer feature
   /* rp2040.enableDoubleResetBootloader(); */
+
+	  // enable watchdog
+	rp2040.wdt_begin(5000);
 #endif
 
 	// get settings:
@@ -347,10 +351,19 @@ void setup() {
   ///////
   // Pin setup:
   //
+	// voltage select for 1.8v operation: set bit 0 of PADS_BANK0 and PADS_QSPI
+	//uint32_t *pads_bank0 = (uint32_t *) 0x4001c000;
+	uint32_t *pads_voltage_sel = (uint32_t *) PADS_BANK0_BASE;
+	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
+	pads_voltage_sel = (uint32_t *) PADS_QSPI_BASE;
+	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
+
+	// pin modes:
+	
   pinMode(led1Pin, OUTPUT);           // led1
   pinMode(led2Pin, OUTPUT);           // led2
 #ifdef BUTTON4
-  pinMode(led4Pin, OUTPUT);           // led2
+  pinMode(led4Pin, OUTPUT);           // led4
 #endif
   pinMode(tip1, OUTPUT);              // j1 tip
   pinMode(tip2, OUTPUT);              // j2 tip
@@ -649,6 +662,11 @@ void loop() {
 
 	static float volumeLevel;
 
+
+#ifdef MCU_RP2040
+	// feed kibble to watchdog
+	rp2040.wdt_reset();
+#endif
 
 #ifdef MCU_RP2040
   // TODO: check the resolution of the rp2040 analogRead
@@ -1078,6 +1096,8 @@ void loop() {
 	// if reset is held down for 3 secs, boot in USB bootloader mode
 	if (btn4pressed && (resetTimer > 3000)) {
 #ifdef MCU_RP2040
+		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
+		// if so, we can use that to reset out of bootloader mode ...
 		reset_usb_boot(led4Pin, 0);
 #else
 		digitalWrite(led4Pin, LOW);
