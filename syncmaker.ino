@@ -23,6 +23,7 @@
 // rp2040 audio
 #include "RP2040Audio.h"
 #include "hardware/pwm.h"
+#include "pico/bootrom.h"
 #elif defined(AUDIO_TEENSY)
 // Teensy audio!
 #include <Audio.h>
@@ -178,7 +179,7 @@ bool nonstopLedPWMState = false;
 #endif
 
 #ifdef PWM_LED_BRIGHNESS
-const int pwmBrightness = 8; // out of 256? looks okay ...
+const int pwmBrightness = 256; // out of 1024
 #endif
 
 #define BOTHPRESSED (btn1pressed && btn2pressed)
@@ -214,6 +215,9 @@ elapsedMicros loopTimer;
 elapsedMicros playPinTimer;
 elapsedMicros pwmOffTimer;
 elapsedMicros awakeTimer;
+#ifdef BUTTON4
+elapsedMillis resetTimer; // how long is reset held down?
+#endif
 
 
 #ifdef IMU_8KHZ
@@ -345,6 +349,9 @@ void setup() {
   //
   pinMode(led1Pin, OUTPUT);           // led1
   pinMode(led2Pin, OUTPUT);           // led2
+#ifdef BUTTON4
+  pinMode(led4Pin, OUTPUT);           // led2
+#endif
   pinMode(tip1, OUTPUT);              // j1 tip
   pinMode(tip2, OUTPUT);              // j2 tip
 #ifndef TEENSY32
@@ -419,9 +426,15 @@ void setup() {
 
 	digitalWrite(led1Pin, HIGH);
 	digitalWrite(led2Pin, HIGH);
+#ifdef BUTTON4
+	digitalWrite(led4Pin, HIGH);
+#endif
   delay(2000); // waiting for USB host...
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
+#ifdef BUTTON4
+	digitalWrite(led4Pin, LOW);
+#endif
 
 #if PI_REV == 9
   Dbg_println("flashed for v9 board");
@@ -495,6 +508,13 @@ void setup() {
   btn3.interval(debounceLen);
   btn3.update();
   btn3pressed = (btn3.read() == LOW);
+
+#ifdef BUTTON4
+  btn4.attach(button4Pin);
+  btn4.interval(debounceLen);
+  btn4.update();
+  btn4pressed = (btn4.read() == LOW);
+#endif
 
   ////////
   // Clock setup:
@@ -663,6 +683,10 @@ void loop() {
 		btn2pressed = (btn2.read() == LOW);
 	if (btn3.update())
 		btn3pressed = (btn3.read() == LOW);
+#ifdef BUTTON4
+	if (btn4.update())
+		btn4pressed = (btn4.read() == LOW);
+#endif
 
 
   // Read IMU data if ready:
@@ -925,7 +949,7 @@ void loop() {
 
   // Check the buttons:
   //
-  if (EITHERPRESSED) {
+  if (EITHERPRESSED) { // either btn1 or btn2
     if (TAPPED) {
 
       // Adjust position of downbeat based on tap/shake:
@@ -1010,7 +1034,7 @@ void loop() {
     }
 
   } else { 
-		// neither button is pressed ...
+		// neither btn1 or btn2 is pressed ...
     if (btn1.rose() || btn2.rose()) {          // if we just released the buttons,
 
 			// if taps <= 8 (intervals <= 7), quantize BPM
@@ -1040,6 +1064,26 @@ void loop() {
     // not armed.
     hc.tapCount = 0;
   }
+
+#ifdef BUTTON4
+	if (btn4.fell()){
+		digitalWrite(led4Pin, HIGH);
+		resetTimer = 0;
+	}
+	if (btn4.rose()){
+#ifdef MCU_RP2040
+		rp2040.reboot();
+#endif
+	}
+	// if reset is held down for 3 secs, boot in USB bootloader mode
+	if (btn4pressed && (resetTimer > 3000)) {
+#ifdef MCU_RP2040
+		reset_usb_boot(led4Pin, 0);
+#else
+		digitalWrite(led4Pin, LOW);
+#endif
+	}
+#endif 
 
   ///////////
   // Calculate & update LEDs.
