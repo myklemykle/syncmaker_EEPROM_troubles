@@ -13,11 +13,7 @@
 #include "Bounce2.h"
 #include <EEPROM.h>
 
-#ifdef MIDI_RP2040
-// Adafruit TinyUSB w/midi:
-#include <MIDI.h>
-#include <Adafruit_TinyUSB.h>
-#endif
+#include "PI_MIDI.h"
 
 #ifdef AUDIO_RP2040
 // rp2040 audio
@@ -92,29 +88,6 @@ float testLevel = 1.0;
 // test: value changed (current != previous) 
 #define CBDIFF(cb) (cb[0] != cb[1])
 
-
-#ifdef MIDI_RP2040
-
-// USB MIDI object
-Adafruit_USBD_MIDI usb_midi;
-
-// Create a new instance of the (generic) Arduino MIDI Library,
-// and attach usb_midi as the transport.
-MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
-// (jeesuz what a hairy-looking macro to do something pretty basic)
-// (what is this MIDI now? what type? what symbol? this is just weird.)
-
-
-// Create another 2 instances for trs MIDI.
-// (Not necessarily connected to GPIO yet.)
-
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
-#else
-
-// usbMIDI is defined automatically by Teensy libs.
-
-#endif
 
 // IMU Gesture Detection:
 #ifdef IMU_LSM6DSO32X
@@ -346,14 +319,6 @@ void imu_int_handler() {
 // configure one of our 2 tip/ring output pairs
 // pinpair can be either ring1 or ring2
 // (TODO: normalize numbering of stuff on either 0&1 or 1&2!)
-// see settings.h for output modes :
-/* #define OUTMODE_MIDI 0 */
-/* #define OUTMODE_SYNC 1 */
-/* #define OUTMODE_SHAKE 2 */
-/* #define OUTMODE_NOISE 3 */
-/* #define OUTMODE_SINE 4 */
-/* #define OUTMODE_SQUARE 5 */
-/* #define OUTMODE_OFF 6 */
 void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	int pins[2];
 	int tipPin, ringPin;
@@ -380,7 +345,7 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	}
 
 	switch(ringMode) {
-case OUTMODE_OFF: 
+case OUTMODE_OFF:  // FYI OUTMODES are defined in settings.h
 		gpio_set_function(ringPin, GPIO_FUNC_NULL );
 		pinMode(ringPin, INPUT_PULLDOWN); 
 		break;
@@ -424,15 +389,27 @@ case OUTMODE_MIDI:
 // TODO: if anything can be turned off, turn it off.
 }
 
+// simpler util, for setting just one pin:
+void configOutput(int pin, byte mode){
+  switch(pin){
+    case ring1:
+      configOutputs(pin, _settings.s.outs[OUTCHANNEL_TIP1], mode);
+      break;
+    case ring2:
+      configOutputs(pin, _settings.s.outs[OUTCHANNEL_TIP2], mode);
+      break;
+		case tip1:
+      configOutputs(pin, mode, _settings.s.outs[OUTCHANNEL_RING1]);
+      break;
+		case tip2:
+      configOutputs(pin, mode, _settings.s.outs[OUTCHANNEL_RING2]);
+  }
+}
 	
 void setup() {
 #ifdef MCU_RP2040
-
 	  // fix startup weirdness
   rp2040.idleOtherCore();
-
-	  // turn on this helpful developer feature
-  /* rp2040.enableDoubleResetBootloader(); */
 
 	  // enable watchdog
 	rp2040.wdt_begin(5000);
@@ -450,7 +427,6 @@ void setup() {
   // Pin setup:
   //
 	// voltage select for 1.8v operation: set bit 0 of PADS_BANK0 and PADS_QSPI
-	//uint32_t *pads_bank0 = (uint32_t *) 0x4001c000;
 	uint32_t *pads_voltage_sel = (uint32_t *) PADS_BANK0_BASE;
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
 	pads_voltage_sel = (uint32_t *) PADS_QSPI_BASE;
@@ -474,16 +450,6 @@ void setup() {
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
-
-/* #ifdef AUDIO_RP2040 */
-/* 	///////////// */
-/* 	// configure our output jacks. (2x stereo = 4 channels) */
-/* 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts. */
-/* 	// TODO: handle the midi option */
-/* 	for(int i=0;i<4;i++) */
-/* 		//gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_SHAKE ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL ); */
-/* 		gpio_set_function(outPins[i], OUTMODE_IS_AUDIO(_settings.s.outs[i]) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL ); */
-/* #endif */
 
 #ifdef MCU_RP2040
 	// configure output jacks
@@ -528,16 +494,8 @@ void setup() {
 	}
 #endif
 
-
-#ifdef MIDI_RP2040
-  ///////
-  // USB MIDI startup for RP2040
-	// 
-	// WARNING: apparently MIDI.begin() needs to happen before Serial.begin(), or else it fails silently.
-  //
-  // Initialize MIDI, and listen to all MIDI channels:
-  MIDI_USB.begin(MIDI_CHANNEL_OMNI);
-#endif
+	// MIDI startup (USB and/or serial ports)
+	myMidi.begin();
 
 	/////////////////
 	// USB serial port:
@@ -664,7 +622,7 @@ void setup() {
   mtc.setup();
 #endif
 
-  loopTimer = 0;  // why?
+  loopTimer = 0;  // um why?
 
   CBINIT(hc.tapIntervals, 0);
 
@@ -698,35 +656,9 @@ void setup() {
 }
 
 
-#ifndef TEENSY32
+#ifdef AUDIO_RP2040
 
-// rp2040 audio:
-
-///////////////
-// Set up hardware interpolator 0 on core1 in blend mode for volume control:
-/*  */
-/* void interpSetup1(){ */
-/* 	interp_config cfg = interp_default_config(); */
-/* 	interp_config_set_blend(&cfg, true); */
-/* 	interp_config_set_signed(&cfg, true); */
-/* 	interp_set_config(interp0, 0, &cfg); // config lane 0 */
-/*  */
-/* 	cfg = interp_default_config(); */
-/* 	interp_config_set_signed(&cfg, true);  */
-/* 	interp_set_config(interp0, 1, &cfg); // config lane 1 */
-/*  */
-/* 	// Volume levels will be from int 0 to 255: */
-/* 	interp0->base[0] = 0; */
-/* 	// base[1] will get the sample we're scaling ... */
-/* 	interp0->accum[1] = 255; // turn it all the way up for now ... */
-/*  */
-/* 	// TODO: use interp1 in clamp mode */
-/* 	// to shift results into positive (using base2) */
-/* 	// and clamp btwn 0 and WAV_PWM_RANGE (using clamp mode) */
-/* 	 */
-/* 	// ALSO: handle vol levels above 255? */
-/*  */
-/* } */
+// rp2040 audio on core 1:
 
 void setup1(){
 
@@ -877,11 +809,10 @@ void loop() {
 			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
 		}
 #elif defined(AUDIO_TEENSY)
-    // use the inertia (minus gravity) to set the volume of the pink noise generator
+    // use the inertia (minus gravity) to set the volume of the noise generator
 		if (testTone != TESTTONE_OFF) {
 			amp1.gain(testLevel); // for testing
 		} else {
-			//amp1.gain(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0));
 			amp1.gain(volumeLevel);
 		}
 
@@ -891,16 +822,7 @@ void loop() {
     // other things to be done at IMU interrupt rate (2000hz) :
 
     // MIDI Controllers should discard incoming MIDI messages.
-#ifdef MIDI_RP2040
-    while (MIDI_USB.read(MIDI_CHANNEL_OMNI)) 
-			{ // read & ignore incoming messages 
-			}
-#else
-    while (usbMIDI.read()) 
-			{ // read & ignore incoming messages 
-			}
-#endif
-
+		myMidi.flushInput();
   }
 
 #ifdef MIDITIMECODE
@@ -1043,12 +965,12 @@ void loop() {
     cc.circlePos = 0;
 #ifdef MIDICLOCK
 
-    /* usbMIDI.sendRealTime(usbMIDI.Start); */
-    /* usbMIDI.sendRealTime(usbMIDI.Clock); */
+    /* myMidi.clockTick(); */
+		/* myMidi.clockStart(); */
 
     /* I haven't yet found good guidance for this bit,
 			 but it really appears that Live 10 treats the Start and Stop
-			 messages as if they were also clock beats.  Sending Clock 
+			 messages as if they were also clock ticks.  Sending Clock 
 			 and Start in quick succession was making Live briefly think the tempo 
 			 was super-high, leading to an initial stutter.  I changed this
 			 and it now sounds much better.
@@ -1058,11 +980,7 @@ void loop() {
 			 so it's not really a problem.  Nevertheless,
 			 I should find some other test cases than Live ...  */
 
-#ifdef MIDI_RP2040
-    MIDI_USB.sendStart();
-#else
-    usbMIDI.sendRealTime(usbMIDI.Start);
-#endif
+		myMidi.clockStart();
 
 #endif
 #ifdef MIDITIMECODE
@@ -1074,11 +992,7 @@ void loop() {
     // user just pressed play button to stop PO.
 
 #ifdef MIDICLOCK
-#ifdef MIDI_RP2040
-    MIDI_USB.sendStop();
-#else
-    usbMIDI.sendRealTime(usbMIDI.Stop);
-#endif
+		myMidi.clockStop();
 #endif
   }
 
@@ -1372,11 +1286,7 @@ void loop() {
       if (cc.frozen) {
         cc.frozen = false;
 #ifdef MIDICLOCK
-#ifdef MIDI_RP2040
-        MIDI_USB.sendContinue();
-#else
-        usbMIDI.sendRealTime(usbMIDI.Continue);
-#endif
+				myMidi.clockContinue();
 #endif
         /* #ifdef MIDITIMECODE */
         // TODO: Shifting the downbeat (without chaning tempo) in MTC mode ...
@@ -1388,11 +1298,7 @@ void loop() {
       if (!cc.frozen) {
         cc.frozen = true;
 #ifdef MIDICLOCK
-#ifdef MIDI_RP2040
-        MIDI_USB.sendStop();
-#else
-        usbMIDI.sendRealTime(usbMIDI.Stop);
-#endif
+				myMidi.clockStop();
 #endif
       }
     }
@@ -1400,12 +1306,9 @@ void loop() {
     if (cc.frozen) {
       cc.frozen = false;
 #ifdef MIDICLOCK
-#ifdef MIDI_RP2040
-      MIDI_USB.sendContinue();
-#else
-      usbMIDI.sendRealTime(usbMIDI.Continue);
+			myMidi.clockContinue();
 #endif
-#endif
+
       /* #ifdef MIDITIMECODE */
       /* 			mtc.sendStamp(); */
       /* #endif */
@@ -1436,11 +1339,7 @@ void loop() {
     if (playing[0]) {
       if (!cc.frozen) {
         // emit MIDI clock!
-#ifdef MIDI_RP2040
-        MIDI_USB.sendClock();
-#else
-        usbMIDI.sendRealTime(usbMIDI.Clock);
-#endif
+				myMidi.clockTick();
 
         /* if (TAPPED) {  */
         /* 	Dbg_print("TMC "); */
@@ -1568,7 +1467,7 @@ void loop() {
   // We could do this only every 1000 (or more!) measures,
   // but we choose every 8,
   //	so that if it causes any audible bug, it'll be heard often!
-	// TODO: is this really necessary? for ints? 
+	// TODO: is this really necessary? for unsigned ints?  Shouldn't be. Test by initializing loopTimer close to overflow ....
   if (loopTimer > 9 * hc.measureLen) {
     //Dbg_println("PROTECTION!");//DEBUG
     loopTimer -= 8 * hc.measureLen;
