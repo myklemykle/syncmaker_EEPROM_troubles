@@ -30,6 +30,9 @@ v6compile: $(v6img_uf2)
 v6clean:
 	arduino-cli compile -v --clean $(v6compileflags)
 
+v9clean:
+	arduino-cli compile -v --clean $(v9compileflags)
+
 v6debug:
 	arduino-cli compile -v --optimize-for-debug $(v6compileflags)
 
