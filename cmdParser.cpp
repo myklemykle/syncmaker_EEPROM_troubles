@@ -19,6 +19,7 @@ MyCommandParser parser;
 
 extern bool showStats;
 extern Settings _settings;
+extern void configOutput(int pin, byte mode);
 
 #ifdef AUDIO_RP2040
 extern RP2040Audio audio;
@@ -112,8 +113,10 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 		return;
 	}
 	
-	// do the actual thing:
+	// update the settings:
 	_settings.s.outs[chan] = mode;
+	// do the actual change:
+	configOutput(outChannelPins[chan], mode);
 	// TODO: generate an event? call a method?
 	// _settings.put();
 
