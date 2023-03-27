@@ -63,6 +63,14 @@
 #define SDEBUG crittersbuggin
 
 
+///////////////////////
+// 4) is the power-saving code enabled? (powerNap() in sleep.cpp)
+// (enable in production)
+// I turn this off during development, 
+// or else the PI will go immediately to sleep when PO is detached.
+//
+//#define TAKE_NAPS stopitshammocktime
+
 //////////////////////
 // 5) should we try to manage IMU calibration data?
 //#define IMU_CALIBRATION sweepingthenation

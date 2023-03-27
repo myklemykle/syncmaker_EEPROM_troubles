@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "settings.h"
+#include "hardware/clocks.h"
 #include <CommandParser.h>
 
 #ifdef AUDIO_RP2040
@@ -36,13 +37,12 @@ extern RP2040Audio audio;
 // }
 
 void cmd_stats(MyCommandParser::Argument *args, char *response) {
-	if (args[0].asUInt64 == 0) {
+	if (showStats) {
 		showStats = false;
 		strlcpy(response, "stats off", MyCommandParser::MAX_RESPONSE_SIZE);
 	} else {
 		showStats = true;
 		strlcpy(response, "stats on", MyCommandParser::MAX_RESPONSE_SIZE);
-		// todo: show them now? they'll show soon enuf.
 	}
 }
 
@@ -56,10 +56,14 @@ extern LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
 #include "MotionSense.h"
 extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
+#include "sleep.h"
 
 void cmd_sleep(MyCommandParser::Argument *args, char *response) {
-	imu.sleep();
-	strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
+	// imu.sleep();
+	// strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
+	
+	powerNap();
+	strlcpy(response, "took a nap", MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
 void cmd_wake(MyCommandParser::Argument *args, char *response) {
@@ -190,6 +194,37 @@ void cmd_testlevel(MyCommandParser::Argument *args, char *response) {
 	snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "level %f/%f\n", lvl, testLevel);
 }
 
+void clock_pin_on(){
+	// connect clk_sys to GPIO25 for test/measurement
+	// This is based on the CLK_GPOUT0_CTRL register in the datasheet
+	// and simplified down from clock_gpio_init_int_frac() from the pico SDK
+	uint gpclk = clk_gpout3; // appropriate for gpio 25
+	uint src = 0x6; 				// denotes clk_sys (master clock @133mhz)
+
+	// Set up the gpclk generator
+	// AUXSRC_LSB is shifting our source into bits 5:8 (see datasheet)
+	clocks_hw->clk[gpclk].ctrl = (src << CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_LSB) |
+															 CLOCKS_CLK_GPOUT0_CTRL_ENABLE_BITS;
+
+	// Set gpio pin to gpclock function
+	gpio_set_function(25, GPIO_FUNC_GPCK);
+}
+void clock_pin_off(){
+	// disconnect pin 25
+    gpio_set_function(25, GPIO_FUNC_NULL);
+}
+void cmd_clock(MyCommandParser::Argument *args, char *response) {
+	if (strmatch(args[0].asString, "on")){
+		clock_pin_on();
+		strlcpy(response, "clock pin on", MyCommandParser::MAX_RESPONSE_SIZE);
+	} else if (strmatch(args[0].asString, "off")){
+		clock_pin_off();
+		strlcpy(response, "clock pin off", MyCommandParser::MAX_RESPONSE_SIZE);
+	} else {
+		strlcpy(response, "syntax err: clock [on|off]", MyCommandParser::MAX_RESPONSE_SIZE);
+	}
+}
+
 // this more general approach isn't compatible with commandParser's arg handling ...
 //
 // void cmd_test(MyCommandParser::Argument *args, char *response) {
@@ -205,8 +240,9 @@ void cmd_testlevel(MyCommandParser::Argument *args, char *response) {
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
-  parser.registerCommand("stats", "u", &cmd_stats);
+  parser.registerCommand("stats", "", &cmd_stats);
   parser.registerCommand("set", "ss", &cmd_set);
+  parser.registerCommand("clock", "s", &cmd_clock);
 	
   parser.registerCommand("testtone", "s", &cmd_testtone);
   parser.registerCommand("tt", "s", &cmd_testtone);

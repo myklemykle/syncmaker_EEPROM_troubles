@@ -104,6 +104,12 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 // (jeesuz what a hairy-looking macro to do something pretty basic)
 // (what is this MIDI now? what type? what symbol? this is just weird.)
 
+
+// Create another 2 instances for trs MIDI.
+// (Not necessarily connected to GPIO yet.)
+
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
 #else
 
 // usbMIDI is defined automatically by Teensy libs.
@@ -193,12 +199,20 @@ bool btn4pressed = false;
 #endif
 
 // Important time intervals, in uS:
-//const unsigned long strobeOnLen = 500; 
+// length of a LED strobe:
 const unsigned long strobeOnLen = 3 * 1000;
-
+// length of a LED antistrobe (a moment of darkness):
 const unsigned long strobeOffLen = 100 * 1000;
+
+// length of a sync pulse
 const unsigned long pulseLen = 5 * 1000;
-const unsigned long minTapInterval = 100 * 1000;  // Ignore spurious double-taps!  (This enforces a max tempo.)
+const unsigned long minTapInterval = 100 * 1000;  // Ignore spurious double-taps!  
+// NOTE: This enforces a max speed of 10 taps per second == 600 taps per minute == 300bpm.
+// That is not even half as fast as the Guiness Book's world drumming speed record:
+// 1294 taps per minute on a snare drum by Keita Hattori == 647bpm.
+// And that's just single-strokes; Pritish A R of Australia recorded 2370 taps
+// in a minute on a snare drum using double-strokes.  So should I let this go faster,
+// or admit to a top speed of 300bpm?  
 
 // duration of the off-cycle of the Play button PWM wave
 const unsigned long pwmOffTime = 150 * 1000;
@@ -216,6 +230,8 @@ elapsedMicros loopTimer;
 elapsedMicros playPinTimer;
 elapsedMicros pwmOffTimer;
 elapsedMicros awakeTimer;
+//#define MIN_AWAKE_US 5000000 // stay awake at least 5 seconds after a powerNap.
+#define MIN_AWAKE_US 500000 // stay awake at least 5 seconds after a powerNap.
 #ifdef BUTTON4
 elapsedMillis resetTimer; // how long is reset held down?
 #endif
@@ -327,6 +343,88 @@ void imu_int_handler() {
   imu_ready = true;
 }
 
+// configure one of our 2 tip/ring output pairs
+// pinpair can be either ring1 or ring2
+// (TODO: normalize numbering of stuff on either 0&1 or 1&2!)
+// see settings.h for output modes :
+/* #define OUTMODE_MIDI 0 */
+/* #define OUTMODE_SYNC 1 */
+/* #define OUTMODE_SHAKE 2 */
+/* #define OUTMODE_NOISE 3 */
+/* #define OUTMODE_SINE 4 */
+/* #define OUTMODE_SQUARE 5 */
+/* #define OUTMODE_OFF 6 */
+void configOutputs(int pinPair, byte tipMode, byte ringMode) {
+	int pins[2];
+	int tipPin, ringPin;
+
+	if (pinPair == ring1 || pinPair == ring2) {
+		ringPin = pinPair;
+		tipPin = pinPair + 1;
+	} else if (pinPair == tip1 || pinPair == tip2) {
+		tipPin = pinPair;
+		ringPin = pinPair - 1;
+	} else {
+		Dbg_printf("configOutputs; bogus pin %d\n", pinPair);
+		return;
+	}
+
+	// If either pin mode is MIDI, both must be configured.
+	// Assuming TRS adapter type A (the MIDI standard): https://minimidi.world/
+	//   ring will be connected to UART TX,
+	//   tip will be disconnected & grounded.
+	// 
+	if (tipMode == OUTMODE_MIDI || ringMode == OUTMODE_MIDI){
+		ringMode = OUTMODE_MIDI;
+		tipMode = OUTMODE_OFF;
+	}
+
+	switch(ringMode) {
+case OUTMODE_OFF: 
+		gpio_set_function(ringPin, GPIO_FUNC_NULL );
+		pinMode(ringPin, INPUT_PULLDOWN); 
+		break;
+case OUTMODE_SHAKE:
+case OUTMODE_NOISE:
+case OUTMODE_SINE:
+case OUTMODE_SQUARE:
+		// PWM audio
+		gpio_set_function(ringPin, GPIO_FUNC_PWM );
+		break;
+case OUTMODE_SYNC:
+		// plain old output pin
+		gpio_set_function(ringPin, GPIO_FUNC_SIO );
+		break;
+case OUTMODE_MIDI:
+		gpio_set_function(ringPin, GPIO_FUNC_UART );
+		break;
+	}
+
+	switch(tipMode) {
+case OUTMODE_OFF: 
+		gpio_set_function(tipPin, GPIO_FUNC_NULL );
+		pinMode(tipPin, INPUT_PULLDOWN); 
+		break;
+case OUTMODE_SHAKE:
+case OUTMODE_NOISE:
+case OUTMODE_SINE:
+case OUTMODE_SQUARE:
+		// PWM audio
+		gpio_set_function(tipPin, GPIO_FUNC_PWM );
+		break;
+case OUTMODE_SYNC:
+		// plain old output pin
+		gpio_set_function(tipPin, GPIO_FUNC_SIO );
+		break;
+case OUTMODE_MIDI:
+		gpio_set_function(tipPin, GPIO_FUNC_UART );
+		break;
+	}
+
+// TODO: if anything can be turned off, turn it off.
+}
+
+	
 void setup() {
 #ifdef MCU_RP2040
 
@@ -377,15 +475,22 @@ void setup() {
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
 
-#ifdef AUDIO_RP2040
-	/////////////
-	// configure our output jacks. (2x stereo = 4 channels)
-	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts.
-	// TODO: handle the midi option
-	for(int i=0;i<4;i++)
-		//gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_SHAKE ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
-		gpio_set_function(outPins[i], OUTMODE_IS_AUDIO(_settings.s.outs[i]) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL );
+/* #ifdef AUDIO_RP2040 */
+/* 	///////////// */
+/* 	// configure our output jacks. (2x stereo = 4 channels) */
+/* 	// They can be audio (PWM), sync (digital outputs), or paired as MIDI uarts. */
+/* 	// TODO: handle the midi option */
+/* 	for(int i=0;i<4;i++) */
+/* 		//gpio_set_function(outPins[i], (_settings.s.outs[i] == OUTMODE_SHAKE ) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL ); */
+/* 		gpio_set_function(outPins[i], OUTMODE_IS_AUDIO(_settings.s.outs[i]) ? GPIO_FUNC_PWM : GPIO_FUNC_NULL ); */
+/* #endif */
+
+#ifdef MCU_RP2040
+	// configure output jacks
+	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
+	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
 #endif
+
 	
 
 	// TODO: why is this even here?
@@ -410,6 +515,7 @@ void setup() {
 
 #if PI_REV >= 9
 	// turn on the analog reference regulator:
+	pinMode(Aref_enable, OUTPUT);
 	digitalWrite(Aref_enable, HIGH);
 #endif
 
@@ -440,13 +546,25 @@ void setup() {
 	digitalWrite(led1Pin, HIGH);
 	digitalWrite(led2Pin, HIGH);
 #ifdef BUTTON4
+
+#ifdef PWM_LED_BRIGHNESS
+	analogWrite(led4Pin, pwmBrightness);
+#else 
 	digitalWrite(led4Pin, HIGH);
+#endif
+
 #endif
   delay(2000); // waiting for USB host...
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
 #ifdef BUTTON4
+
+#ifdef PWM_LED_BRIGHNESS
+	analogWrite(led4Pin, 0);
+#else
 	digitalWrite(led4Pin, LOW);
+#endif
+
 #endif
 
 #if PI_REV == 9
@@ -652,6 +770,7 @@ void loop() {
 
   unsigned long tapInterval = 0;
   unsigned long nowTime = loopTimer;
+	static unsigned long lastNap = nowTime;
 
   long instantPos;
   long circleOffset;
@@ -668,15 +787,18 @@ void loop() {
 	rp2040.wdt_reset();
 #endif
 
-#ifdef MCU_RP2040
-  // TODO: check the resolution of the rp2040 analogRead
-#else
-  // go to sleep if the PO_wake pin is low:
   awakePinState = analogRead(PO_wake);
 
-  if (awakePinState < awakePinThreshold) {
-    // if (btn1pressed) { // DEBUG
-    powerNap();
+#ifdef TAKE_NAPS
+  // go to sleep if the PO_wake pin is low:
+	//if (btn1pressed) { // DEBUG
+	/* TODO: This ain't sleeping ever. Why not? did i calculate MIN_AWAKE wrong? */
+  if ((awakePinState < awakePinThreshold) && ((nowTime - lastNap) > MIN_AWAKE_US))  {
+		Dbg_println("zzzzz");
+    unsigned long napDuration = powerNap();
+    //unsigned long napDuration = 666 // DEBUG 
+		lastNap = loopTimer; // note the time, so we don't sleep again too soon
+		Dbg_printf("slept %d us.\n", napDuration);
     return;
   }
 #endif
@@ -708,6 +830,7 @@ void loop() {
 
 
   // Read IMU data if ready:
+	// TODO: we don't need an ISR for this. we just need to read & reset the interrupt flag on IMU_int
   if (imu_ready) {  // on interrupt
     imu_ready = false;
 
@@ -1084,31 +1207,46 @@ void loop() {
   }
 
 #ifdef BUTTON4
+
 	if (btn4.fell()){
-		digitalWrite(led4Pin, HIGH);
+#ifdef   PWM_LED_BRIGHNESS
+	analogWrite(led4Pin, pwmBrightness);
+#else 
+	digitalWrite(led4Pin, HIGH);
+#endif  // PWM_LED_BRIGHNESS
 		resetTimer = 0;
 	}
 	if (btn4.rose()){
-#ifdef MCU_RP2040
+#ifdef   MCU_RP2040
 		rp2040.reboot();
-#endif
+#endif  // MCU_RP2040
 	}
 	// if reset is held down for 3 secs, boot in USB bootloader mode
 	if (btn4pressed && (resetTimer > 3000)) {
-#ifdef MCU_RP2040
+
+#ifdef   MCU_RP2040
 		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
 		// if so, we can use that to reset out of bootloader mode ...
-		reset_usb_boot(led4Pin, 0);
+		reset_usb_boot(1 << led4Pin, 0);
+
+#else
+		// just turn off the led:
+
+#ifdef     PWM_LED_BRIGHNESS
+		analogWrite(led4Pin, 0);
 #else
 		digitalWrite(led4Pin, LOW);
-#endif
+#endif     // PWM_LED_BRIGHNESS
+
+#endif  // MCU_RP2040
 	}
-#endif 
+
+#endif// BUTTON4
 
   ///////////
   // Calculate & update LEDs.
-  // (Strobe-off times need to be much longer than strobe-on times
-  // in order to be clearly visible to the human eye.)
+  // (Strobe-off intervals, in which we briefly unlight a lit LED,
+ 	// need to be much longer than strobe-on intervals.)
   //
   if (playing[0]) {
     if (btn1pressed) {
