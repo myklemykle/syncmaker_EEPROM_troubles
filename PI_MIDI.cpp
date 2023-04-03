@@ -15,13 +15,12 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 // (Not necessarily connected to GPIO yet.)
 // Serial1 & Serial2 are provied by the Philtower Arduino-Pico core
 
+#ifdef SERIAL_MIDI
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
-#else
-
-// usbMIDI is defined automatically by Teensy libs.
-
-#endif
+#endif // serial midi
+#endif // rp2040
+// in Teensy land, usbMIDI is defined automatically.
 
 
 void PI_MIDI::begin(){
@@ -30,9 +29,14 @@ void PI_MIDI::begin(){
   // USB MIDI startup for RP2040
   // 
   // WARNING: apparently MIDI.begin() needs to happen before Serial.begin(), or else it fails silently.
-  //
   // Initialize MIDI, and listen to all MIDI channels:
   MIDI_USB.begin(MIDI_CHANNEL_OMNI);
+
+#ifdef SERIAL_MIDI
+	MIDI_OUT1.begin(MIDI_CHANNEL_OMNI);
+	MIDI_OUT2.begin(MIDI_CHANNEL_OMNI);
+#endif
+
 #endif
 	// nothing to do for Teensy.
 }
@@ -54,8 +58,10 @@ void PI_MIDI::flushInput(){
 void PI_MIDI::clockStart(){
 #ifdef MIDI_RP2040
 	MIDI_USB.sendStart();
+#ifdef SERIAL_MIDI
 	MIDI_OUT1.sendStart();
 	MIDI_OUT2.sendStart();
+#endif
 #else
 	usbMIDI.sendRealTime(usbMIDI.Start);
 #endif
@@ -64,8 +70,10 @@ void PI_MIDI::clockStart(){
 void PI_MIDI::clockStop(){
 #ifdef MIDI_RP2040
 	MIDI_USB.sendStop();
+#ifdef SERIAL_MIDI
 	MIDI_OUT1.sendStop();
 	MIDI_OUT2.sendStop();
+#endif
 #else
 	usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
@@ -74,8 +82,10 @@ void PI_MIDI::clockStop(){
 void PI_MIDI::clockContinue(){
 #ifdef MIDI_RP2040
 	MIDI_USB.sendContinue();
+#ifdef SERIAL_MIDI
 	MIDI_OUT1.sendContinue();
 	MIDI_OUT2.sendContinue();
+#endif
 #else
 	usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
@@ -84,8 +94,10 @@ void PI_MIDI::clockContinue(){
 void PI_MIDI::clockTick(){
 #ifdef MIDI_RP2040
 	MIDI_USB.sendClock();
+#ifdef SERIAL_MIDI
 	MIDI_OUT1.sendClock();
 	MIDI_OUT2.sendClock();
+#endif
 #else
 	usbMIDI.sendRealTime(usbMIDI.Clock);
 #endif

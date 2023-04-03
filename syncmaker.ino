@@ -25,6 +25,11 @@
 #include <Audio.h>
 #endif
 
+#ifdef MCU_RP2040
+// this chip has 2 UARTs for midi & debug stuff.
+#include "hardware/uart.h"
+#endif
+
 #ifdef IMU_LSM6DSO32X
 // ST IMU
 #include "lsm6dso32x.h"
@@ -303,7 +308,7 @@ unsigned long decodedPlayOnTime = 0, decodedPlayOffTime = 0;
 
 unsigned char poModelGroup = MGRP_AUTO;
 
-boolean showStats = true;
+boolean showStats = false;
 #ifdef SDEBUG
 // tracking of CPU performance
 unsigned int loops = 0;  // # of main loop cycles between beats
@@ -317,11 +322,12 @@ void imu_int_handler() {
 }
 
 // configure one of our 2 tip/ring output pairs
-// pinpair can be either ring1 or ring2
+// pinpair is the number of a GPIO pin, but it's converted to a pair of pins
 // (TODO: normalize numbering of stuff on either 0&1 or 1&2!)
 void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	int pins[2];
 	int tipPin, ringPin;
+	int settingsIdx;
 
 	if (pinPair == ring1 || pinPair == ring2) {
 		ringPin = pinPair;
@@ -334,6 +340,9 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 		return;
 	}
 
+	// index into _settings.s.outs[] for these two pins:
+	settingsIdx = (tipPin == tip1 ? 0 : 2);
+
 	// If either pin mode is MIDI, both must be configured.
 	// Assuming TRS adapter type A (the MIDI standard): https://minimidi.world/
 	//   ring will be connected to UART TX,
@@ -344,47 +353,62 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 		tipMode = OUTMODE_OFF;
 	}
 
-	switch(ringMode) {
-case OUTMODE_OFF:  // FYI OUTMODES are defined in settings.h
-		gpio_set_function(ringPin, GPIO_FUNC_NULL );
-		pinMode(ringPin, INPUT_PULLDOWN); 
+	Dbg_print("ring mode: ");
+	switch(ringMode) { // OUTMODES are defined in settings.h
+case OUTMODE_OFF:  
+		Dbg_println("off");
+	// to ground pin: make it an output & set it to low
+		gpio_set_function(ringPin, GPIO_FUNC_SIO );
+		digitalWrite(ringPin, LOW);
 		break;
 case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
 case OUTMODE_SINE:
 case OUTMODE_SQUARE:
+		Dbg_println("audio");
 		// PWM audio
 		gpio_set_function(ringPin, GPIO_FUNC_PWM );
 		break;
 case OUTMODE_SYNC:
+		Dbg_println("sync");
 		// plain old output pin
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		break;
 case OUTMODE_MIDI:
+		Dbg_println("midi");
 		gpio_set_function(ringPin, GPIO_FUNC_UART );
 		break;
 	}
 
+	Dbg_print("tip mode: ");
 	switch(tipMode) {
 case OUTMODE_OFF: 
-		gpio_set_function(tipPin, GPIO_FUNC_NULL );
-		pinMode(tipPin, INPUT_PULLDOWN); 
+		Dbg_println("off");
+		gpio_set_function(tipPin, GPIO_FUNC_SIO );
+		digitalWrite(tipPin, LOW);
 		break;
 case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
 case OUTMODE_SINE:
 case OUTMODE_SQUARE:
+		Dbg_println("audio");
 		// PWM audio
 		gpio_set_function(tipPin, GPIO_FUNC_PWM );
 		break;
 case OUTMODE_SYNC:
+		Dbg_println("sync");
 		// plain old output pin
 		gpio_set_function(tipPin, GPIO_FUNC_SIO );
 		break;
 case OUTMODE_MIDI:
+		Dbg_println("midi");
 		gpio_set_function(tipPin, GPIO_FUNC_UART );
 		break;
 	}
+
+	// update settings:
+	_settings.s.outs[settingsIdx++] = tipMode;
+	_settings.s.outs[settingsIdx] = ringMode;
 
 // TODO: if anything can be turned off, turn it off.
 }
@@ -439,23 +463,23 @@ void setup() {
 #ifdef BUTTON4
   pinMode(led4Pin, OUTPUT);           // led4
 #endif
+
+#ifdef MCU_RP2040
+	// raising the current limit to support TRSMIDI (default is 4ma, MIDI needs >5ma)
+  pinMode(tip1, OUTPUT_8MA);              // j1 tip
+  pinMode(tip2, OUTPUT_8MA);              // j2 tip
+  pinMode(ring1, OUTPUT_8MA);              // j1 ring
+  pinMode(ring2, OUTPUT_8MA);              // j2 ring
+#else
   pinMode(tip1, OUTPUT);              // j1 tip
   pinMode(tip2, OUTPUT);              // j2 tip
-#ifndef TEENSY32
-	// teensy has both of these connected to the DAC
-  pinMode(ring1, OUTPUT);              // j1 ring
-  pinMode(ring2, OUTPUT);              // j2 ring
+	// Teensy has ring 1&2 hardwired to dac
 #endif
+
   pinMode(button1Pin, INPUT_PULLUP);  // sw1
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
   pinMode(nonstopLedPin, OUTPUT);     // nonstop led
-
-#ifdef MCU_RP2040
-	// configure output jacks
-	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
-	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
-#endif
 
 	
 
@@ -494,12 +518,46 @@ void setup() {
 	}
 #endif
 
-	// MIDI startup (USB and/or serial ports)
+	// Okay, here is the undocumented picky order of interactions btwn Serial and MIDI;
+
+	// You have to configure UART pins before Serial.begin();
+	Serial2.setRX(tip2);
+	Serial2.setTX(ring2);
+	Serial2.setCTS(UART_PIN_NOT_DEFINED);
+	Serial2.setRTS(UART_PIN_NOT_DEFINED);
+
+	// Then, the MIDI startup code calls Serial.begin() on every UART serial MIDI port.
+	
 	myMidi.begin();
 
-	/////////////////
-	// USB serial port:
+	// BUT it doesn't call it on the USB serial port.  AND you can't have already
+	// called it or there will be bugs.  
+	// So you have to first initialize the UART serial,
+	// then initialize MIDI,
+	// then initialize the USB serial.  
+
   Serial.begin(115200);  // baud rate is ignored on USB serial.
+
+	// Is this documented? NOOOOOOOOO ....
+
+#ifdef MCU_RP2040
+
+	/* // THIS WILL FAIL in v9 because wrong pins oops. */
+	/* Serial1.setRX(tip1); */
+	/* Serial1.setTX(ring1); */
+  /* Serial1.begin(38400);  // RP2040 uart0 */
+	/* // TODO: pio+softwareSerial on these pins instead? */
+
+	// And then because the MIDI system started the UARTs at a default speed,
+	// you have to stop them before starting them at a chosen speed.
+	// (Although the MIDI system probably chose the correct speed.)
+	//Serial2.end();
+  Serial2.begin(38400);  // RP2040 uart1
+
+	// now configure output jacks -- potentially disconnecting serial UARTs for now
+	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
+	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
+#endif
 
 	digitalWrite(led1Pin, HIGH);
 	digitalWrite(led2Pin, HIGH);
@@ -1400,6 +1458,7 @@ void loop() {
 
     // print benchmarks when pulse goes high.
     if (showStats && pulseState[0] == HIGH) {
+
       /* Dbg_printf("stats: %s  ", (showStats ? "y" : "n")); */
       Dbg_print(awakeTimer);
       Dbg_print(':');
