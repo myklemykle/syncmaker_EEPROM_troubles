@@ -13,7 +13,8 @@
 #include "RP2040Audio.h"
 #endif
 
-typedef CommandParser<> MyCommandParser;
+//typedef CommandParser<16,4,10,32,64> MyCommandParser;
+typedef CommandParser<16,4,10,32,128> MyCommandParser;
 
 MyCommandParser parser;
 
@@ -101,7 +102,9 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	}
 	else if (strmatch(args[1].asString, "midi")){
 		mode = OUTMODE_MIDI;
-		// TODO: anything at all about this.
+	}
+	else if (strmatch(args[1].asString, "MIDI")){
+		mode = OUTMODE_MIDI;
 	}
 	else if (strmatch(args[1].asString, "sync")){
 		mode = OUTMODE_SYNC;
@@ -114,10 +117,9 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	}
 	
 	// update the settings:
-	_settings.s.outs[chan] = mode;
+	// _settings.s.outs[chan] = mode;
 	// do the actual change:
 	configOutput(outChannelPins[chan], mode);
-	// TODO: generate an event? call a method?
 	// _settings.put();
 
 	strlcpy(response, "ok", MyCommandParser::MAX_RESPONSE_SIZE);
@@ -228,6 +230,11 @@ void cmd_clock(MyCommandParser::Argument *args, char *response) {
 	}
 }
 
+// print out the current settings ...
+void cmd_dump_settings(MyCommandParser::Argument *args, char *response) {
+	_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
+}
+
 // this more general approach isn't compatible with commandParser's arg handling ...
 //
 // void cmd_test(MyCommandParser::Argument *args, char *response) {
@@ -255,6 +262,8 @@ void cmd_setup() {
 
 	parser.registerCommand("sleep","",&cmd_sleep);
 	parser.registerCommand("wake","",&cmd_wake);
+
+	parser.registerCommand("settings","",&cmd_dump_settings);
 }
 
 void cmd_update() {
@@ -270,3 +279,4 @@ void cmd_update() {
     Serial.println(response);
   }
 }
+
