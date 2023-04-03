@@ -25,6 +25,8 @@
 #define OUTMODE_SINE 4
 #define OUTMODE_SQUARE 5
 #define OUTMODE_OFF 6
+#define OUTMODE_COUNT 7
+#define OUTMODE_NAMES { "MIDI", "sync", "shake", "noise", "sine", "square", "off" }
 
 // all of these modes are audio, and need the GPIO pin in PWM mode:
 #define OUTMODE_IS_AUDIO(o) ( OUTMODE_SHAKE <= o <= OUTMODE_SQUARE )
@@ -61,6 +63,7 @@ class Settings {
 		bool init();
 		bool get();
 		bool put();
+		char *sprint(char *buf, int buflen);
 };
 
 
