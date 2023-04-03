@@ -97,6 +97,9 @@
 #define IMU_3_333KHZ  /* imu update rate */
 #define AUDIO_RP2040
 #define MIDI_RP2040
+#define SERIAL1_UART
+#define SERIAL2_UART
+#define SERIAL_MIDI
 #define BUTTON4 					/* from v6 on, we have a fourth (reset) button */
 #define PWM_LED_BRIGHNESS /* from v6 on, all the LEDs are on analog pins */
 #endif
