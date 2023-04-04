@@ -28,6 +28,11 @@
 #ifdef MCU_RP2040
 // this chip has 2 UARTs for midi & debug stuff.
 #include "hardware/uart.h"
+// and also these handy PIO devices that can put serial ports on pins that aren't wired for them:
+SerialPIO SSerialTip1( tip1, SerialPIO::NOPIN ); // tx only
+SerialPIO SSerialRing1( ring1, SerialPIO::NOPIN ); // tx only
+SerialPIO SSerialTip2( tip2, SerialPIO::NOPIN ); // tx only
+SerialPIO SSerialRing2( ring2, SerialPIO::NOPIN ); // tx only
 #endif
 
 #ifdef IMU_LSM6DSO32X
@@ -346,20 +351,28 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	// If either pin mode is MIDI, both must be configured.
 	// Assuming TRS adapter type A (the MIDI standard): https://minimidi.world/
 	//   ring will be connected to UART TX,
-	//   tip will be disconnected & grounded.
+	//   tip will be +v current source
 	// 
 	if (tipMode == OUTMODE_MIDI || ringMode == OUTMODE_MIDI){
-		ringMode = OUTMODE_MIDI;
-		tipMode = OUTMODE_OFF;
+		tipMode = OUTMODE_MIDI; // sink current (data)
+		if (ringMode != OUTMODE_LOW)  // allow for experimental backwardsland ...
+			ringMode = OUTMODE_HIGH; // supply current (v+)
 	}
 
 	Dbg_print("ring mode: ");
 	switch(ringMode) { // OUTMODES are defined in settings.h
 case OUTMODE_OFF:  
 		Dbg_println("off");
-	// to ground pin: make it an output & set it to low
+		gpio_set_function(ringPin, GPIO_FUNC_NULL );
+		break;
+case OUTMODE_LOW:  
+		Dbg_println("low");
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		digitalWrite(ringPin, LOW);
+		break;
+case OUTMODE_HIGH:  
+		gpio_set_function(ringPin, GPIO_FUNC_SIO );
+		digitalWrite(ringPin, HIGH);
 		break;
 case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
@@ -376,16 +389,28 @@ case OUTMODE_SYNC:
 		break;
 case OUTMODE_MIDI:
 		Dbg_println("midi");
-		gpio_set_function(ringPin, GPIO_FUNC_UART );
+		/* if (ringPin == ring1) */
+		/* 	gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial! */
+		/* else  */
+		/* 	gpio_set_function(ringPin, GPIO_FUNC_UART ); */
+		gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
 
 	Dbg_print("tip mode: ");
 	switch(tipMode) {
-case OUTMODE_OFF: 
+case OUTMODE_OFF:  
 		Dbg_println("off");
+		gpio_set_function(tipPin, GPIO_FUNC_NULL );
+		break;
+case OUTMODE_LOW:  
+		Dbg_println("low");
 		gpio_set_function(tipPin, GPIO_FUNC_SIO );
 		digitalWrite(tipPin, LOW);
+		break;
+case OUTMODE_HIGH:  
+		gpio_set_function(tipPin, GPIO_FUNC_SIO );
+		digitalWrite(tipPin, HIGH);
 		break;
 case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
@@ -402,7 +427,11 @@ case OUTMODE_SYNC:
 		break;
 case OUTMODE_MIDI:
 		Dbg_println("midi");
-		gpio_set_function(tipPin, GPIO_FUNC_UART );
+		/* if (tipPin == tip1) */
+		/* 	gpio_set_function(tipPin, GPIO_FUNC_PIO0); // sofware serial! */
+		/* else  */
+		/* 	gpio_set_function(tipPin, GPIO_FUNC_UART ); */
+		gpio_set_function(tipPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
 
@@ -518,43 +547,12 @@ void setup() {
 	}
 #endif
 
-	// Okay, here is the undocumented picky order of interactions btwn Serial and MIDI;
-
-	// You have to configure UART pins before Serial.begin();
-	Serial2.setRX(tip2);
-	Serial2.setTX(ring2);
-	Serial2.setCTS(UART_PIN_NOT_DEFINED);
-	Serial2.setRTS(UART_PIN_NOT_DEFINED);
-
-	// Then, the MIDI startup code calls Serial.begin() on every UART serial MIDI port.
-	
 	myMidi.begin();
 
-	// BUT it doesn't call it on the USB serial port.  AND you can't have already
-	// called it or there will be bugs.  
-	// So you have to first initialize the UART serial,
-	// then initialize MIDI,
-	// then initialize the USB serial.  
-
-  Serial.begin(115200);  // baud rate is ignored on USB serial.
-
-	// Is this documented? NOOOOOOOOO ....
+  Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
 
 #ifdef MCU_RP2040
-
-	/* // THIS WILL FAIL in v9 because wrong pins oops. */
-	/* Serial1.setRX(tip1); */
-	/* Serial1.setTX(ring1); */
-  /* Serial1.begin(38400);  // RP2040 uart0 */
-	/* // TODO: pio+softwareSerial on these pins instead? */
-
-	// And then because the MIDI system started the UARTs at a default speed,
-	// you have to stop them before starting them at a chosen speed.
-	// (Although the MIDI system probably chose the correct speed.)
-	//Serial2.end();
-  Serial2.begin(38400);  // RP2040 uart1
-
-	// now configure output jacks -- potentially disconnecting serial UARTs for now
+	// configure output jacks -- potentially disconnecting serial for now
 	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
 	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
 #endif
@@ -1458,6 +1456,10 @@ void loop() {
 
     // print benchmarks when pulse goes high.
     if (showStats && pulseState[0] == HIGH) {
+
+			// TESTING:
+			//SSerialRing2.println("blahblahblAHBLAHBLAHblahblahblAHBLAHBLAHblahblahblAHBLAHBLAHblablalblAHBLAHBLA"); // 80 chars.
+			//SSerialRing2.println("blahblahblAHBLAHBLAHblahblahb\n"); // 32 chars.
 
       /* Dbg_printf("stats: %s  ", (showStats ? "y" : "n")); */
       Dbg_print(awakeTimer);

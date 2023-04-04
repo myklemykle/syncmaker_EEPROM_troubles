@@ -5,6 +5,7 @@
 // Adafruit USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
 
+
 // Create a new instance of the (generic) Arduino MIDI Library,
 // and attach usb_midi as the transport.
 MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
@@ -16,8 +17,19 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
 // Serial1 & Serial2 are provied by the Philtower Arduino-Pico core
 
 #ifdef SERIAL_MIDI
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
+// PIO serial ports:
+extern SerialPIO SSerialRing1;
+extern SerialPIO SSerialTip1;
+extern SerialPIO SSerialRing2;
+extern SerialPIO SSerialTip2;
+
+//MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
+//MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing1, MIDI_OUT1);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip1, MIDI_OUT1);
+
+//MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
+//MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_OUT2);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip2, MIDI_OUT2);
 #endif // serial midi
 #endif // rp2040
 // in Teensy land, usbMIDI is defined automatically.
