@@ -41,17 +41,17 @@ bool Settings::put(){
 }
 
 // dump a human-log of the settings into a provided buffer:
-const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
+// const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 char *Settings::sprint(char *buf, int buflen){
 	snprintf(buf, buflen, 
 			"flag: %x\nversion: %d\n measurelen: %d\n tip1: %s\n ring1: %s\n tip2: %s\n ring2: %s\n",
 			s._flag,
 			s._version,
 			s.measureLen,
-			outmodeNames[s.outs[0]],
-			outmodeNames[s.outs[1]],
-			outmodeNames[s.outs[2]],
-			outmodeNames[s.outs[3]]
+			Settings::outmodeNames[s.outs[0]],
+			Settings::outmodeNames[s.outs[1]],
+			Settings::outmodeNames[s.outs[2]],
+			Settings::outmodeNames[s.outs[3]]
 	);
 
 	return buf;

@@ -73,13 +73,15 @@ void cmd_wake(MyCommandParser::Argument *args, char *response) {
 	strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
+
 // 
 // set tip1|tip2|ring1|ring2 off/midi/sync/shake/noise/sine/square
 // 
+// extern const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 void cmd_set(MyCommandParser::Argument *args, char *response) {
 	byte chan;
 	
-	char mode;
+	char mode = -1;
 	if (strmatch(args[0].asString, "tip1")){
 		chan = OUTCHANNEL_TIP1;
 	}
@@ -97,21 +99,26 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	}
 
 	
-	if (strmatch(args[1].asString, "off")){
-		mode = OUTMODE_OFF;
+	for (int i=0; i<OUTMODE_COUNT; i++){
+		if (strmatch(args[1].asString, Settings::outmodeNames[i])){
+			mode = i;
+			break;
+		}
 	}
-	else if (strmatch(args[1].asString, "midi")){
+
+	// some synonyms:
+	if (strmatch(args[1].asString, "midi")){
 		mode = OUTMODE_MIDI;
 	}
-	else if (strmatch(args[1].asString, "MIDI")){
-		mode = OUTMODE_MIDI;
+	else if (strmatch(args[1].asString, "hi")){
+		mode = OUTMODE_HIGH;
 	}
-	else if (strmatch(args[1].asString, "sync")){
-		mode = OUTMODE_SYNC;
-	}
-	else if (strmatch(args[1].asString, "shake")){
-		mode = OUTMODE_SHAKE;
-	} else {
+	else if (strmatch(args[1].asString, "lo")){
+		mode = OUTMODE_LOW;
+	} 
+	
+
+	if (mode == -1) { // not found
 		strlcpy(response, "error: bad mode", MyCommandParser::MAX_RESPONSE_SIZE);
 		return;
 	}

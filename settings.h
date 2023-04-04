@@ -25,8 +25,11 @@
 #define OUTMODE_SINE 4
 #define OUTMODE_SQUARE 5
 #define OUTMODE_OFF 6
-#define OUTMODE_COUNT 7
-#define OUTMODE_NAMES { "MIDI", "sync", "shake", "noise", "sine", "square", "off" }
+#define OUTMODE_LOW 7
+#define OUTMODE_HIGH 8
+
+#define OUTMODE_COUNT 9
+#define OUTMODE_NAMES { "MIDI", "sync", "shake", "noise", "sine", "square", "off", "low", "high"}
 
 // all of these modes are audio, and need the GPIO pin in PWM mode:
 #define OUTMODE_IS_AUDIO(o) ( OUTMODE_SHAKE <= o <= OUTMODE_SQUARE )
@@ -60,6 +63,7 @@ typedef struct {
 class Settings { 
 	public: 
 		_Settings s;
+		static constexpr char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 		bool init();
 		bool get();
 		bool put();
