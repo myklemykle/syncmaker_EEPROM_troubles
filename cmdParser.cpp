@@ -206,12 +206,15 @@ void cmd_testlevel(MyCommandParser::Argument *args, char *response) {
 	snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "level %f/%f\n", lvl, testLevel);
 }
 
-void clock_pin_on(){
+#define CLOCK_SELECT_SYS 0x6
+#define CLOCK_SELECT_XOSC 0x5
+// TODO: somewhere in SDK these sources are all defined ....
+// src must be between 0x0 and 0xa ...
+void clock_pin_on(uint src){
 	// connect clk_sys to GPIO25 for test/measurement
 	// This is based on the CLK_GPOUT0_CTRL register in the datasheet
 	// and simplified down from clock_gpio_init_int_frac() from the pico SDK
 	uint gpclk = clk_gpout3; // appropriate for gpio 25
-	uint src = 0x6; 				// denotes clk_sys (master clock @133mhz)
 
 	// Set up the gpclk generator
 	// AUXSRC_LSB is shifting our source into bits 5:8 (see datasheet)
@@ -226,9 +229,14 @@ void clock_pin_off(){
     gpio_set_function(25, GPIO_FUNC_NULL);
 }
 void cmd_clock(MyCommandParser::Argument *args, char *response) {
-	if (strmatch(args[0].asString, "on")){
-		clock_pin_on();
-		strlcpy(response, "clock pin on", MyCommandParser::MAX_RESPONSE_SIZE);
+	if ( (strmatch(args[0].asString, "on") ||
+				strmatch(args[0].asString, "sys")) )
+	{
+		clock_pin_on(CLOCK_SELECT_SYS);
+		strlcpy(response, "clock pin sys", MyCommandParser::MAX_RESPONSE_SIZE);
+	} else if (strmatch(args[0].asString, "xosc")){
+		clock_pin_on(CLOCK_SELECT_XOSC);
+		strlcpy(response, "clock pin xosc", MyCommandParser::MAX_RESPONSE_SIZE);
 	} else if (strmatch(args[0].asString, "off")){
 		clock_pin_off();
 		strlcpy(response, "clock pin off", MyCommandParser::MAX_RESPONSE_SIZE);
