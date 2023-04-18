@@ -38,7 +38,6 @@
 ////////////////////
 // 1.5) are we hardcoding for a particular model of Pocket Operator?
 // (in the future I hope we aren't.)
-// (one must be defined!)
 // These keep the LED steady on when playing (with caveats):
 //#define MGRP_A PO12,PO14,PO16
 // These keep the LED mostly off, and just flash it every 4 beats:
@@ -53,7 +52,7 @@
 // send MIDI clock?
 #define MIDICLOCK timex
 //
-// send MIDI timecode?
+// send MIDI timecode (NOT DONE YET)?
 //#define MIDITIMECODE rolex
 
 	
@@ -70,6 +69,10 @@
 // or else the PI will go immediately to sleep when PO is detached.
 //
 //#define TAKE_NAPS stopitshammocktime
+
+///////////////////////
+// 5) turn on the profiler and spit a bunch of timing msgs to the console?
+#define PROFILE whyUsolaZ?
 
 //////////////////////
 // 5) should we try to manage IMU calibration data?

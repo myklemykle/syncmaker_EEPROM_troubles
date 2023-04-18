@@ -229,6 +229,11 @@ const int imuClockTick = 500;  // 2khz data rate
 #endif
 
 
+#ifdef PROFILE
+#include "LoopProfiler.h"
+LoopProfiler profile;
+#endif
+
 // our main Settings object:
 Settings _settings;
 
@@ -709,6 +714,11 @@ void setup() {
   sleep_setup();
 
 	cmd_setup();
+
+#ifdef PROFILE
+	profile.init();
+#endif
+
 }
 
 
@@ -769,6 +779,9 @@ void loop() {
 
 	static float volumeLevel;
 
+#ifdef PROFILE
+	profile.startLoop();
+#endif
 
 #ifdef MCU_RP2040
 	// feed kibble to watchdog
@@ -791,6 +804,9 @@ void loop() {
   }
 #endif
 
+#ifdef PROFILE
+	profile.markPoint("(buffscoot");
+#endif
   // shift outer loop states:
   CBNEXT(blinkState);
   CBNEXT(led1State);
@@ -799,6 +815,9 @@ void loop() {
   CBNEXT(decodedPlayLed);
   CBNEXT(playing);
   CBNEXT(pulseState);
+#ifdef PROFILE
+	profile.markPoint("buffscoot)");
+#endif
 
 #ifdef SDEBUG
   // count loop rate:
@@ -832,8 +851,17 @@ void loop() {
     CBNEXT(inertia);
 
 
+#ifdef PROFILE
+	profile.markPoint("(imu");
+#endif
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
+#ifdef PROFILE
+	profile.markPoint("imu)");
+#endif
     CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
+#ifdef PROFILE
+	profile.markPoint("sqrt");
+#endif
 
 #ifdef SDEBUG
     /* if (inertia[0] > shakeThreshold)  */
@@ -855,6 +883,9 @@ void loop() {
 		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
 		volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please!
 
+#ifdef PROFILE
+	profile.markPoint("(audio");
+#endif
 #ifdef AUDIO_RP2040
 		// send vol level to core 1:
 		if (testTone != TESTTONE_OFF) {
@@ -874,11 +905,18 @@ void loop() {
 
 #endif
 
+#ifdef PROFILE
+	profile.markPoint("audio)");
+#endif
+
     ///////////////////////////////////
     // other things to be done at IMU interrupt rate (2000hz) :
 
     // MIDI Controllers should discard incoming MIDI messages.
 		myMidi.flushInput();
+#ifdef PROFILE
+	profile.markPoint("midiflush");
+#endif
   }
 
 #ifdef MIDITIMECODE
@@ -1513,6 +1551,10 @@ void loop() {
       //			Dbg_print(" Boink!"); // DEBUG */
 
       Dbg_println(".");
+
+#ifdef PROFILE
+			profile.printDelta();
+#endif
 
 #ifdef SDEBUG
       // reset counters
