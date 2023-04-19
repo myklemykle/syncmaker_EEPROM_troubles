@@ -228,11 +228,8 @@ const int imuClockTick = 600;  // 8khz data rate
 const int imuClockTick = 500;  // 2khz data rate
 #endif
 
-
-#ifdef PROFILE
+// Loop profiler macros (no-ops unless PROFILE is defined)
 #include "LoopProfiler.h"
-LoopProfiler profile;
-#endif
 
 // our main Settings object:
 Settings _settings;
@@ -715,9 +712,7 @@ void setup() {
 
 	cmd_setup();
 
-#ifdef PROFILE
-	profile.init();
-#endif
+	PROFILE_SETUP();
 
 }
 
@@ -779,9 +774,7 @@ void loop() {
 
 	static float volumeLevel;
 
-#ifdef PROFILE
-	profile.startLoop();
-#endif
+	PROFILE_START_LOOP();
 
 #ifdef MCU_RP2040
 	// feed kibble to watchdog
@@ -804,9 +797,8 @@ void loop() {
   }
 #endif
 
-#ifdef PROFILE
-	profile.markPoint("(buffscoot");
-#endif
+	PROFILE_MARK_POINT("(buffscoot");
+
   // shift outer loop states:
   CBNEXT(blinkState);
   CBNEXT(led1State);
@@ -815,9 +807,7 @@ void loop() {
   CBNEXT(decodedPlayLed);
   CBNEXT(playing);
   CBNEXT(pulseState);
-#ifdef PROFILE
-	profile.markPoint("buffscoot)");
-#endif
+	PROFILE_MARK_POINT("buffscoot)");
 
 #ifdef SDEBUG
   // count loop rate:
@@ -850,18 +840,12 @@ void loop() {
     // shift inner loop state:
     CBNEXT(inertia);
 
-
-#ifdef PROFILE
-	profile.markPoint("(imu");
-#endif
+		PROFILE_MARK_POINT("(imu");
     imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-#ifdef PROFILE
-	profile.markPoint("imu)");
-#endif
+		PROFILE_MARK_POINT("imu)");
+
     CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
-#ifdef PROFILE
-	profile.markPoint("sqrt");
-#endif
+		PROFILE_MARK_POINT("sqrt");
 
 #ifdef SDEBUG
     /* if (inertia[0] > shakeThreshold)  */
@@ -883,9 +867,7 @@ void loop() {
 		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
 		volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please!
 
-#ifdef PROFILE
-	profile.markPoint("(audio");
-#endif
+		PROFILE_MARK_POINT("(audio");
 #ifdef AUDIO_RP2040
 		// send vol level to core 1:
 		if (testTone != TESTTONE_OFF) {
@@ -904,19 +886,14 @@ void loop() {
 		}
 
 #endif
-
-#ifdef PROFILE
-	profile.markPoint("audio)");
-#endif
+		PROFILE_MARK_POINT("audio)");
 
     ///////////////////////////////////
     // other things to be done at IMU interrupt rate (2000hz) :
 
     // MIDI Controllers should discard incoming MIDI messages.
 		myMidi.flushInput();
-#ifdef PROFILE
-	profile.markPoint("midiflush");
-#endif
+		PROFILE_MARK_POINT("midiflush");
   }
 
 #ifdef MIDITIMECODE
@@ -1552,9 +1529,7 @@ void loop() {
 
       Dbg_println(".");
 
-#ifdef PROFILE
-			profile.printDelta();
-#endif
+			PROFILE_PRINT_DELTA();
 
 #ifdef SDEBUG
       // reset counters
