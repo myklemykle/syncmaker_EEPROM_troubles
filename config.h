@@ -72,7 +72,7 @@
 
 ///////////////////////
 // 5) turn on the profiler and spit a bunch of timing msgs to the console?
-#define PROFILE whyUsolaZ?
+// #define PROFILE whyUsolaZ?
 
 //////////////////////
 // 5) should we try to manage IMU calibration data?
