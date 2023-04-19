@@ -8,7 +8,7 @@ bool Settings::init(){
 		SETTINGSFLAG, 
 		SETTINGSVERSION, 
 		500 * 1000, // uS
-		{ OUTMODE_SYNC, OUTMODE_SHAKE, OUTMODE_SYNC, OUTMODE_SHAKE }
+		{ OUTMODE_SYNC, OUTMODE_SHAKE, OUTMODE_SYNC, OUTMODE_SHAKE } //  tip1, ring1, tip2, ring2
 	};
 	return true;
 }
