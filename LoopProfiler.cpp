@@ -1,8 +1,10 @@
 #include "LoopProfiler.h"
 #include "config.h"
 
+
+
 void LoopProfiler::init(){
-	// zero checkpoints.
+	// zero stuff:
 	for (int i = 0; i < PROFILE_CPS; i++){
 		checkpoints[i].sample = 0;
 		checkpoints[i].sampleCount = 0;
@@ -69,9 +71,8 @@ void LoopProfiler::printDelta(){
 	Dbg_print(checkpoints[0].pointName);
 	for (int i=1;i<maxPoints;i++){
 		float d = checkpoints[i].average - checkpoints[i-1].average;
-		Dbg_printf("- %.2f -%s",d, checkpoints[i].pointName);
+		Dbg_printf(":%.2f:%s",d, checkpoints[i].pointName);
 	}
 	Dbg_println("");
 }
-
 
