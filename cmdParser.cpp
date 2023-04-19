@@ -13,14 +13,15 @@
 #include "RP2040Audio.h"
 #endif
 
-//typedef CommandParser<16,4,10,32,64> MyCommandParser;
-typedef CommandParser<16,4,10,32,128> MyCommandParser;
+//typedef CommandParser<16,4,10,32,64> MyCommandParser; //default vals
+typedef CommandParser<16,4,10,32,128> MyCommandParser; // longer responses
 
 MyCommandParser parser;
 
 extern bool showStats;
 extern Settings _settings;
 extern void configOutput(int pin, byte mode);
+extern void configOutputs(int pinPair, byte tipMode, byte ringMode);
 
 #ifdef AUDIO_RP2040
 extern RP2040Audio audio;
@@ -73,6 +74,11 @@ void cmd_wake(MyCommandParser::Argument *args, char *response) {
 	strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
+// print out the current settings ...
+void cmd_dump_settings(MyCommandParser::Argument *args, char *response) {
+	_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
+}
+
 
 // 
 // set tip1|tip2|ring1|ring2 off/midi/sync/shake/noise/sine/square
@@ -81,6 +87,24 @@ void cmd_wake(MyCommandParser::Argument *args, char *response) {
 void cmd_set(MyCommandParser::Argument *args, char *response) {
 	byte chan;
 	
+	// "set all"
+	if (strmatch(args[0].asString, "all")){
+		if (strmatch(args[1].asString, "save")){
+			// save settings object to eeprom
+			_settings.put();
+			strlcpy(response, "settings saved", MyCommandParser::MAX_RESPONSE_SIZE);
+		} else if (strmatch(args[1].asString, "default")){
+			// set all four outs to their default config
+			configOutputs(tip1, OUTMODE_SYNC, OUTMODE_SHAKE);
+			configOutputs(tip2, OUTMODE_SYNC, OUTMODE_SHAKE);
+			cmd_dump_settings(args, response);
+		} else {
+			strlcpy(response, "syntax error: set all [save|default]", MyCommandParser::MAX_RESPONSE_SIZE);
+		}
+		return;
+	}
+
+	// "set [tip|ring][1|2]"
 	char mode = -1;
 	if (strmatch(args[0].asString, "tip1")){
 		chan = OUTCHANNEL_TIP1;
@@ -243,11 +267,6 @@ void cmd_clock(MyCommandParser::Argument *args, char *response) {
 	} else {
 		strlcpy(response, "syntax err: clock [on|off]", MyCommandParser::MAX_RESPONSE_SIZE);
 	}
-}
-
-// print out the current settings ...
-void cmd_dump_settings(MyCommandParser::Argument *args, char *response) {
-	_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
 // this more general approach isn't compatible with commandParser's arg handling ...
