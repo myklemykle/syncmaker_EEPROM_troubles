@@ -67,12 +67,14 @@ void LoopProfiler::printAverage(){
 }
 
 void LoopProfiler::printDelta(){
+	float sum;
 	Dbg_print("deltas: ");
 	Dbg_print(checkpoints[0].pointName);
 	for (int i=1;i<maxPoints;i++){
 		float d = checkpoints[i].average - checkpoints[i-1].average;
 		Dbg_printf(":%.2f:%s",d, checkpoints[i].pointName);
+		sum += d;
 	}
-	Dbg_println("");
+	Dbg_printf(" = %.2f\n", sum);
 }
 
