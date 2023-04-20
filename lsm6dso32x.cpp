@@ -224,29 +224,24 @@ bool LSM6DSO32X_IMU::LSM6DSO32X_read(int16_t *data)  // accel + mag
 {
   uint8_t buf[13];
 
-	// TODO: its nutty that the chip organizes the high & low bytes backwards ...
-	// nevertheless I could just clock out two bytes and swap them,
-	// which would be 25% less bus traffic
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_H_A, buf+1, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_A, buf+2, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_H_A, buf+3, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_L_A, buf+4, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_H_A, buf+5, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_L_A, buf+6, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_H_G, buf+7, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_G, buf+8, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_H_G, buf+9, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_L_G, buf+10, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_H_G, buf+11, 1)) return false;
-  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_L_G, buf+12, 1)) return false;
+	// For all of these registers, the high byte lives right after the low byte, so we get them both by reading 2 bytes.
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_A, buf+1, 2)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_L_A, buf+3, 2)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_L_A, buf+5, 2)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_G, buf+7, 2)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTY_L_G, buf+9, 2)) return false;
+  if (!read_regs(chip_addr, LSM6DSO32X_OUTZ_L_G, buf+11, 2)) return false;
 
-  data[0] = (int16_t)((buf[1] << 8) | buf[2]);
-  data[1] = (int16_t)((buf[3] << 8) | buf[4]);
-  data[2] = (int16_t)((buf[5] << 8) | buf[6]);
-  data[3] = (int16_t)((buf[7] << 8) | buf[8]);
-  data[4] = (int16_t)((buf[9] << 8) | buf[10]);
-  data[5] = (int16_t)((buf[11] << 8) | buf[12]);
+	// for some reason, doing it this way is slower ...
+  // if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_A, buf+1, 6)) return false;
+  // if (!read_regs(chip_addr, LSM6DSO32X_OUTX_L_G, buf+7, 6)) return false;
 
+  data[0] = (int16_t)((buf[2] << 8) | buf[1]);
+  data[1] = (int16_t)((buf[4] << 8) | buf[3]);
+  data[2] = (int16_t)((buf[6] << 8) | buf[5]);
+  data[3] = (int16_t)((buf[8] << 8) | buf[7]);
+  data[4] = (int16_t)((buf[10] << 8) | buf[9]);
+  data[5] = (int16_t)((buf[12] << 8) | buf[11]);
 	return true;
 }
 
