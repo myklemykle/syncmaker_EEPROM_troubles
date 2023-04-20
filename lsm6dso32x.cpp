@@ -260,8 +260,21 @@ bool LSM6DSO32X_IMU::read_regs(uint8_t selector, uint8_t addr, uint8_t *data, ui
 	digitalWrite(selector, LOW);
 	SPIPORT.transfer(addr | 0b10000000); // first bit set for read-op
 	while (num > 0) {
+// #ifdef MCU_RP2040
+// 		// SPIClassRP2040 has a 2-byte transfer method ... but it ends up slower.
+// 		if (num > 1) {
+// 			uint16_t d = SPIPORT.transfer16(0x00);
+// 			*data++ = d>>8;
+// 			*data++ = d&0x00ff;
+// 			num-=2;
+// 		} else {
+// 			*data++ = SPIPORT.transfer(0x00);
+// 			num--;
+// 		}
+// #else
 		*data++ = SPIPORT.transfer(0x00);
 		num--;
+// #endif
 	}
 	digitalWrite(selector, HIGH);
 	SPIPORT.endTransaction();
