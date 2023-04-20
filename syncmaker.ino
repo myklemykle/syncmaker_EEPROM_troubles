@@ -772,7 +772,7 @@ void loop() {
 
   static int midiMeasuresRemaining = 0;
 
-	static float volumeLevel;
+	uint32_t volumeLevel; 
 
 	PROFILE_START_LOOP();
 
@@ -797,7 +797,7 @@ void loop() {
   }
 #endif
 
-	PROFILE_MARK_POINT("(buffscoot");
+	PROFILE_MARK_POINT("(bufscoot");
 
   // shift outer loop states:
   CBNEXT(blinkState);
@@ -807,7 +807,7 @@ void loop() {
   CBNEXT(decodedPlayLed);
   CBNEXT(playing);
   CBNEXT(pulseState);
-	PROFILE_MARK_POINT("buffscoot)");
+	PROFILE_MARK_POINT("bufscoot)");
 
 #ifdef SDEBUG
   // count loop rate:
@@ -827,7 +827,6 @@ void loop() {
 
 
   // Read IMU data if ready:
-	// TODO: we don't need an ISR for this. we just need to read & reset the interrupt flag on IMU_int
   if (imu_ready) {  // on interrupt
     imu_ready = false;
 
@@ -865,7 +864,8 @@ void loop() {
 		// (I got to this formula through tweaking and listening, but it's kinda obscure.)
 
 		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
-		volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please!
+		// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please! 
+		volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by COUNT_PER_G
 
 		PROFILE_MARK_POINT("(audio");
 #ifdef AUDIO_RP2040
@@ -874,15 +874,16 @@ void loop() {
 			rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
 			//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
 		} else {
-			//rp2040.fifo.push_nb(max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0) * WAV_PWM_RANGE); 
-			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
+			//rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
+			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE / COUNT_PER_G));  // int version: divided by COUNT_PER_G
 		}
 #elif defined(AUDIO_TEENSY)
     // use the inertia (minus gravity) to set the volume of the noise generator
 		if (testTone != TESTTONE_OFF) {
 			amp1.gain(testLevel); // for testing
 		} else {
-			amp1.gain(volumeLevel);
+			//amp1.gain(volumeLevel );
+			amp1.gain((1.0 * volumeLevel) / COUNT_PER_G); // converted to float, divided by COUNT_PER_G
 		}
 
 #endif
