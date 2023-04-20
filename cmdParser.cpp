@@ -253,7 +253,11 @@ void clock_pin_off(){
     gpio_set_function(25, GPIO_FUNC_NULL);
 }
 void cmd_clock(MyCommandParser::Argument *args, char *response) {
-	if ( (strmatch(args[0].asString, "on") ||
+	if (strmatch(args[0].asString, "freq")) {
+		// clk_sys speed as reported by SDK
+		snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "clk_sys %d\n", rp2040.f_cpu());
+
+	} else if ( (strmatch(args[0].asString, "on") ||
 				strmatch(args[0].asString, "sys")) )
 	{
 		clock_pin_on(CLOCK_SELECT_SYS);
