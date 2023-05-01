@@ -197,9 +197,6 @@ const unsigned long minTapInterval = 100 * 1000;  // Ignore spurious double-taps
 // in a minute on a snare drum using double-strokes.  So should I let this go faster,
 // or admit to a top speed of 300bpm?  
 
-// duration of the off-cycle of the Play button PWM wave
-const unsigned long pwmOffTime = 150 * 1000;
-// But this should really be just 1ms ... once we fix measurement.
 
 // convert a time interval between beats to BPM:
 // float: convert usecs to secs (1M to 1),
@@ -211,7 +208,6 @@ const unsigned long pwmOffTime = 150 * 1000;
 // Timers:
 elapsedMicros loopTimer;
 elapsedMicros playPinTimer;
-elapsedMicros pwmOffTimer;
 elapsedMicros awakeTimer;
 //#define MIN_AWAKE_US 5000000 // stay awake at least 5 seconds after a powerNap.
 #define MIN_AWAKE_US 500000 // stay awake at least 5 seconds after a powerNap.
@@ -459,8 +455,10 @@ void configOutput(int pin, byte mode){
 		case tip2:
       configOutputs(pin, mode, _settings.s.outs[OUTCHANNEL_RING2]);
   }
+
 }
-	
+
+// configure/initalize/etc at boot.
 void setup() {
 #ifdef MCU_RP2040
 	  // fix startup weirdness
@@ -643,25 +641,19 @@ void setup() {
   //
   btn1.attach(button1Pin);
   btn1.interval(debounceLen);
-  btn1.update();
-  btn1pressed = (btn1.read() == LOW);
 
   btn2.attach(button2Pin);
   btn2.interval(debounceLen);
-  btn2.update();
-  btn2pressed = (btn2.read() == LOW);
 
   btn3.attach(button3Pin);
   btn3.interval(debounceLen);
-  btn3.update();
-  btn3pressed = (btn3.read() == LOW);
 
 #ifdef BUTTON4
   btn4.attach(button4Pin);
   btn4.interval(debounceLen);
-  btn4.update();
-  btn4pressed = (btn4.read() == LOW);
 #endif
+
+	readButtons();
 
   ////////
   // Clock setup:
@@ -717,102 +709,9 @@ void setup() {
 }
 
 
-#ifdef AUDIO_RP2040
-
-// rp2040 audio on core 1:
-
-void setup1(){
-
-	// put some noise in the buffer:
-	audio.fillWithNoise();
-
-	// Setup PWM outputs & interrupt handler
-	audio.init();
-
-  // Start DMA-ing audio from transfer buffer to PWM pins.
-  audio.play(0);
-  audio.play(1);
-}
-
-volatile uint32_t iVolumeLevel;
-
-void loop1(){
-	static short reportcount = 1500; 
-
-	// update the interpolater with the latest volume level
-	iVolumeLevel = rp2040.fifo.pop(); // this blocks at IMU interrupt rate
-
-	reportcount--;
-	if (reportcount ==0){
-		reportcount = 1500;
-		//Dbg_printf("iVol: %d\n", iVolumeLevel);
-		/* Serial.printf("unscaled: %d\n",interp0->base[1]); */
-		/* Serial.printf("scale: %d\n",interp0->accum[1]); */
-		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
-	}
-
-	//audio.tweak(); // only for testing/tuning
-}
-
-#endif
-
-
-void loop() {
-  static int ax, ay, az;
-  static int gx, gy, gz;
-
-  unsigned long tapInterval = 0;
-  unsigned long nowTime = loopTimer;
-	static unsigned long lastNap = nowTime;
-
-  long instantPos;
-  long circleOffset;
-  long measureIdx;
-  bool targetNear, targetAhead;
-
-  static int midiMeasuresRemaining = 0;
-
-	uint32_t volumeLevel; 
-
-	PROFILE_START_LOOP();
-
-#ifdef MCU_RP2040
-	// feed kibble to watchdog
-	rp2040.wdt_reset();
-#endif
-
-  awakePinState = analogRead(PO_wake);
-
-#ifdef TAKE_NAPS
-  // go to sleep if the PO_wake pin is low:
-	//if (btn1pressed) { // DEBUG
-	/* TODO: This ain't sleeping ever. Why not? did i calculate MIN_AWAKE wrong? */
-  if ((awakePinState < awakePinThreshold) && ((nowTime - lastNap) > MIN_AWAKE_US))  {
-		Dbg_println("zzzzz");
-    unsigned long napDuration = powerNap();
-    //unsigned long napDuration = 666 // DEBUG 
-		lastNap = loopTimer; // note the time, so we don't sleep again too soon
-		Dbg_printf("slept %d us.\n", napDuration);
-    return;
-  }
-#endif
-
-	PROFILE_MARK_POINT("(bufscoot");
-
-  // shift outer loop states:
-  CBNEXT(blinkState);
-  CBNEXT(led1State);
-  CBNEXT(led2State);
-  CBNEXT(nonstop);
-  CBNEXT(decodedPlayLed);
-  CBNEXT(playing);
-  CBNEXT(pulseState);
-	PROFILE_MARK_POINT("bufscoot)");
-
-#ifdef SDEBUG
-  // count loop rate:
-  loops++;
-#endif
+// Call the Bounce library functions to read the button state,
+// and update the btnPressed booleans.
+void readButtons(){
 	// check buttons:
 	if (btn1.update())
 		btn1pressed = (btn1.read() == LOW);
@@ -824,85 +723,106 @@ void loop() {
 	if (btn4.update())
 		btn4pressed = (btn4.read() == LOW);
 #endif
+}
 
-
-  // Read IMU data if ready:
-  if (imu_ready) {  // on interrupt
-    imu_ready = false;
-
-    // IMU inner loop runs once per IMU interrupt, currentlyu 2000hz ...
-
+	
+// Read acc+gyro data from IMU, 
+// calculate new shaker volume
+// update the audio system with that.
+// (Also is flushing the MIDI input bus but that should move ...)
+int ax, ay, az;
+int gx, gy, gz;
+uint32_t volumeLevel = 0; 
+uint32_t processIMU(){
 #ifdef SDEBUG
-    imus++;
+	imus++;
 #endif
 
-    // shift inner loop state:
-    CBNEXT(inertia);
+	// shift inner loop state:
+	CBNEXT(inertia);
 
-		PROFILE_MARK_POINT("(imu");
-    imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-		PROFILE_MARK_POINT("imu)");
+	PROFILE_MARK_POINT("(imu");
+	imu.readMotionSensor(ax, ay, az, gx, gy, gz);
+	PROFILE_MARK_POINT("imu)");
 
-    CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
-		PROFILE_MARK_POINT("sqrt");
+	CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
+	PROFILE_MARK_POINT("sqrt");
 
 #ifdef SDEBUG
-    /* if (inertia[0] > shakeThreshold)  */
-    /* 	Dbg_println(inertia[0]); */
+	/* if (inertia[0] > shakeThreshold)  */
+	/* 	Dbg_println(inertia[0]); */
 #endif
 
-		// This funny formula gives a float value for volume:
-		// it's the difference between momentary intertia and a minimum inertial threshhold (shakeThreshold),
-		// both of which are scaled to Gs at the configured resolution of the IMU (COUNT_PER_G),
-		// then divided by 3gs (/3.0 * COUNT_PER_G) , a volume-attenuating coefficient that I apparently found in my ass.
+	// This funny formula gives a float value for volume:
+	// it's the difference between momentary intertia and a minimum inertial threshhold (shakeThreshold),
+	// both of which are scaled to Gs at the configured resolution of the IMU (COUNT_PER_G),
+	// then divided by 3gs (/3.0 * COUNT_PER_G) , a volume-attenuating coefficient that I apparently found in my ass.
 
-		// The result can't go below 0, but what's the max?
-		// If the IMU is sensitive to 8gs, and the threshhold is 0.8 gs,
-		// then the max is 7.2/3  = 2.4
-		// (Testing shows i can hear an audible increase in noise volume from overamplifying up to about 3.0,
-		// so that could be an ideal threshhold.)
-		// (I got to this formula through tweaking and listening, but it's kinda obscure.)
+	// The result can't go below 0, but what's the max?
+	// If the IMU is sensitive to 8gs, and the threshhold is 0.8 gs,
+	// then the max is 7.2/3  = 2.4
+	// (Testing shows i can hear an audible increase in noise volume from overamplifying up to about 3.0,
+	// so that could be an ideal threshhold.)
+	// (I got to this formula through tweaking and listening, but it's kinda obscure.)
 
-		//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
-		// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please! 
-		volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by COUNT_PER_G
+	//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
+	// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please! 
+	uint32_t volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by COUNT_PER_G
 
-		PROFILE_MARK_POINT("(audio");
+	PROFILE_MARK_POINT("(audio");
 #ifdef AUDIO_RP2040
-		// send vol level to core 1:
-		if (testTone != TESTTONE_OFF) {
-			rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
-			//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
-		} else {
-			//rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
-			rp2040.fifo.push_nb((uint32_t)(volumeLevel * WAV_PWM_RANGE / COUNT_PER_G));  // int version: divided by COUNT_PER_G
-		}
+	// send vol level to core 1:
+	if (testTone != TESTTONE_OFF) {
+		rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
+		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
+	} else {
+		//rp2040.fifo.push_nb((volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
+		rp2040.fifo.push_nb((volumeLevel * WAV_PWM_RANGE / COUNT_PER_G));  // int version: divided by COUNT_PER_G
+	}
 #elif defined(AUDIO_TEENSY)
-    // use the inertia (minus gravity) to set the volume of the noise generator
-		if (testTone != TESTTONE_OFF) {
-			amp1.gain(testLevel); // for testing
-		} else {
-			//amp1.gain(volumeLevel );
-			amp1.gain((1.0 * volumeLevel) / COUNT_PER_G); // converted to float, divided by COUNT_PER_G
-		}
+	// use the inertia (minus gravity) to set the volume of the noise generator
+	if (testTone != TESTTONE_OFF) {
+		amp1.gain(testLevel); // for testing
+	} else {
+		//amp1.gain(volumeLevel );
+		amp1.gain((1.0 * volumeLevel) / COUNT_PER_G); // converted to float, divided by COUNT_PER_G
+	}
 
 #endif
-		PROFILE_MARK_POINT("audio)");
+	PROFILE_MARK_POINT("audio)");
 
-    ///////////////////////////////////
-    // other things to be done at IMU interrupt rate (2000hz) :
+	///////////////////////////////////
+	// other things to be done at IMU interrupt rate (2000hz) :
+	// TODO: move to own function, at 50hz or less.
 
-    // MIDI Controllers should discard incoming MIDI messages.
-		myMidi.flushInput();
-		PROFILE_MARK_POINT("midiflush");
-  }
+	// MIDI Controllers should discard incoming MIDI messages.
+	myMidi.flushInput();
+	PROFILE_MARK_POINT("midiflush");
 
-#ifdef MIDITIMECODE
-  mtc.frameCheck();
-#endif
+	return volumeLevel;
+}
 
-  // Decode the state of PO Play from the LED signal:
-  // This pin is low when not playing, but when playing ... it's complicated.
+
+//////////////////////////////////////////////////
+// Decode the state of PO Play from the LED signal.
+//
+// First we read the value on the Play LED pin,
+// but that's PWM, so we have to debounce that to get a boolean
+// for decodedPlayLED .
+//
+// Then we have to figure out what the state of that LED means.
+// It's unlit when not playing, but when playing, different PO models still can blink it on & off in various ways.
+// So we try to deduce the state of play from the animation of that LED.
+//
+// Then if the state of play has changed we do starting-play and stopping-play events, for the clocks and MIDI.
+//
+// RATE: we want minimal lag btwn pressing play & sending midi START,
+// so call this on every loop!
+//
+elapsedMicros pwmOffTimer;
+// duration of the off-cycle of the Play button PWM wave
+const unsigned long pwmOffTime = 150 * 1000;
+void decodePlayLED(unsigned long nowTime){
 
   if (digitalRead(PO_play) == HIGH){
     pwmOffTimer = 0;
@@ -1017,7 +937,7 @@ void loop() {
     if (nonstop[0]) {
       CBSET(nonstop, false);
       if (!decodedPlayLed[0]) {// if PO not currently playing,
-      	CBSET(playing, false); // stop when notstop is deactivated.
+      	CBSET(playing, false); // stop when nonstop is deactivated.
       }
       // get it on the next loop
     } else {
@@ -1025,18 +945,13 @@ void loop() {
     }
   }
 
-  /////////
-  // Update the Human Clock & MIDI transport
-  //
   if (CBROSE(playing)) {
-    // user just pressed play button to start PO
-    // move downbeat to now!
+		// play has started.
+		// sync clocks 
     hc.downbeatTime = nowTime;
-    // sync the circular clock!
-    //cc.circlePos = 0.0;
     cc.circlePos = 0;
 #ifdef MIDICLOCK
-
+		// send midi start messages:
     /* myMidi.clockTick(); */
 		/* myMidi.clockStart(); */
 
@@ -1053,7 +968,6 @@ void loop() {
 			 I should find some other test cases than Live ...  */
 
 		myMidi.clockStart();
-
 #endif
 #ifdef MIDITIMECODE
     // rewind time to zero
@@ -1061,19 +975,19 @@ void loop() {
 #endif
 
   } else if (CBFELL(playing)) {
-    // user just pressed play button to stop PO.
-
+    // play has ended.
 #ifdef MIDICLOCK
+		// send midi stop message:
 		myMidi.clockStop();
 #endif
   }
+}
 
-  // downbeatTime is the absolute time of the start of the current pulse.
-  // if now is at least pulseLen millis beyond the previous beat, advance the beat
-  while (nowTime > (hc.downbeatTime + pulseLen)) {
-    hc.downbeatTime += hc.measureLen;
-  }
-
+// Check the buttons and the gyro output,
+// and see if the user has changed the beat.
+// RATE: this should be called whenever TAPPED changes or the buttons are read.
+void checkTaps(unsigned long nowTime){
+  static unsigned long tapInterval = 0;
   // Check the buttons:
   //
   if (EITHERPRESSED) { // either btn1 or btn2
@@ -1191,49 +1105,14 @@ void loop() {
     // not armed.
     hc.tapCount = 0;
   }
+}
 
-#ifdef BUTTON4
-
-	if (btn4.fell()){
-#ifdef   PWM_LED_BRIGHNESS
-	analogWrite(led4Pin, pwmBrightness);
-#else 
-	digitalWrite(led4Pin, HIGH);
-#endif  // PWM_LED_BRIGHNESS
-		resetTimer = 0;
-	}
-	if (btn4.rose()){
-#ifdef   MCU_RP2040
-		rp2040.reboot();
-#endif  // MCU_RP2040
-	}
-	// if reset is held down for 3 secs, boot in USB bootloader mode
-	if (btn4pressed && (resetTimer > 3000)) {
-
-#ifdef   MCU_RP2040
-		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
-		// if so, we can use that to reset out of bootloader mode ...
-		reset_usb_boot(1 << led4Pin, 0);
-
-#else
-		// just turn off the led:
-
-#ifdef     PWM_LED_BRIGHNESS
-		analogWrite(led4Pin, 0);
-#else
-		digitalWrite(led4Pin, LOW);
-#endif     // PWM_LED_BRIGHNESS
-
-#endif  // MCU_RP2040
-	}
-
-#endif// BUTTON4
-
-  ///////////
-  // Calculate & update LEDs.
-  // (Strobe-off intervals, in which we briefly unlight a lit LED,
- 	// need to be much longer than strobe-on intervals.)
-  //
+///////////
+// Calculate & update LEDs.
+// (Strobe-off intervals, in which we briefly unlight a lit LED,
+// need to be much longer than strobe-on intervals.)
+//
+void updateLEDs(unsigned long nowTime){
   if (playing[0]) {
     if (btn1pressed) {
       if (nowTime - hc.downbeatTime < strobeOffLen)  // there's some bug here, the interval never gets long enough.
@@ -1308,10 +1187,12 @@ void loop() {
 		digitalWrite(nonstopLedPin, HIGH);
 #endif
   }
+}
 
-  //////////
-  // Calculate & update the sync pulse
-  //
+//////////
+// Calculate & update the sync pulse
+//
+void updateSync(unsigned long nowTime){
   if (BOTHPRESSED) {
     if (TAPPED) {
       CBSET(pulseState, HIGH);
@@ -1325,14 +1206,36 @@ void loop() {
       CBSET(pulseState, LOW);
     }
   }
+  // Pulse if PLAYING
+  if (CBDIFF(pulseState)) {
+    if (playing[0]) {
+#ifdef TARGET_RP2040
+      // send sync pulse on whatever pins are configured for sync
+			for(int i=0;i<4;i++)
+				if (_settings.s.outs[i] == OUTMODE_SYNC)
+					digitalWrite(outPins[i], pulseState[0]);
+#else // Teensy 3.2:
+			// send sync pulse on tip1 & tip2
+			digitalWrite(tip1, pulseState[0]);
+			digitalWrite(tip2, pulseState[0]);
+#endif
+    }
+	}
+}
 
-  //////////
-  // Update the circular clock:
-  // User can make discontinuous changes in the human clock;
-  // the circular clock attempts to sync up with the human clock,
-  // but it never skips or moves backwards, only slows down or speeds up.
-  // (It still gets incrememented discretely, but the increments can never
-  // be larger than the width of a single MIDI clock interval.)
+//////////
+// Update the circular clock:
+// User can make discontinuous changes in the human clock;
+// the circular clock attempts to sync up with the human clock,
+// but it never skips or moves backwards, only slows down or speeds up.
+// (It still gets incrememented discretely, but the increments can never
+// be larger than the width of a single MIDI clock interval.)
+int midiMeasuresRemaining = 0;
+void updateCClock(unsigned long nowTime){
+  long measureIdx;
+  long instantPos;
+  long circleOffset;
+  bool targetNear, targetAhead;
 
   cc.prevCirclePos = cc.circlePos;
 
@@ -1454,30 +1357,11 @@ void loop() {
         midiMeasuresRemaining--;
     }
   }
+}
 
-  // Pulse if PLAYING
-  if (CBDIFF(pulseState)) {
-    if (playing[0]) {
-#ifdef TARGET_RP2040
-      // send sync pulse on whatever pins are configured for sync
-			for(int i=0;i<4;i++)
-				if (_settings.s.outs[i] == OUTMODE_SYNC)
-					digitalWrite(outPins[i], pulseState[0]);
-#else // Teensy 3.2:
-			// send sync pulse on tip1 & tip2
-			digitalWrite(tip1, pulseState[0]);
-			digitalWrite(tip2, pulseState[0]);
-#endif
-    }
-
-    // print benchmarks when pulse goes high.
-    if (showStats && pulseState[0] == HIGH) {
-
-			// TESTING:
-			//SSerialRing2.println("blahblahblAHBLAHBLAHblahblahblAHBLAHBLAHblahblahblAHBLAHBLAHblablalblAHBLAHBLA"); // 80 chars.
-			//SSerialRing2.println("blahblahblAHBLAHBLAHblahblahb\n"); // 32 chars.
-
-      /* Dbg_printf("stats: %s  ", (showStats ? "y" : "n")); */
+// Print various benchmarks/stats/debuggery on one line.
+void printStats(){
+    if (showStats) {
       Dbg_print(awakeTimer);
       Dbg_print(':');
       Dbg_print(loopTimer);
@@ -1537,6 +1421,169 @@ void loop() {
       loops = imus = 0;
 #endif
     }
+}
+
+
+#ifdef AUDIO_RP2040
+
+// rp2040 audio on core 1:
+void setup1(){
+
+	// put some noise in the buffer:
+	audio.fillWithNoise();
+
+	// Setup PWM outputs & interrupt handler
+	audio.init();
+
+  // Start DMA-ing audio from transfer buffer to PWM pins.
+  audio.play(0);
+  audio.play(1);
+}
+
+volatile uint32_t iVolumeLevel;
+
+void loop1(){
+	static short reportcount = 1500; 
+
+	// update the interpolater with the latest volume level
+	iVolumeLevel = rp2040.fifo.pop(); // this blocks at IMU interrupt rate
+
+	reportcount--;
+	if (reportcount ==0){
+		reportcount = 1500;
+		//Dbg_printf("iVol: %d\n", iVolumeLevel);
+		/* Serial.printf("unscaled: %d\n",interp0->base[1]); */
+		/* Serial.printf("scale: %d\n",interp0->accum[1]); */
+		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
+	}
+
+	//audio.tweak(); // only for testing/tuning
+}
+
+#endif
+
+
+void loop() {
+
+  unsigned long nowTime = loopTimer;
+	static unsigned long lastNap = nowTime;
+
+
+	PROFILE_START_LOOP();
+
+#ifdef MCU_RP2040
+	// feed kibble to watchdog
+	rp2040.wdt_reset();
+#endif
+
+  awakePinState = analogRead(PO_wake);
+
+#ifdef TAKE_NAPS
+  // go to sleep if the PO_wake pin is low:
+	//if (btn1pressed) { // DEBUG
+	/* TODO: This ain't sleeping ever. Why not? did i calculate MIN_AWAKE wrong? */
+  if ((awakePinState < awakePinThreshold) && ((nowTime - lastNap) > MIN_AWAKE_US))  {
+		Dbg_println("zzzzz");
+    unsigned long napDuration = powerNap();
+    //unsigned long napDuration = 666 // DEBUG 
+		lastNap = loopTimer; // note the time, so we don't sleep again too soon
+		Dbg_printf("slept %d us.\n", napDuration);
+    return;
+  }
+#endif
+
+  // shift outer loop states:
+	PROFILE_MARK_POINT("(bufscoot");
+  CBNEXT(blinkState);
+  CBNEXT(led1State);
+  CBNEXT(led2State);
+  CBNEXT(nonstop);
+  CBNEXT(decodedPlayLed);
+  CBNEXT(playing);
+  CBNEXT(pulseState);
+	PROFILE_MARK_POINT("bufscoot)");
+
+#ifdef SDEBUG
+  // count loop rate:
+  loops++;
+#endif
+
+	// read the buttons
+	readButtons();
+
+  // Read IMU data if ready:
+  if (imu_ready) {  // on interrupt
+    imu_ready = false;
+    // IMU inner loop runs once per IMU interrupt
+		volumeLevel = processIMU();
+	}
+	
+
+#ifdef MIDITIMECODE
+  mtc.frameCheck();
+#endif
+
+  // Decode the state of PO Play from the LED signal:
+	decodePlayLED(nowTime);
+
+
+  // downbeatTime is the absolute time of the start of the current pulse.
+  // if now is at least pulseLen millis beyond the previous beat, advance the beat
+  while (nowTime > (hc.downbeatTime + pulseLen)) {
+    hc.downbeatTime += hc.measureLen;
+  }
+
+	// check buttons and taps for beat changes:
+	checkTaps(nowTime);
+
+#ifdef BUTTON4
+	// Manage button 4 behavior: reboots, mode changes, etc.
+	if (btn4.fell()){
+#ifdef   PWM_LED_BRIGHNESS
+	analogWrite(led4Pin, pwmBrightness);
+#else 
+	digitalWrite(led4Pin, HIGH);
+#endif  // PWM_LED_BRIGHNESS
+		resetTimer = 0;
+	}
+	if (btn4.rose()){
+#ifdef   MCU_RP2040
+		rp2040.reboot();
+#endif  // MCU_RP2040
+	}
+	// if reset is held down for 3 secs, boot in USB bootloader mode
+	if (btn4pressed && (resetTimer > 3000)) {
+
+#ifdef   MCU_RP2040
+		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
+		// if so, we can use that to reset out of bootloader mode ...
+		reset_usb_boot(1 << led4Pin, 0);
+
+#else
+		// just turn off the led:
+
+#ifdef     PWM_LED_BRIGHNESS
+		analogWrite(led4Pin, 0);
+#else
+		digitalWrite(led4Pin, LOW);
+#endif     // PWM_LED_BRIGHNESS
+
+#endif  // MCU_RP2040
+	}
+
+#endif// BUTTON4
+
+	// update LEDs
+	updateLEDs(nowTime);
+
+	// update sync pulse
+	updateSync(nowTime);
+
+	// update circular clock
+	updateCClock(nowTime);
+
+  if (CBROSE(pulseState)) {
+		printStats();
 
 		// Read serial commands when pulse goes high:
 		cmd_update();
