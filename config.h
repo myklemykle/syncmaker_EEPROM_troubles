@@ -72,7 +72,7 @@
 
 ///////////////////////
 // 5) turn on the profiler and spit a bunch of timing msgs to the console?
-// #define PROFILE whyUsolaZ?
+#define PROFILE whyUsolaZ?
 
 //////////////////////
 // 5) should we try to manage IMU calibration data?
@@ -96,8 +96,8 @@
 #define MCU_RP2040
 #define IMU_LSM6DSO32X /* imu from STMicro */
 #define SPIPORT SPI1   /* the default SPI device name, from RP2040's SPI.h */
-//#define IMU_1_666KHZ 
-#define IMU_3_333KHZ  /* imu update rate */
+#define IMU_1_666KHZ  // /* cheap-ass imu update rate, while i hunt for cycles ... */
+//#define IMU_3_333KHZ  /* preferred imu update rate */
 #define AUDIO_RP2040
 #define MIDI_RP2040
 #define SERIAL1_UART
