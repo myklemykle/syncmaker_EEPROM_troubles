@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <elapsedMillis.h>
 #include <CircularBuffer.h>
+#include "cbMacros.h"
 #include "sleep.h"
 #include "Bounce2.h"
 #include <EEPROM.h>
@@ -21,8 +22,8 @@
 #include "hardware/pwm.h"
 #include "pico/bootrom.h"
 #elif defined(AUDIO_TEENSY)
-// Teensy audio!
 #include <Audio.h>
+// Teensy audio!
 #endif
 
 #ifdef MCU_RP2040
@@ -58,47 +59,7 @@ extern void cmd_update();
 char testTone = TESTTONE_OFF;
 float testLevel = 1.0;
 
-/////////////////////////////
-// Some utils for handling loop variables, which are very short CircularBuffers
-// for comparing this loop's value to the previous loop's value.
-// The most recent value will be in cb[0], the previous in cb[1], etc.
-////////////////////////////
-// init the buffer with one value in all positions:
-#define CBINIT(cb, val) \
-  while (!cb.isFull()) cb.push(val)
-
-// change the current value without touching the previous value:
-#define CBSET(cb, val) \
-  { \
-    cb.shift(); \
-    cb.unshift(val); \
-  }
-
-// update the value (current becomes previous)
-#define CBPUSH(cb, val) (cb.unshift(val))
-
-// update the current value to match the previous value
-#define CBNEXT(cb) (cb.unshift(cb[0]))
-
-// get the current value
-#define CBGET(cb, val) (cb[0])
-
-// test: current value is less than previous
-#define CBFELL(cb) (cb[0] < cb[1])  // also works for bools in C++ because TRUE = 1 and FALSE = 0
-
-// test: current value is below val, and previous value was above it
-#define CBFELLTHRU(cb, val) (cb[0] <= val && cb[1] > val)
-
-// test: current value is more than previous
-#define CBROSE(cb) (cb[0] > cb[1])
-
-// test: current value is above val, and previous value was below it
-#define CBROSETHRU(cb, val) (cb[0] > val && cb[1] <= val)
-
-// test: value changed (current != previous) 
-#define CBDIFF(cb) (cb[0] != cb[1])
-
-
+////////////////////////////////
 // IMU Gesture Detection:
 #ifdef IMU_LSM6DSO32X
 LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
@@ -216,13 +177,14 @@ elapsedMillis resetTimer; // how long is reset held down?
 #endif
 
 
-#ifdef IMU_8KHZ
-const int imuClockTick = 125;  // 8khz data rate
-#elif defined(IMU_1_666KHZ)
-const int imuClockTick = 600;  // 8khz data rate
-#else
-const int imuClockTick = 500;  // 2khz data rate
-#endif
+/* not used?  */
+/* #ifdef IMU_8KHZ */
+/* const int imuClockTick = 125;  // 8khz data rate */
+/* #elif defined(IMU_1_666KHZ) */
+/* const int imuClockTick = 600;  // 8khz data rate */
+/* #else */
+/* const int imuClockTick = 500;  // 2khz data rate */
+/* #endif */
 
 // Loop profiler macros (no-ops unless PROFILE is defined)
 #include "LoopProfiler.h"
@@ -247,9 +209,9 @@ HumanClock hc;
 
 // Circular Clock:
 // A clock that tries to stay in sync with a Human Clock,
-// but is limited in how fast it can speed/slow,
-// and cannot move backwards.
+// but is limited in how fast it can speed/slow, and cannot move backwards.
 // So relatively more "continuous" than the Human Clock, but still updated discretely.
+// This is the generator of MIDI clock/timecode events.
 //
 // integer CC loops from 0 to 1B (1000000000)
 #define CC_INT_RES 1000000000
@@ -547,8 +509,8 @@ void setup() {
 	}
 #endif
 
+	// initialize USB connections:
 	myMidi.begin();
-
   Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
 
 #ifdef MCU_RP2040
@@ -557,31 +519,34 @@ void setup() {
 	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
 #endif
 
+	// flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
 	digitalWrite(led1Pin, HIGH);
 	digitalWrite(led2Pin, HIGH);
+	// TODO: led3?
+	// TODO: all of these can be analog as of v9 ... need a higher level LED blink system?
 #ifdef BUTTON4
-
 #ifdef PWM_LED_BRIGHNESS
 	analogWrite(led4Pin, pwmBrightness);
 #else 
 	digitalWrite(led4Pin, HIGH);
-#endif
+#endif // PWM_LED_BRIGHNESS
+#endif // BUTTON4
 
-#endif
   delay(2000); // waiting for USB host...
+
 	digitalWrite(led1Pin, LOW);
 	digitalWrite(led2Pin, LOW);
 #ifdef BUTTON4
-
 #ifdef PWM_LED_BRIGHNESS
 	analogWrite(led4Pin, 0);
 #else
 	digitalWrite(led4Pin, LOW);
-#endif
+#endif // PWM_LED_BRIGHNESS
+#endif // BUTTON4
 
-#endif
-
-#if PI_REV == 9
+#if PI_REV == 10
+  Dbg_println("flashed for v10 board");
+#elif PI_REV == 9
   Dbg_println("flashed for v9 board");
 #elif PI_REV == 8
   Dbg_println("flashed for v8 board");
@@ -589,11 +554,16 @@ void setup() {
   Dbg_println("flashed for v7 board");
 #elif PI_REV == 6
   Dbg_println("flashed for v6 board");
-// HISTORIC NOTE: rev 5 (with Microchip MCU) never got as far as firmware
+//
+// FWIW, rev 5 (with Microchip MCU) never got as far as firmware
+//
 #elif PI_REV == 4
   Dbg_println("flashed for EVT4 board");
 #else
   Dbg_println("flashed for rev3 board");
+//
+// earlier versions are super-unsupported!
+//
 #endif
 
   ///////////
@@ -655,11 +625,14 @@ void setup() {
 
 	readButtons();
 
+	// TODO: check for initial button states at boot to trigger various
+	// mode changes, resets, etc.
+
   ////////
   // Clock setup:
   //
   hc.downbeatTime = micros();  // now!
-  // If buttons are held down when we boot, reset the default measure length
+  // If side buttons are held down when we boot, reset the default measure length
   if (BOTHPRESSED) {
     _settings.s.measureLen = hc.measureLen = 250 * 1000;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
 		_settings.put();
@@ -705,7 +678,6 @@ void setup() {
 	cmd_setup();
 
 	PROFILE_SETUP();
-
 }
 
 
@@ -726,14 +698,15 @@ void readButtons(){
 }
 
 	
-// Read acc+gyro data from IMU, 
-// calculate new shaker volume
-// update the audio system with that.
-// (Also is flushing the MIDI input bus but that should move ...)
 int ax, ay, az;
 int gx, gy, gz;
 uint32_t volumeLevel = 0; 
-uint32_t processIMU(){
+
+// Read acc+gyro data from IMU, 
+// calculate new shaker volume
+// update the audio system with that.
+
+uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 #ifdef SDEBUG
 	imus++;
 #endif
@@ -791,17 +764,51 @@ uint32_t processIMU(){
 #endif
 	PROFILE_MARK_POINT("audio)");
 
-	///////////////////////////////////
-	// other things to be done at IMU interrupt rate (2000hz) :
-	// TODO: move to own function, at 50hz or less.
-
-	// MIDI Controllers should discard incoming MIDI messages.
-	myMidi.flushInput();
-	PROFILE_MARK_POINT("midiflush");
-
 	return volumeLevel;
 }
 
+// Not sure this even needs to be a function, but we're gonna try to change the timing so ...
+void flushMIDI(PI_MIDI m){
+	m.flushInput();
+	PROFILE_MARK_POINT("midiflush");
+}
+
+// Handle the play-start event (user pressed play button).
+void handlePlayStart(unsigned long nowTime){
+		// sync clocks 
+    hc.downbeatTime = nowTime;
+    cc.circlePos = 0;
+#ifdef MIDICLOCK
+		// send midi start messages:
+    /* myMidi.clockTick(); */
+		/* myMidi.clockStart(); */
+
+    /* I haven't yet found good guidance for this bit,
+			 but it really appears that Live 10 treats the Start and Stop
+			 messages as if they were also clock ticks.  Sending Clock 
+			 and Start in quick succession was making Live briefly think the tempo 
+			 was super-high, leading to an initial stutter.  I changed this
+			 and it now sounds much better.
+			 FWIW I think there's a matching problem with Stop; we don't sync it to
+			 where the MTC clock pulse would be, which is why sometimes when
+			 I hit stop Live sets the tempo super high -- but it's stopped, 
+			 so it's not really a problem.  Nevertheless,
+			 I should find some other test cases than Live ...  */
+
+		myMidi.clockStart();
+#endif
+#ifdef MIDITIMECODE
+    // rewind time to zero
+    mtc.rewind();
+#endif
+}
+
+void handlePlayEnd(unsigned long nowTime){
+#ifdef MIDICLOCK
+		// send midi stop message:
+		myMidi.clockStop();
+#endif
+}
 
 //////////////////////////////////////////////////
 // Decode the state of PO Play from the LED signal.
@@ -822,7 +829,8 @@ uint32_t processIMU(){
 elapsedMicros pwmOffTimer;
 // duration of the off-cycle of the Play button PWM wave
 const unsigned long pwmOffTime = 150 * 1000;
-void decodePlayLED(unsigned long nowTime){
+#define PO_PLAY_PWMOFFTIME  150 * 1000
+void decodePlayState(unsigned long nowTime){
 
   if (digitalRead(PO_play) == HIGH){
     pwmOffTimer = 0;
@@ -830,7 +838,7 @@ void decodePlayLED(unsigned long nowTime){
       CBSET(decodedPlayLed, HIGH);  // decode as on.
     }
 
-  } else if (pwmOffTimer > pwmOffTime) {  // if unlit for longer than a PWM off cycle
+  } else if (pwmOffTimer > PO_PLAY_PWMOFFTIME) {  // if unlit for longer than a PWM off cycle
     if (decodedPlayLed[0]) {
       CBSET(decodedPlayLed, LOW);  // decode as off
     }
@@ -842,7 +850,7 @@ void decodePlayLED(unsigned long nowTime){
   if (CBROSE(decodedPlayLed)) {
     // set PLAYING.
     CBSET(playing, true);
-    Dbg_println("START");
+    Dbg_println("START"); // TODO move to event?
     decodedPlayOffTime = playPinTimer;
     playPinTimer = 0;
     /* Dg_print("play led off for "); */
@@ -947,39 +955,11 @@ void decodePlayLED(unsigned long nowTime){
 
   if (CBROSE(playing)) {
 		// play has started.
-		// sync clocks 
-    hc.downbeatTime = nowTime;
-    cc.circlePos = 0;
-#ifdef MIDICLOCK
-		// send midi start messages:
-    /* myMidi.clockTick(); */
-		/* myMidi.clockStart(); */
-
-    /* I haven't yet found good guidance for this bit,
-			 but it really appears that Live 10 treats the Start and Stop
-			 messages as if they were also clock ticks.  Sending Clock 
-			 and Start in quick succession was making Live briefly think the tempo 
-			 was super-high, leading to an initial stutter.  I changed this
-			 and it now sounds much better.
-			 FWIW I think there's a matching problem with Stop; we don't sync it to
-			 where the MTC clock pulse would be, which is why sometimes when
-			 I hit stop Live sets the tempo super high -- but it's stopped, 
-			 so it's not really a problem.  Nevertheless,
-			 I should find some other test cases than Live ...  */
-
-		myMidi.clockStart();
-#endif
-#ifdef MIDITIMECODE
-    // rewind time to zero
-    mtc.rewind();
-#endif
+		handlePlayStart(nowTime);
 
   } else if (CBFELL(playing)) {
     // play has ended.
-#ifdef MIDICLOCK
-		// send midi stop message:
-		myMidi.clockStop();
-#endif
+		handlePlayEnd(nowTime);
   }
 }
 
@@ -1076,7 +1056,7 @@ void checkTaps(unsigned long nowTime){
 
   } else { 
 		// neither btn1 or btn2 is pressed ...
-    if (btn1.rose() || btn2.rose()) {          // if we just released the buttons,
+    if (btn1.rose() || btn2.rose()) {          // if we just released a button
 
 			// if taps <= 8 (intervals <= 7), quantize BPM
 			if (2 <= hc.tapCount && hc.tapCount <= 8) {
@@ -1148,6 +1128,9 @@ void updateLEDs(unsigned long nowTime){
   }
 
 
+	// Here's why we use a loop variable: we can avoid calling digitalWrite() until there's an actual change.
+	// But does that really buy us anything? I profiled without this and it went a little bit faster ...
+	// TODO try completely reverting to plain booleans and profile that.
   if (CBDIFF(led1State)) {
     digitalWrite(led1Pin, led1State[0]);
   }
@@ -1515,7 +1498,9 @@ void loop() {
   if (imu_ready) {  // on interrupt
     imu_ready = false;
     // IMU inner loop runs once per IMU interrupt
-		volumeLevel = processIMU();
+		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
+		// Could reduce the rate of this:
+		flushMIDI(myMidi);
 	}
 	
 
@@ -1524,7 +1509,7 @@ void loop() {
 #endif
 
   // Decode the state of PO Play from the LED signal:
-	decodePlayLED(nowTime);
+	decodePlayState(nowTime);
 
 
   // downbeatTime is the absolute time of the start of the current pulse.
