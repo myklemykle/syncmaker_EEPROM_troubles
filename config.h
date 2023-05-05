@@ -104,7 +104,7 @@
 #define SERIAL2_UART
 #define SERIAL_MIDI
 #define BUTTON4 					/* from v6 on, we have a fourth (reset) button */
-#define PWM_LED_BRIGHNESS /* from v6 on, all the LEDs are on analog pins */
+#define PWM_LED_BRIGHNESS 1024 /* from v6 on, all the LEDs are on analog pins */
 #endif
 
 
