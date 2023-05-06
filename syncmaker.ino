@@ -55,7 +55,7 @@ SerialPIO SSerialRing2( ring2, SerialPIO::NOPIN ); // tx only
 extern void cmd_setup();
 extern void cmd_update();
 
-// for controlling the test tone:
+// command parser will manipulate these globals for controlling the test tone:
 char testTone = TESTTONE_OFF;
 float testLevel = 1.0;
 
@@ -120,17 +120,6 @@ bool btn1pressed = false, btn2pressed = false;
 Bounce btn3 = Bounce();
 bool btn3pressed = false;
 
-#ifdef NONSTOP_HACK
-// bit-banging PWM, to dim the nonstop LED on EVT4 boards:
-unsigned long nonstopLedPWMClock;
-bool nonstopLedPWMState = false;
-#define NSLEDPWM_ON 300    // usec
-#define NSLEDPWM_OFF 5000  // usec
-#endif
-
-#ifdef PWM_LED_BRIGHNESS
-const int pwmBrightness = 1024; // out of 1024
-#endif
 
 #define BOTHPRESSED (btn1pressed && btn2pressed)
 #define EITHERPRESSED (btn1pressed || btn2pressed)
@@ -142,11 +131,18 @@ Bounce btn4 = Bounce();
 bool btn4pressed = false;
 #endif
 
-// Important time intervals, in uS:
-// length of a LED strobe:
-const unsigned long strobeOnLen = 3 * 1000;
-// length of a LED antistrobe (a moment of darkness):
-const unsigned long strobeOffLen = 100 * 1000;
+//////
+// LEDs:
+
+#include "EZLED.h"
+EZLED leds[5] = {
+	EZLED(0), // ignored, so that code names here match the schematic names which start from 1, not 0.
+	EZLED(led1Pin),
+	EZLED(led2Pin),
+	EZLED(led3Pin), // aka nonstopPin
+	EZLED(led4Pin)
+};
+
 
 // length of a sync pulse
 const unsigned long pulseLen = 5 * 1000;
@@ -176,15 +172,6 @@ elapsedMicros awakeTimer;
 elapsedMillis resetTimer; // how long is reset held down?
 #endif
 
-
-/* not used?  */
-/* #ifdef IMU_8KHZ */
-/* const int imuClockTick = 125;  // 8khz data rate */
-/* #elif defined(IMU_1_666KHZ) */
-/* const int imuClockTick = 600;  // 8khz data rate */
-/* #else */
-/* const int imuClockTick = 500;  // 2khz data rate */
-/* #endif */
 
 // Loop profiler macros (no-ops unless PROFILE is defined)
 #include "LoopProfiler.h"
@@ -249,8 +236,6 @@ MidiTimecodeGenerator mtc;
 #endif
 
 // State Variables:
-CircularBuffer<bool, 2> led1State;
-CircularBuffer<bool, 2> led2State;
 CircularBuffer<bool, 2> blinkState;
 CircularBuffer<bool, 2> pulseState;
 CircularBuffer<bool, 2> playing;
@@ -449,10 +434,19 @@ void setup() {
 
 	// pin modes:
 	
-  pinMode(led1Pin, OUTPUT);           // led1
-  pinMode(led2Pin, OUTPUT);           // led2
+	leds[1].init();
+	leds[2].init();
+#ifdef NONSTOP_HACK
+	leds[2].initPWM();
+#else
+	leds[3].init();
+#endif
+
 #ifdef BUTTON4
-  pinMode(led4Pin, OUTPUT);           // led4
+	leds[4].init();
+#endif
+#ifdef EVT4
+  leds[4].init(); // aka boardLedPin
 #endif
 
 #ifdef MCU_RP2040
@@ -470,22 +464,10 @@ void setup() {
   pinMode(button1Pin, INPUT_PULLUP);  // sw1
   pinMode(button2Pin, INPUT_PULLUP);  // sw2
   pinMode(button3Pin, INPUT_PULLUP);  // nonstop
-  pinMode(nonstopLedPin, OUTPUT);     // nonstop led
 
-	
-
-	// TODO: why is this even here?
-#ifdef PWM_LED_BRIGHNESS
-	analogWrite(nonstopLedPin, 0);
-#else
-  digitalWrite(nonstopLedPin, LOW);
+#ifdef EVT4
+  leds[4].init(); // aka boardLedPin
 #endif
-
-#ifdef NONSTOP_HACK
-  nonstopLedPWMClock = loopTimer;
-#endif
-
-  pinMode(boardLedPin, OUTPUT);  // nonstop led
 
   pinMode(PO_play, INPUT);  // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
   pinMode(PO_wake, INPUT);
@@ -520,28 +502,20 @@ void setup() {
 #endif
 
 	// flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
-	digitalWrite(led1Pin, HIGH);
-	digitalWrite(led2Pin, HIGH);
-	// TODO: led3?
-	// TODO: all of these can be analog as of v9 ... need a higher level LED blink system?
+	leds[1].on();
+	leds[2].on();
+	leds[3].on();
 #ifdef BUTTON4
-#ifdef PWM_LED_BRIGHNESS
-	analogWrite(led4Pin, pwmBrightness);
-#else 
-	digitalWrite(led4Pin, HIGH);
-#endif // PWM_LED_BRIGHNESS
+	leds[4].on();
 #endif // BUTTON4
 
   delay(2000); // waiting for USB host...
 
-	digitalWrite(led1Pin, LOW);
-	digitalWrite(led2Pin, LOW);
+	leds[1].off();
+	leds[2].off();
+	leds[3].off();
 #ifdef BUTTON4
-#ifdef PWM_LED_BRIGHNESS
-	analogWrite(led4Pin, 0);
-#else
-	digitalWrite(led4Pin, LOW);
-#endif // PWM_LED_BRIGHNESS
+	leds[4].off();
 #endif // BUTTON4
 
 #if PI_REV == 10
@@ -1088,88 +1062,62 @@ void checkTaps(unsigned long nowTime){
 }
 
 ///////////
-// Calculate & update LEDs.
+// Calculate & update LEDs 1-3, including strobing of 1 & 2
+//
+// Important time intervals, in uS:
+// length of a LED strobe:
+#define strobeOnLen 3000
+// length of a LED antistrobe (a moment of darkness):
+#define strobeOffLen 50000
 // (Strobe-off intervals, in which we briefly unlight a lit LED,
 // need to be much longer than strobe-on intervals.)
-//
+
 void updateLEDs(unsigned long nowTime){
   if (playing[0]) {
     if (btn1pressed) {
-      if (nowTime - hc.downbeatTime < strobeOffLen)  // there's some bug here, the interval never gets long enough.
+      if (nowTime - hc.downbeatTime < strobeOffLen)  
       {
-        CBSET(led1State, LOW);
+				leds[1].off();
       } else {
-        CBSET(led1State, HIGH);
+				leds[1].on();
       }
     } else {
       if (nowTime - hc.downbeatTime < strobeOnLen) {
-        CBSET(led1State, HIGH);
+				leds[1].on();
       } else {
-        CBSET(led1State, LOW);
+				leds[1].off();
       }
     }
 
     if (btn2pressed) {
       if (nowTime - hc.downbeatTime < strobeOffLen) {
-        CBSET(led2State, LOW);
+				leds[2].off();
       } else {
-        CBSET(led2State, HIGH);
+				leds[2].on();
       }
     } else {
       if (nowTime - hc.downbeatTime < strobeOnLen) {
-        CBSET(led2State, HIGH);
+				leds[2].on();
       } else {
-        CBSET(led2State, LOW);
+				leds[2].off();
       }
     }
   } else {
-    CBSET(led1State, btn1pressed);
-    CBSET(led2State, btn2pressed);
-  }
-
-
-	// Here's why we use a loop variable: we can avoid calling digitalWrite() until there's an actual change.
-	// But does that really buy us anything? I profiled without this and it went a little bit faster ...
-	// TODO try completely reverting to plain booleans and profile that.
-  if (CBDIFF(led1State)) {
-    digitalWrite(led1Pin, led1State[0]);
-  }
-  if (CBDIFF(led2State)) {
-    digitalWrite(led2Pin, led2State[0]);
+		leds[1].set(btn1pressed);
+		leds[2].set(btn2pressed);
   }
 
   if (!nonstop[0]) {
     if (CBDIFF(nonstop)) {
-#ifdef PWM_LED_BRIGHNESS
-      analogWrite(nonstopLedPin, 0);
-#else
-      digitalWrite(nonstopLedPin, LOW);
-#endif
+			leds[3].off();
 
     }
   } else {  // nonstop!
-#ifdef NONSTOP_HACK
-    // ghetto PWM because the LED is too bright on this board ...
-    // blink on & off every N usec
-    if (nonstopLedPWMState) {                            // is on now
-      if (nowTime - nonstopLedPWMClock > NSLEDPWM_ON) {  // on-time expired
-        nonstopLedPWMClock += NSLEDPWM_ON;               // adj clock
-        nonstopLedPWMState = false;                      // turn off
-      }
-    } else {                                              // is off now
-      if (nowTime - nonstopLedPWMClock > NSLEDPWM_OFF) {  // off-time expired
-        nonstopLedPWMClock += NSLEDPWM_OFF;               // adj clock
-        nonstopLedPWMState = true;                        // turn on
-      }
-    }
-    digitalWrite(nonstopLedPin, nonstopLedPWMState ? HIGH : LOW);
-#elif defined(PWM_LED_BRIGHNESS)
-    // precise dimming with PWM/analogWrite
-    analogWrite(nonstopLedPin, pwmBrightness);
-#else
-		digitalWrite(nonstopLedPin, HIGH);
-#endif
+		leds[3].on();
   }
+#ifdef NONSTOP_HACK
+	leds[3].update(); // TODO: move this to some less tight loop?
+#endif
 }
 
 //////////
@@ -1349,10 +1297,6 @@ void printStats(){
       Dbg_print(':');
       Dbg_print(loopTimer);
       Dbg_print(':');
-#ifdef NONSTOP_HACK
-      //Dbg_print(nonstopLedPWMClock);  // DEBUG
-      //Dbg_print(':');  // DEBUG
-#endif
 
       if (awakePinState >= awakePinThreshold) {
         Dbg_print(playing[0] ? (decodedPlayLed[0] ? "play" : "(play)")
@@ -1478,8 +1422,6 @@ void loop() {
   // shift outer loop states:
 	PROFILE_MARK_POINT("(bufscoot");
   CBNEXT(blinkState);
-  CBNEXT(led1State);
-  CBNEXT(led2State);
   CBNEXT(nonstop);
   CBNEXT(decodedPlayLed);
   CBNEXT(playing);
@@ -1513,8 +1455,8 @@ void loop() {
 
 
   // downbeatTime is the absolute time of the start of the current pulse.
-  // if now is at least pulseLen millis beyond the previous beat, advance the beat
-  while (nowTime > (hc.downbeatTime + pulseLen)) {
+	// if now is at least a tenth of a second beyond the previous beat, advance the beat
+  while (nowTime > (hc.downbeatTime + 100000)) {
     hc.downbeatTime += hc.measureLen;
   }
 
@@ -1524,11 +1466,7 @@ void loop() {
 #ifdef BUTTON4
 	// Manage button 4 behavior: reboots, mode changes, etc.
 	if (btn4.fell()){
-#ifdef   PWM_LED_BRIGHNESS
-	analogWrite(led4Pin, pwmBrightness);
-#else 
-	digitalWrite(led4Pin, HIGH);
-#endif  // PWM_LED_BRIGHNESS
+		leds[4].on();
 		resetTimer = 0;
 	}
 	if (btn4.rose()){
@@ -1546,13 +1484,7 @@ void loop() {
 
 #else
 		// just turn off the led:
-
-#ifdef     PWM_LED_BRIGHNESS
-		analogWrite(led4Pin, 0);
-#else
-		digitalWrite(led4Pin, LOW);
-#endif     // PWM_LED_BRIGHNESS
-
+		leds[4].off();
 #endif  // MCU_RP2040
 	}
 
@@ -1584,9 +1516,6 @@ void loop() {
     loopTimer -= 8 * hc.measureLen;
     hc.downbeatTime -= 8 * hc.measureLen;
     hc.lastTapTime -= 8 * hc.measureLen;
-#ifdef NONSTOP_HACK
-    nonstopLedPWMClock -= 8 * hc.measureLen;
-#endif
   }
 }
 
