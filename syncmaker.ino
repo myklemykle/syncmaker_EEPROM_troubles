@@ -694,12 +694,13 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 	// shift inner loop state:
 	CBNEXT(inertia);
 
-	PROFILE_MARK_POINT("(imu");
+	PROFILE_MARK_START("imu");
 	imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-	PROFILE_MARK_POINT("imu)");
+	PROFILE_MARK_END("imu");
 
+	PROFILE_MARK_START("sqrt");
 	CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
-	PROFILE_MARK_POINT("sqrt");
+	PROFILE_MARK_END("sqrt");
 
 #ifdef SDEBUG
 	/* if (inertia[0] > shakeThreshold)  */
@@ -722,7 +723,7 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 	// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please! 
 	uint32_t volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by COUNT_PER_G
 
-	PROFILE_MARK_POINT("(audio");
+	PROFILE_MARK_START("audio");
 #ifdef AUDIO_RP2040
 	// send vol level to core 1:
 	if (testTone != TESTTONE_OFF) {
@@ -742,7 +743,7 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 	}
 
 #endif
-	PROFILE_MARK_POINT("audio)");
+	PROFILE_MARK_END("audio");
 
 	return volumeLevel;
 }
@@ -750,7 +751,6 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 // Not sure this even needs to be a function, but we're gonna try to change the timing so ...
 void flushMIDI(PI_MIDI m){
 	m.flushInput();
-	PROFILE_MARK_POINT("midiflush");
 }
 
 // Handle the play-start event (user pressed play button).
@@ -1347,7 +1347,7 @@ void printStats(){
 
       Dbg_println(".");
 
-			PROFILE_PRINT_DELTA();
+			PROFILE_PRINT_AVG();
 
 #ifdef SDEBUG
       // reset counters
@@ -1401,7 +1401,8 @@ void loop() {
   unsigned long loopStartTime = loopTimer_us;
 	static unsigned long lastNap = loopStartTime;
 
-	PROFILE_START_LOOP();
+	/* PROFILE_START_LOOP(); */
+	PROFILE_MARK_START("ALL");
 
 #ifdef MCU_RP2040
 	// feed kibble to watchdog
@@ -1426,13 +1427,13 @@ void loop() {
 #endif
 
   // shift outer loop states:
-	PROFILE_MARK_POINT("(bufscoot");
+	PROFILE_MARK_START("bufscoot");
   CBNEXT(blinkState);
-  CBNEXT(nonstop);
   CBNEXT(decodedPlayLed);
+  CBNEXT(nonstop);
   CBNEXT(playing);
   CBNEXT(pulseState);
-	PROFILE_MARK_POINT("bufscoot)");
+	PROFILE_MARK_END("bufscoot");
 
 #ifdef SDEBUG
   // count loop rate:
@@ -1449,12 +1450,6 @@ void loop() {
 		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
 	}
 	
-	// flush often but not obessively ...
-	if (midiFlushTimer_ms > MIDIFLUSHTIME) {
-		flushMIDI(myMidi);
-		midiFlushTimer_ms -= MIDIFLUSHTIME;
-	}
-
 #ifdef MIDITIMECODE
   mtc.frameCheck();
 #endif
@@ -1507,6 +1502,12 @@ void loop() {
 	// update circular clock
 	updateCClock(loopStartTime);
 
+	if (midiFlushTimer_ms > MIDIFLUSHTIME) {
+		// flush/ignore MIDI input (often but not obessively)
+		flushMIDI(myMidi);
+		midiFlushTimer_ms -= MIDIFLUSHTIME;
+	}
+
 	if (statsTimer_ms > STATSTIME){
 		// print debug stats if enabled
 		printStats();
@@ -1529,6 +1530,8 @@ void loop() {
     hc.downbeatTime -= 8 * hc.measureLen;
     hc.lastTapTime -= 8 * hc.measureLen;
   }
+
+	PROFILE_MARK_END("ALL");
 }
 
 
