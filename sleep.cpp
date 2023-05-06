@@ -28,7 +28,7 @@ extern bool btn1pressed, btn2pressed, btn3pressed;
 extern Bounce btn4;
 extern bool btn4pressed;
 #endif
-extern elapsedMicros awakeTimer;
+extern elapsedMillis awakeTimer_ms;
 #ifdef IMU_LSM6DSO32X
 #include "lsm6dso32x.h"
 extern LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
@@ -99,7 +99,7 @@ unsigned long powerNap(){
 	digitalWrite(Aref_enable, LOW);
 #endif
 
-	unsigned long napDuration = awakeTimer;
+	unsigned long napDuration_ms = awakeTimer_ms;
 	bool anyButtonPressed = false;
 	do {
 		// sleep N seconds or until right button wakes us
@@ -129,7 +129,7 @@ unsigned long powerNap(){
 #endif
 	} while (awakePinState < awakePinThreshold && (! anyButtonPressed));
 
-	napDuration = awakeTimer - napDuration;
+	napDuration_ms = awakeTimer_ms - napDuration_ms;
 
 #if PI_REV >= 9
 	// power up analog reference
@@ -150,11 +150,11 @@ unsigned long powerNap(){
 
 	// TODO: animate some LEDs?
 	
-	Dbg_printf("Good morning! Slept %d us\n", napDuration);
+	Dbg_printf("Good morning! Slept %d ms\n", napDuration_ms);
 
 	// LEDs will be restored on next loop.
 
-	awakeTimer = 0;
-	return napDuration;
+	awakeTimer_ms = 0;
+	return napDuration_ms;
 }
 

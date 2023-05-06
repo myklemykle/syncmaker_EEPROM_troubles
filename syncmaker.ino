@@ -163,15 +163,23 @@ const unsigned long minTapInterval = 100 * 1000;  // Ignore spurious double-taps
 #define BPM2USEC(bpm) (60000000 / bpm)              // inverse.  gives float result if passed a float!
 
 // Timers:
-elapsedMicros loopTimer;
-elapsedMicros playPinTimer;
-elapsedMicros awakeTimer;
+elapsedMicros loopTimer_us;
+elapsedMicros playPinTimer_us;
 //#define MIN_AWAKE_US 5000000 // stay awake at least 5 seconds after a powerNap.
 #define MIN_AWAKE_US 500000 // stay awake at least 5 seconds after a powerNap.
 #ifdef BUTTON4
-elapsedMillis resetTimer; // how long is reset held down?
+elapsedMillis resetTimer_ms; // how long is reset held down?
 #endif
+elapsedMillis awakeTimer_ms; // ms since boot.
 
+elapsedMillis statsTimer_ms; // how often to report stats?
+#define STATSTIME 1000 // 1hz (once per second)
+
+elapsedMillis midiFlushTimer_ms; // how often to flush MIDI input?
+#define MIDIFLUSHTIME 20 // 50hz 
+
+elapsedMillis cmdTimer_ms; // how often to check for serial commands
+#define CMDTIME 100 // 10hz is plenty, serial input is buffered.
 
 // Loop profiler macros (no-ops unless PROFILE is defined)
 #include "LoopProfiler.h"
@@ -619,8 +627,6 @@ void setup() {
   mtc.setup();
 #endif
 
-  loopTimer = 0;  // um why?
-
   CBINIT(hc.tapIntervals, 0);
 
 #ifdef TEENSY32
@@ -634,8 +640,8 @@ void setup() {
   /* mixer1.gain(0, 1); // noise1 -> amp1 */  //DEBUG
   /* mixer1.gain(1, 1); // dc1 */             //DEBUG
 
-  //https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
   // Initialize the DAC output pins
+  // https://forum.pjrc.com/threads/25519-Noise-on-DAC-(A14)-output-Teensy-3-1
   analogWriteResolution(12);
   analogWrite(A14, 0);    //Set the DAC output to 0.
   DAC0_C0 &= 0b10111111;  //uses 1.2V reference for DAC instead of 3.3V
@@ -825,8 +831,8 @@ void decodePlayState(unsigned long nowTime){
     // set PLAYING.
     CBSET(playing, true);
     Dbg_println("START"); // TODO move to event?
-    decodedPlayOffTime = playPinTimer;
-    playPinTimer = 0;
+    decodedPlayOffTime = playPinTimer_us;
+    playPinTimer_us = 0;
     /* Dg_print("play led off for "); */
     /* Dbg_print(decodedPlayOffTime); */
     /* Dbg_print(" during meaure of "); */
@@ -836,8 +842,8 @@ void decodePlayState(unsigned long nowTime){
 
   // otherwise, if the play light just unlit,
   else if (CBFELL(decodedPlayLed)) {
-    decodedPlayOnTime = playPinTimer;
-    playPinTimer = 0;
+    decodedPlayOnTime = playPinTimer_us;
+    playPinTimer_us = 0;
     /* Dbg_print("play led on for "); */
     /* Dbg_print(decodedPlayOnTime); */
     /* Dbg_print(" during meaure of "); */
@@ -869,21 +875,21 @@ void decodePlayState(unsigned long nowTime){
       case MGRP_AUTO:
       case MGRP_A:
         // has to be off for more than 8 pulses/16 beats
-        if (playPinTimer > (81 * hc.measureLen) / 10) {
+        if (playPinTimer_us > (81 * hc.measureLen) / 10) {
           CBSET(playing, false);
           Dbg_println("STOP grp A");
         }
         break;
       case MGRP_B:
         // has to be off for a bit more than 2 pulses/4 beats
-        if (playPinTimer > (21 * hc.measureLen) / 10) {
+        if (playPinTimer_us > (21 * hc.measureLen) / 10) {
           CBSET(playing, false);
           Dbg_println("STOP grp B");
         }
         break;
       case MGRP_C:
         // has to be off for more than the length of a wink ... 100ms?
-        if (playPinTimer > (100 * 1000)) {
+        if (playPinTimer_us > (100 * 1000)) {
           CBSET(playing, false);
           Dbg_println("STOP grp C");
         }
@@ -1293,9 +1299,9 @@ void updateCClock(unsigned long nowTime){
 // Print various benchmarks/stats/debuggery on one line.
 void printStats(){
     if (showStats) {
-      Dbg_print(awakeTimer);
+      Dbg_print(awakeTimer_ms);
       Dbg_print(':');
-      Dbg_print(loopTimer);
+      Dbg_print(loopTimer_us);
       Dbg_print(':');
 
       if (awakePinState >= awakePinThreshold) {
@@ -1392,9 +1398,8 @@ void loop1(){
 
 void loop() {
 
-  unsigned long nowTime = loopTimer;
-	static unsigned long lastNap = nowTime;
-
+  unsigned long loopStartTime = loopTimer_us;
+	static unsigned long lastNap = loopStartTime;
 
 	PROFILE_START_LOOP();
 
@@ -1403,17 +1408,18 @@ void loop() {
 	rp2040.wdt_reset();
 #endif
 
-  awakePinState = analogRead(PO_wake);
 
+	// check if PO has gone to sleep:
+  awakePinState = analogRead(PO_wake);
 #ifdef TAKE_NAPS
   // go to sleep if the PO_wake pin is low:
 	//if (btn1pressed) { // DEBUG
-	/* TODO: This ain't sleeping ever. Why not? did i calculate MIN_AWAKE wrong? */
-  if ((awakePinState < awakePinThreshold) && ((nowTime - lastNap) > MIN_AWAKE_US))  {
+	/* TODO: This ain't sleeping ever. Why not? did i calculate MIN_AWAKE wrong? do i understand static vars? */
+  if ((awakePinState < awakePinThreshold) && ((loopStartTime - lastNap) > MIN_AWAKE_US))  {
 		Dbg_println("zzzzz");
     unsigned long napDuration = powerNap();
     //unsigned long napDuration = 666 // DEBUG 
-		lastNap = loopTimer; // note the time, so we don't sleep again too soon
+		lastNap = loopTimer_us; // note the time, so we don't sleep again too soon
 		Dbg_printf("slept %d us.\n", napDuration);
     return;
   }
@@ -1441,33 +1447,35 @@ void loop() {
     imu_ready = false;
     // IMU inner loop runs once per IMU interrupt
 		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
-		// Could reduce the rate of this:
-		flushMIDI(myMidi);
 	}
 	
+	// flush often but not obessively ...
+	if (midiFlushTimer_ms > MIDIFLUSHTIME) {
+		flushMIDI(myMidi);
+		midiFlushTimer_ms -= MIDIFLUSHTIME;
+	}
 
 #ifdef MIDITIMECODE
   mtc.frameCheck();
 #endif
 
   // Decode the state of PO Play from the LED signal:
-	decodePlayState(nowTime);
+	decodePlayState(loopStartTime);
 
-
-  // downbeatTime is the absolute time of the start of the current pulse.
-	// if now is at least a tenth of a second beyond the previous beat, advance the beat
-  while (nowTime > (hc.downbeatTime + 100000)) {
+  // downbeatTime is the absolute time of the start of either the previous or next beat (rising edge of sync pulse).
+	// if now is at least a tenth of a second beyond the previous beat, advance it to the next beat.
+  while (loopStartTime > (hc.downbeatTime + 100000)) {
     hc.downbeatTime += hc.measureLen;
   }
 
 	// check buttons and taps for beat changes:
-	checkTaps(nowTime);
+	checkTaps(loopStartTime);
 
 #ifdef BUTTON4
 	// Manage button 4 behavior: reboots, mode changes, etc.
 	if (btn4.fell()){
 		leds[4].on();
-		resetTimer = 0;
+		resetTimer_ms = 0;
 	}
 	if (btn4.rose()){
 #ifdef   MCU_RP2040
@@ -1475,7 +1483,7 @@ void loop() {
 #endif  // MCU_RP2040
 	}
 	// if reset is held down for 3 secs, boot in USB bootloader mode
-	if (btn4pressed && (resetTimer > 3000)) {
+	if (btn4pressed && (resetTimer_ms > 3000)) {
 
 #ifdef   MCU_RP2040
 		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
@@ -1491,29 +1499,33 @@ void loop() {
 #endif// BUTTON4
 
 	// update LEDs
-	updateLEDs(nowTime);
+	updateLEDs(loopStartTime);
 
 	// update sync pulse
-	updateSync(nowTime);
+	updateSync(loopStartTime);
 
 	// update circular clock
-	updateCClock(nowTime);
+	updateCClock(loopStartTime);
 
-  if (CBROSE(pulseState)) {
+	if (statsTimer_ms > STATSTIME){
+		// print debug stats if enabled
 		printStats();
+		statsTimer_ms -= STATSTIME;
+	}
 
-		// Read serial commands when pulse goes high:
+	if (cmdTimer_ms > CMDTIME){
+		// read/handle serial commands
 		cmd_update();
-  }
+		cmdTimer_ms -= CMDTIME;
+	}
 
   // Protect against timer overflows
   // We could do this only every 1000 (or more!) measures,
-  // but we choose every 8,
-  //	so that if it causes any audible bug, it'll be heard often!
-	// TODO: is this really necessary? for unsigned ints?  Shouldn't be. Test by initializing loopTimer close to overflow ....
-  if (loopTimer > 9 * hc.measureLen) {
+  // but we choose every 8,	so that if it causes any audible bug, it'll be heard often!
+	// Basic testing suggests overflows hang the clock somehow ... maybe that's curable, but this is simple & works.
+  if (loopTimer_us > 9 * hc.measureLen) {
     //Dbg_println("PROTECTION!");//DEBUG
-    loopTimer -= 8 * hc.measureLen;
+    loopTimer_us -= 8 * hc.measureLen;
     hc.downbeatTime -= 8 * hc.measureLen;
     hc.lastTapTime -= 8 * hc.measureLen;
   }
