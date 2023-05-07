@@ -95,27 +95,57 @@ bool LSM6DSO32X_IMU::_accel_on(){
 	uint8_t buf;
 
   // // accel data rate & resolution: CTRL1_XL
-  // if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
-	// not getting valid result?
-  Dbg_println(buf);
+  if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
+  Dbg_printf("read CTRL1_XL: %x\n", buf);
 
-	// 10xx: 4g scale
-	// xx0x: lpf disable
-	// xxx0: ununsed
-	buf = 0b00001000;
+	// CTRL1_XL:
+	// 4-7: ODR
+	// 2-3: resolution
+	// 1: enable/disable LPF (0 = disabled).
+	// 0: always 0.
+	//
+	//
+	// NOTE: I'm getting some weird ass results that don't match the datasheet
+	// for the ODR setting bits in this register:
+	// 00 gets me 16k/g,
+	// 01 gets me 2k/g
+	// 10 gets me 8k/g
+	// 11 gets me 4k/g
+	
+#if IMU_COUNT_PER_G == 4096
+	// datasheet says 10 here, but imu seems to want 11
+	bitSet(buf, 3);
+	bitSet(buf, 2);
+#elif IMU_COUNT_PER_G == 8092
+	// datasheet says 11, but imu seems to want 10
+	bitSet(buf, 3);
+	bitClear(buf, 2);
+#endif
 
 #ifdef IMU_6_666KHZ
-  // rate = 6.66khz, res = +-8g
-	buf = buf | 0b10100000;
-
+  // 1010
+	bitSet(buf, 7);
+	bitClear(buf, 6);
+	bitSet(buf, 5);
+	bitClear(buf, 4);
 # elif defined(IMU_3_333KHZ)
-  // rate = 3.33khz, res = +-8g
-	buf = buf | 0b10010000;
-#else
-  // rate = 1.66khz, res = +-8g
-	buf = buf | 0b10000000;
+  // 1001
+	bitSet(buf, 7);
+	bitClear(buf, 6);
+	bitClear(buf, 5);
+	bitSet(buf, 4);
+#elif defined(IMU_1_666KHZ)
+  // 1000
+	bitSet(buf, 7);
+	bitClear(buf, 6);
+	bitClear(buf, 5);
+	bitClear(buf, 4);
 #endif
+
   if (!write_reg(chip_addr, LSM6DSO32X_CTRL1_XL, buf)) return false;
+  Dbg_printf("wrote CTRL1_XL: %x\n", buf);
+  if (!read_regs(chip_addr, LSM6DSO32X_CTRL1_XL, &buf, 1)) return false;
+  Dbg_printf("read CTRL1_XL: %x\n", buf);
 	return true;
 }
 
