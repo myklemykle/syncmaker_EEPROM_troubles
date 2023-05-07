@@ -12,7 +12,6 @@
 
 class LSM6DSO32X_IMU {
 public:
-	static const int countPerG = 4096;
 	bool begin();
 	bool sleep();
 	bool wake();
@@ -22,7 +21,12 @@ public:
 	// void readMotionSensor(float& ax, float& ay, float& az, float& gx, float& gy, float& gz);
 
 	// TODO: if we're not going to use the gyro data, 
-	// don't waste time fetching it.  Add method to just get accel data.
+	// don't waste time fetching it?  Add method to just get accel data.
+	
+	// TODO: why are these bool methods static?
+	static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num);
+	static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val);
+	static bool set_reg(uint8_t selector, uint8_t addr, uint8_t val);
 private:
 	void update();
 
@@ -30,10 +34,6 @@ private:
 	bool LSM6DSO32X_read(int16_t *data);
 	bool LSM6DSO32X_sleep();
 	bool LSM6DSO32X_wake();
-	// TODO: why are these bool methods static?
-	static bool read_regs(uint8_t selector, uint8_t addr, uint8_t *data, uint8_t num);
-	static bool write_reg(uint8_t selector, uint8_t addr, uint8_t val);
-	static bool set_reg(uint8_t selector, uint8_t addr, uint8_t val);
 
 	bool _gyro_off();
 	bool _gyro_on();

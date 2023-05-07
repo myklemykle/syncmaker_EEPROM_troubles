@@ -31,6 +31,14 @@ extern RP2040Audio audio;
 
 #define strmatch(a, b) ( strcmp(a, b) == 0 )
 
+// note: using this macro requires the "response" variable;
+#define respond(str) strlcpy(response, str, MyCommandParser::MAX_RESPONSE_SIZE)
+#define respondf(...) snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, __VA_ARGS__)
+#define syntaxErr(str) snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "syntax err: %s\n", str)
+
+// these are the args for commands:
+#define CMDARGS MyCommandParser::Argument *args, char *response
+
 // void cmd_test(MyCommandParser::Argument *args, char *response) {
 //   Serial.print("string: "); Serial.println(args[0].asString);
 //   Serial.print("double: "); Serial.println(args[1].asDouble);
@@ -62,16 +70,31 @@ extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 M
 #include "sleep.h"
 
 void cmd_sleep(MyCommandParser::Argument *args, char *response) {
-	// imu.sleep();
-	// strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
-	
-	powerNap();
-	strlcpy(response, "took a nap", MyCommandParser::MAX_RESPONSE_SIZE);
+	if (strmatch(args[0].asString, "imu")){
+		imu.sleep();
+		// strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("imu asleep");
+	} else if (strmatch(args[0].asString, "all")){
+		powerNap();
+		//strlcpy(response, "took a nap", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("took a nap");
+	} else {
+		syntaxErr("sleep [all|imu]");
+		// strlcpy(response, "syntax error: sleep [all|imu]", MyCommandParser::MAX_RESPONSE_SIZE);
+		return;
+	}
 }
 
 void cmd_wake(MyCommandParser::Argument *args, char *response) {
-	imu.wake();
-	strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
+	if (strmatch(args[0].asString, "imu")){
+		imu.wake();
+		// strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("woke imu");
+	} else {
+		syntaxErr("wake [all|imu]");
+		// strlcpy(response, "syntax error: sleep [all|imu]", MyCommandParser::MAX_RESPONSE_SIZE);
+		return;
+	}
 }
 
 // print out the current settings ...
@@ -273,18 +296,20 @@ void cmd_clock(MyCommandParser::Argument *args, char *response) {
 	}
 }
 
-// this more general approach isn't compatible with commandParser's arg handling ...
-//
-// void cmd_test(MyCommandParser::Argument *args, char *response) {
-// 	if (strmatch(args[0].asString, "tone")){
-// 		cmd_test_tone(args, response);
-// 	// } else if (strmatch(args[0].asString, "level")){
-// 	// 	cmd_test_level(args, response);
-// 	} else {
-// 		strlcpy(response, "error: bad test", MyCommandParser::MAX_RESPONSE_SIZE);
-// 	}
-// }
+void cmd_imu_get(CMDARGS){
+	uint8_t buf;
+	unsigned long addr = args[0].asUInt64;
+	imu.read_regs(SPI_cs, addr, &buf, 1);
+	respondf("addr %x val %x", addr, buf);
+}
 
+void cmd_imu_set(CMDARGS){
+	uint8_t buf;
+	unsigned long addr = args[0].asUInt64;
+	unsigned long val  = args[1].asUInt64;
+	imu.set_reg(SPI_cs, addr, val);
+	respondf("set addr %x to %x", addr, val);
+}
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
@@ -298,10 +323,13 @@ void cmd_setup() {
   parser.registerCommand("testlevel", "u", &cmd_testlevel);
   parser.registerCommand("tl", "d", &cmd_testlevel);
 
-	parser.registerCommand("sleep","",&cmd_sleep);
+	parser.registerCommand("sleep","s",&cmd_sleep);
 	parser.registerCommand("wake","",&cmd_wake);
 
 	parser.registerCommand("settings","",&cmd_dump_settings);
+
+	parser.registerCommand("imuget","u",&cmd_imu_get);
+	parser.registerCommand("imuset","uu",&cmd_imu_set);
 }
 
 void cmd_update() {
