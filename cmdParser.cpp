@@ -36,24 +36,24 @@ extern RP2040Audio audio;
 #define respondf(...) snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, __VA_ARGS__)
 #define syntaxErr(str) snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "syntax err: %s\n", str)
 
-// these are the args for commands:
+// these are the standard args for command functions:
 #define CMDARGS MyCommandParser::Argument *args, char *response
 
-// void cmd_test(MyCommandParser::Argument *args, char *response) {
+// void cmd_test(CMDARGS) {
 //   Serial.print("string: "); Serial.println(args[0].asString);
 //   Serial.print("double: "); Serial.println(args[1].asDouble);
 //   Serial.print("int64: "); Serial.println(args[2].asInt64);
 //   Serial.print("uint64: "); Serial.println(args[3].asUInt64);
-//   strlcpy(response, "success", MyCommandParser::MAX_RESPONSE_SIZE);
+//   respond("success");
 // }
 
-void cmd_stats(MyCommandParser::Argument *args, char *response) {
+void cmd_stats(CMDARGS) {
 	if (showStats) {
 		showStats = false;
-		strlcpy(response, "stats off", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("stats off");
 	} else {
 		showStats = true;
-		strlcpy(response, "stats on", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("stats on");
 	}
 }
 
@@ -69,36 +69,32 @@ extern MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 M
 #endif
 #include "sleep.h"
 
-void cmd_sleep(MyCommandParser::Argument *args, char *response) {
+void cmd_sleep(CMDARGS) {
 	if (strmatch(args[0].asString, "imu")){
 		imu.sleep();
-		// strlcpy(response, "imu asleep", MyCommandParser::MAX_RESPONSE_SIZE);
 		respond("imu asleep");
 	} else if (strmatch(args[0].asString, "all")){
 		powerNap();
-		//strlcpy(response, "took a nap", MyCommandParser::MAX_RESPONSE_SIZE);
 		respond("took a nap");
 	} else {
 		syntaxErr("sleep [all|imu]");
-		// strlcpy(response, "syntax error: sleep [all|imu]", MyCommandParser::MAX_RESPONSE_SIZE);
 		return;
 	}
 }
 
-void cmd_wake(MyCommandParser::Argument *args, char *response) {
+void cmd_wake(CMDARGS) {
 	if (strmatch(args[0].asString, "imu")){
 		imu.wake();
-		// strlcpy(response, "imu awake", MyCommandParser::MAX_RESPONSE_SIZE);
+		// respond("imu awake");
 		respond("woke imu");
 	} else {
 		syntaxErr("wake [all|imu]");
-		// strlcpy(response, "syntax error: sleep [all|imu]", MyCommandParser::MAX_RESPONSE_SIZE);
 		return;
 	}
 }
 
 // print out the current settings ...
-void cmd_dump_settings(MyCommandParser::Argument *args, char *response) {
+void cmd_dump_settings(CMDARGS) {
 	_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
 }
 
@@ -107,7 +103,7 @@ void cmd_dump_settings(MyCommandParser::Argument *args, char *response) {
 // set tip1|tip2|ring1|ring2 off/midi/sync/shake/noise/sine/square
 // 
 // extern const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
-void cmd_set(MyCommandParser::Argument *args, char *response) {
+void cmd_set(CMDARGS) {
 	byte chan;
 	
 	// "set all"
@@ -115,14 +111,14 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 		if (strmatch(args[1].asString, "save")){
 			// save settings object to eeprom
 			_settings.put();
-			strlcpy(response, "settings saved", MyCommandParser::MAX_RESPONSE_SIZE);
+			respond("settings saved");
 		} else if (strmatch(args[1].asString, "default")){
 			// set all four outs to their default config
 			configOutputs(tip1, OUTMODE_SYNC, OUTMODE_SHAKE);
 			configOutputs(tip2, OUTMODE_SYNC, OUTMODE_SHAKE);
 			cmd_dump_settings(args, response);
 		} else {
-			strlcpy(response, "syntax error: set all [save|default]", MyCommandParser::MAX_RESPONSE_SIZE);
+			syntaxErr("set all [save|default]");
 		}
 		return;
 	}
@@ -141,7 +137,7 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	else if (strmatch(args[0].asString, "ring2")){
 		chan = OUTCHANNEL_RING2;
 	} else {
-		strlcpy(response, "error: bad channel", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("error: bad channel");
 		return;
 	}
 
@@ -166,7 +162,7 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	
 
 	if (mode == -1) { // not found
-		strlcpy(response, "error: bad mode", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("error: bad mode");
 		return;
 	}
 	
@@ -176,7 +172,7 @@ void cmd_set(MyCommandParser::Argument *args, char *response) {
 	configOutput(outChannelPins[chan], mode);
 	// _settings.put();
 
-	strlcpy(response, "ok", MyCommandParser::MAX_RESPONSE_SIZE);
+	respond("ok");
 }
 
 
@@ -184,7 +180,7 @@ const char* testtoneNames[TESTTONE_COUNT] = TESTTONE_NAMES ;
 extern char testTone;
 
 
-//void _test_tone(MyCommandParser::Argument *args, char *response) {
+//void _test_tone(CMDARGS) {
 void _test_tone(char *type, char *response) {
 	for(int i=0;i<TESTTONE_COUNT;i++) {
 		if (strmatch(type, testtoneNames[i])){
@@ -229,28 +225,28 @@ void _test_tone(char *type, char *response) {
 	}
 
 	// not found
-	strlcpy(response, "error: bad test tone", MyCommandParser::MAX_RESPONSE_SIZE);
+	respond("error: bad test tone");
 }
 
-void cmd_test_tone(MyCommandParser::Argument *args, char *response) {
+void cmd_test_tone(CMDARGS) {
 	_test_tone(args[1].asString, response);
 }
 
-void cmd_testtone(MyCommandParser::Argument *args, char *response) {
+void cmd_testtone(CMDARGS) {
 	_test_tone(args[0].asString, response);
 }
 
 extern float testLevel;
 
-void cmd_testlevel(MyCommandParser::Argument *args, char *response) {
+void cmd_testlevel(CMDARGS) {
 	double lvl = args[0].asDouble;
 	if ( lvl < 0 || lvl > 1000) {
-		strlcpy(response, "error: bad test level", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("error: bad test level");
 		return;
 	}
 
 	testLevel = lvl / 100.0;
-	snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "level %f/%f\n", lvl, testLevel);
+	respondf("level %f/%f\n", lvl, testLevel);
 }
 
 #define CLOCK_SELECT_SYS 0x6
@@ -275,24 +271,24 @@ void clock_pin_off(){
 	// disconnect pin 25
     gpio_set_function(25, GPIO_FUNC_NULL);
 }
-void cmd_clock(MyCommandParser::Argument *args, char *response) {
+void cmd_clock(CMDARGS){
 	if (strmatch(args[0].asString, "freq")) {
 		// clk_sys speed as reported by SDK
-		snprintf(response, MyCommandParser::MAX_RESPONSE_SIZE, "clk_sys %d\n", rp2040.f_cpu());
+		respondf("clk_sys %d\n", rp2040.f_cpu());
 
 	} else if ( (strmatch(args[0].asString, "on") ||
 				strmatch(args[0].asString, "sys")) )
 	{
 		clock_pin_on(CLOCK_SELECT_SYS);
-		strlcpy(response, "clock pin sys", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("clock pin sys");
 	} else if (strmatch(args[0].asString, "xosc")){
 		clock_pin_on(CLOCK_SELECT_XOSC);
-		strlcpy(response, "clock pin xosc", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("clock pin xosc");
 	} else if (strmatch(args[0].asString, "off")){
 		clock_pin_off();
-		strlcpy(response, "clock pin off", MyCommandParser::MAX_RESPONSE_SIZE);
+		respond("clock pin off");
 	} else {
-		strlcpy(response, "syntax err: clock [on|off]", MyCommandParser::MAX_RESPONSE_SIZE);
+		syntaxErr("clock [on|off|sys|xosc]");
 	}
 }
 
