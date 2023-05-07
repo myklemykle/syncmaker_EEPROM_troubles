@@ -33,7 +33,6 @@ class LoopProfiler {
 		void markEnd(char *pName);
 		void printRaw();
 		void printAverage();
-		void printDelta();
 };
 
 #ifdef PROFILE
@@ -48,7 +47,6 @@ static LoopProfiler __profile;
 #define PROFILE_MARK_END(label)  __profile.markEnd(label)
 #define PROFILE_PRINT_RAW()  __profile.printRaw()
 #define PROFILE_PRINT_AVG()  __profile.printAverage()
-#define PROFILE_PRINT_DELTA()  __profile.printDelta()
 
 #else // !PROFILE 
 
@@ -59,7 +57,6 @@ static LoopProfiler __profile;
 #define PROFILE_MARK_END(label)
 #define PROFILE_PRINT_RAW()  
 #define PROFILE_PRINT_AVG() 
-#define PROFILE_PRINT_DELTA()
 
 #endif //PROFILE
 
