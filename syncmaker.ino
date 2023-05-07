@@ -67,18 +67,17 @@ LSM6DSO32X_IMU imu;  // STMicro IMU used from v6 onward
 MotionSense imu;  // on EVT1, rev2 & rev3 & evt4 the IMU is an ICM42605 MEMS acc/gyro chip
 #endif
 
-#define COUNT_PER_G 4096                    // accelerometer units
-#define COUNT_PER_DEG_PER_SEC_PER_COUNT 16  // gyro units
-//const int shakeThreshold = (COUNT_PER_G * 100) / 65 ; 			// 0.65 * COUNT_PER_G
-const int shakeThreshold = (COUNT_PER_G * 100) / 80;  // 0.85 * COUNT_PER_G ... a little less sensitive
-const int tapThreshold = 2 * COUNT_PER_G;
+//const int shakeThreshold = (IMU_COUNT_PER_G * 100) / 65 ; 			// 0.65 * IMU_COUNT_PER_G
+const int shakeThreshold = (IMU_COUNT_PER_G * 100) / 80;  // 0.85 * IMU_COUNT_PER_G ... a little less sensitive
+const int tapThreshold = 2 * IMU_COUNT_PER_G;
 
 CircularBuffer<long, 3> inertia;
 // shaken should be the start of sound moment,
 #define SHAKEN (CBROSETHRU(inertia, shakeThreshold))
-// but try putting tapped at the apex-G moment; it may have better feel.
 //#define TAPPED (CBROSETHRU(inertia, tapThreshold))
+// try putting tapped at the apex-G moment; it may have better feel:
 #define TAPPED ((inertia[0] > tapThreshold) && (inertia[0] < inertia[1]) && (inertia[1] >= inertia[2])) // when Gs just starting to drop
+// TODO: decide if there's a difference? A/B testing?
 
 
 #ifdef TEENSY32
@@ -709,8 +708,8 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 
 	// This funny formula gives a float value for volume:
 	// it's the difference between momentary intertia and a minimum inertial threshhold (shakeThreshold),
-	// both of which are scaled to Gs at the configured resolution of the IMU (COUNT_PER_G),
-	// then divided by 3gs (/3.0 * COUNT_PER_G) , a volume-attenuating coefficient that I apparently found in my ass.
+	// both of which are scaled to Gs at the configured resolution of the IMU (IMU_COUNT_PER_G),
+	// then divided by 3gs (/3.0 * IMU_COUNT_PER_G) , a volume-attenuating coefficient that I apparently found in my ass.
 
 	// The result can't go below 0, but what's the max?
 	// If the IMU is sensitive to 8gs, and the threshhold is 0.8 gs,
@@ -719,19 +718,19 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 	// so that could be an ideal threshhold.)
 	// (I got to this formula through tweaking and listening, but it's kinda obscure.)
 
-	//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * COUNT_PER_G), 0.0); // always 0 or more
-	// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * COUNT_PER_G), 0.0); // more loud please! 
-	uint32_t volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by COUNT_PER_G
+	//volumeLevel = max((inertia[0] - shakeThreshold) / (3.0 * IMU_COUNT_PER_G), 0.0); // always 0 or more
+	// volumeLevel = max((inertia[0] - shakeThreshold) / (1.0 * IMU_COUNT_PER_G), 0.0); // more loud please! 
+	uint32_t volumeLevel = max((inertia[0] - shakeThreshold)/ 1 , 0.0); // int version: multiplied by IMU_COUNT_PER_G
 
 	PROFILE_MARK_START("audio");
 #ifdef AUDIO_RP2040
 	// send vol level to core 1:
 	if (testTone != TESTTONE_OFF) {
 		rp2040.fifo.push_nb((uint32_t)(testLevel * (float)WAV_PWM_RANGE)); 
-		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / COUNT_PER_G)); //DEBUG: level adjusts with rotation
+		//rp2040.fifo.push_nb(min(WAV_PWM_RANGE, az * WAV_PWM_RANGE / IMU_COUNT_PER_G)); //DEBUG: level adjusts with rotation
 	} else {
 		//rp2040.fifo.push_nb((volumeLevel * WAV_PWM_RANGE));  // core1 saves this to iVolumeLevel
-		rp2040.fifo.push_nb((volumeLevel * WAV_PWM_RANGE / COUNT_PER_G));  // int version: divided by COUNT_PER_G
+		rp2040.fifo.push_nb((volumeLevel * WAV_PWM_RANGE / IMU_COUNT_PER_G));  // int version: divided by IMU_COUNT_PER_G
 	}
 #elif defined(AUDIO_TEENSY)
 	// use the inertia (minus gravity) to set the volume of the noise generator
@@ -739,7 +738,7 @@ uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
 		amp1.gain(testLevel); // for testing
 	} else {
 		//amp1.gain(volumeLevel );
-		amp1.gain((1.0 * volumeLevel) / COUNT_PER_G); // converted to float, divided by COUNT_PER_G
+		amp1.gain((1.0 * volumeLevel) / IMU_COUNT_PER_G); // converted to float, divided by IMU_COUNT_PER_G
 	}
 
 #endif
@@ -1074,7 +1073,7 @@ void checkTaps(unsigned long nowTime){
 // length of a LED strobe:
 #define strobeOnLen 3000
 // length of a LED antistrobe (a moment of darkness):
-#define strobeOffLen 50000
+#define strobeOffLen 25000
 // (Strobe-off intervals, in which we briefly unlight a lit LED,
 // need to be much longer than strobe-on intervals.)
 
@@ -1433,6 +1432,8 @@ void loop() {
   CBNEXT(nonstop);
   CBNEXT(playing);
   CBNEXT(pulseState);
+	// I'm really thinking this should happen on every loop not every IMU, but i'm not fixing what's not broken (yet)
+	/* CBNEXT(inertia); */
 	PROFILE_MARK_END("bufscoot");
 
 #ifdef SDEBUG

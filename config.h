@@ -94,10 +94,11 @@
 
 #if PI_REV >= 6 		/* RP2040 versions */
 #define MCU_RP2040
-#define IMU_LSM6DSO32X /* imu from STMicro */
 #define SPIPORT SPI1   /* the default SPI device name, from RP2040's SPI.h */
-#define IMU_1_666KHZ  // /* cheap-ass imu update rate, while i hunt for cycles ... */
-//#define IMU_3_333KHZ  /* preferred imu update rate */
+#define IMU_LSM6DSO32X /* imu from STMicro */
+//#define IMU_1_666KHZ  // /* cheap-ass imu update rate, while i hunt for cycles ... */
+#define IMU_3_333KHZ  /* preferred imu update rate */
+#define IMU_COUNT_PER_G 4096 /* accelerometer scaling */
 #define AUDIO_RP2040
 #define MIDI_RP2040
 #define SERIAL1_UART
