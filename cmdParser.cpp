@@ -14,7 +14,8 @@
 #endif
 
 //typedef CommandParser<16,4,10,32,64> MyCommandParser; //default vals
-typedef CommandParser<16,4,10,32,128> MyCommandParser; // longer responses
+//typedef CommandParser<16,4,10,32,128> MyCommandParser; // longer responses
+typedef CommandParser<16,4,10,32,1024> MyCommandParser; // support hex dumps
 
 MyCommandParser parser;
 
@@ -105,50 +106,15 @@ void cmd_dump_settings(CMDARGS) {
 // extern const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 void cmd_set(CMDARGS) {
 	byte chan;
-	
-	// "set all"
-	if (strmatch(args[0].asString, "all")){
-		if (strmatch(args[1].asString, "save")){
-			// save settings object to eeprom
-			_settings.put();
-			respond("settings saved");
-		} else if (strmatch(args[1].asString, "default")){
-			// set all four outs to their default config
-			configOutputs(tip1, OUTMODE_SYNC, OUTMODE_SHAKE);
-			configOutputs(tip2, OUTMODE_SYNC, OUTMODE_SHAKE);
-			cmd_dump_settings(args, response);
-		} else {
-			syntaxErr("set all [save|default]");
-		}
-		return;
-	}
-
-	// "set [tip|ring][1|2]"
 	char mode = -1;
-	if (strmatch(args[0].asString, "tip1")){
-		chan = OUTCHANNEL_TIP1;
-	}
-	else if (strmatch(args[0].asString, "ring1")){
-		chan = OUTCHANNEL_RING1;
-	}
-	else if (strmatch(args[0].asString, "tip2")){
-		chan = OUTCHANNEL_TIP2;
-	}
-	else if (strmatch(args[0].asString, "ring2")){
-		chan = OUTCHANNEL_RING2;
-	} else {
-		respond("error: bad channel");
-		return;
-	}
-
 	
+	// parse mode
 	for (int i=0; i<OUTMODE_COUNT; i++){
 		if (strmatch(args[1].asString, Settings::outmodeNames[i])){
 			mode = i;
 			break;
 		}
 	}
-
 	// some synonyms:
 	if (strmatch(args[1].asString, "midi")){
 		mode = OUTMODE_MIDI;
@@ -159,16 +125,50 @@ void cmd_set(CMDARGS) {
 	else if (strmatch(args[1].asString, "lo")){
 		mode = OUTMODE_LOW;
 	} 
-	
 
-	if (mode == -1) { // not found
-		respond("error: bad mode");
+	// parse channel
+	//
+	if (strmatch(args[0].asString, "all")){
+		// "set all"
+		if (strmatch(args[1].asString, "save")){
+			// save channel settings to eeprom
+			_settings.put();
+			respond("settings saved");
+		} else if (strmatch(args[1].asString, "default")){
+			// set all four channels to their default modes
+			configOutputs(tip1, OUTMODE_SYNC, OUTMODE_SHAKE);
+			configOutputs(tip2, OUTMODE_SYNC, OUTMODE_SHAKE);
+			cmd_dump_settings(args, response);
+		} else if (mode != -1) { // other valid mode
+			// change all channels to mode
+			configOutputs(tip1, mode, mode);
+			configOutputs(tip2, mode, mode);
+			cmd_dump_settings(args, response);
+			return;
+		} else {
+			syntaxErr("set all [save|default|(mode)]");
+			return;
+		}
+	}
+	// "set [tip|ring][1|2]"
+	else if (strmatch(args[0].asString, "tip1")){
+		chan = OUTCHANNEL_TIP1;
+	}
+	else if (strmatch(args[0].asString, "ring1")){
+		chan = OUTCHANNEL_RING1;
+	}
+	else if (strmatch(args[0].asString, "tip2")){
+		chan = OUTCHANNEL_TIP2;
+	}
+	else if (strmatch(args[0].asString, "ring2")){
+		chan = OUTCHANNEL_RING2;
+
+	} else {
+		respond("error: bad channel");
 		return;
 	}
 	
-	// update the settings:
-	// _settings.s.outs[chan] = mode;
-	// do the actual change:
+	// change one channel to mode
 	configOutput(outChannelPins[chan], mode);
 	// _settings.put();
 
@@ -299,6 +299,34 @@ void cmd_imu_get(CMDARGS){
 	respondf("addr %x val %x", addr, buf);
 }
 
+#define IMU_SPI_BUFLEN 256
+void cmd_imu_getn(CMDARGS){
+	uint8_t buf[IMU_SPI_BUFLEN];
+	unsigned long addr = args[0].asUInt64;
+	unsigned long c = args[1].asUInt64;
+	if (c > IMU_SPI_BUFLEN){
+		respond("error: max count is #IMU_SPI_BUFLEN");
+		return;
+	}
+
+	// hmm whats' happening ...
+	int cnt = c;
+	imu.read_regs(SPI_cs, addr, buf, cnt);
+
+	int rowcnt = 8;
+	char *cursor = response;
+	for (int i = 0; i<c; i++){
+		snprintf(cursor, 4, "%2x ", buf[i]);
+		cursor += 3;
+		rowcnt--;
+		if (rowcnt == 0){
+			snprintf(cursor, 2, "\n");
+			cursor++;
+			rowcnt = 8;
+		}
+	}
+}
+
 void cmd_imu_set(CMDARGS){
 	uint8_t buf;
 	unsigned long addr = args[0].asUInt64;
@@ -306,6 +334,20 @@ void cmd_imu_set(CMDARGS){
 	imu.set_reg(SPI_cs, addr, val);
 	respondf("set addr %x to %x", addr, val);
 }
+
+// // dump all registers of the LSM IMU
+// void cmd_imu_dump(CMDARGS){
+// 	uint8_t buf[IMU_SPI_BUFLEN];
+// 	unsigned long addr = args[0].asUInt64;
+// 	unsigned long cnt = args[1].asUInt64;
+// 	if (cnt > IMU_SPI_BUFLEN){
+// 		respond("error: max count is #IMU_SPI_BUFLEN");
+// 		return;
+// 	}
+//
+// 	imu.read_regs(SPI_cs, addr, &buf, cnt);
+// 	respondf("addr %x val %x", addr, buf);
+// }
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
@@ -325,6 +367,8 @@ void cmd_setup() {
 	parser.registerCommand("settings","",&cmd_dump_settings);
 
 	parser.registerCommand("imuget","u",&cmd_imu_get);
+	parser.registerCommand("imugetn","uu",&cmd_imu_getn);
+	// parser.registerCommand("imudump","",&cmd_imu_dump);
 	parser.registerCommand("imuset","uu",&cmd_imu_set);
 }
 
