@@ -516,7 +516,7 @@ void setup() {
 	leds[4].on();
 #endif // BUTTON4
 
-  delay(2000); // waiting for USB host...
+  delay(200); // waiting for USB host...
 
 	leds[1].off();
 	leds[2].off();
@@ -524,28 +524,6 @@ void setup() {
 #ifdef BUTTON4
 	leds[4].off();
 #endif // BUTTON4
-
-#if PI_REV == 10
-  Dbg_println("flashed for v10 board");
-#elif PI_REV == 9
-  Dbg_println("flashed for v9 board");
-#elif PI_REV == 8
-  Dbg_println("flashed for v8 board");
-#elif PI_REV == 7
-  Dbg_println("flashed for v7 board");
-#elif PI_REV == 6
-  Dbg_println("flashed for v6 board");
-//
-// FWIW, rev 5 (with Microchip MCU) never got as far as firmware
-//
-#elif PI_REV == 4
-  Dbg_println("flashed for EVT4 board");
-#else
-  Dbg_println("flashed for rev3 board");
-//
-// earlier versions are super-unsupported!
-//
-#endif
 
   ///////////
   // initialize loop state:
@@ -657,6 +635,29 @@ void setup() {
 	cmd_setup();
 
 	PROFILE_SETUP();
+
+#if PI_REV == 10
+  Dbg_println("flashed for v10 board");
+#elif PI_REV == 9
+  Dbg_println("flashed for v9 board");
+#elif PI_REV == 8
+  Dbg_println("flashed for v8 board");
+#elif PI_REV == 7
+  Dbg_println("flashed for v7 board");
+#elif PI_REV == 6
+  Dbg_println("flashed for v6 board");
+//
+// FWIW, rev 5 (with Microchip MCU) never got as far as firmware
+//
+#elif PI_REV == 4
+  Dbg_println("flashed for EVT4 board");
+#else
+  Dbg_println("flashed for rev3 board");
+//
+// earlier versions are super-unsupported!
+//
+#endif
+
 }
 
 
