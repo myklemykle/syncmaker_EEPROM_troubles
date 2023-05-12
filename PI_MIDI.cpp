@@ -27,9 +27,14 @@ extern SerialPIO SSerialTip2;
 //MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing1, MIDI_OUT1);
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip1, MIDI_OUT1);
 
-//MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
+// MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
 //MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_OUT2);
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip2, MIDI_OUT2);
+//
+// FWIW the above macro creates two symbols: 
+// a MidiInterface instance called "SSerialRing2"
+// and SerialMIDI instance called "serialSSerialRing2"
+//
 #endif // serial midi
 #endif // rp2040
 // in Teensy land, usbMIDI is defined automatically.
@@ -53,7 +58,7 @@ void PI_MIDI::begin(){
 	// nothing to do for Teensy.
 }
 
-// discard any incoming MIDI messages.
+// discard any incoming USB MIDI messages.
 void PI_MIDI::flushInput(){
 #ifdef MIDI_RP2040
 	while (MIDI_USB.read(MIDI_CHANNEL_OMNI))
@@ -69,11 +74,11 @@ void PI_MIDI::flushInput(){
 
 void PI_MIDI::clockStart(){
 #ifdef MIDI_RP2040
-	MIDI_USB.sendStart();
 #ifdef SERIAL_MIDI
 	MIDI_OUT1.sendStart();
 	MIDI_OUT2.sendStart();
 #endif
+	MIDI_USB.sendStart();
 #else
 	usbMIDI.sendRealTime(usbMIDI.Start);
 #endif
@@ -81,11 +86,11 @@ void PI_MIDI::clockStart(){
 
 void PI_MIDI::clockStop(){
 #ifdef MIDI_RP2040
-	MIDI_USB.sendStop();
 #ifdef SERIAL_MIDI
 	MIDI_OUT1.sendStop();
 	MIDI_OUT2.sendStop();
 #endif
+	MIDI_USB.sendStop();
 #else
 	usbMIDI.sendRealTime(usbMIDI.Stop);
 #endif
@@ -93,11 +98,11 @@ void PI_MIDI::clockStop(){
 
 void PI_MIDI::clockContinue(){
 #ifdef MIDI_RP2040
-	MIDI_USB.sendContinue();
 #ifdef SERIAL_MIDI
 	MIDI_OUT1.sendContinue();
 	MIDI_OUT2.sendContinue();
 #endif
+	MIDI_USB.sendContinue();
 #else
 	usbMIDI.sendRealTime(usbMIDI.Continue);
 #endif
@@ -105,11 +110,12 @@ void PI_MIDI::clockContinue(){
 
 void PI_MIDI::clockTick(){
 #ifdef MIDI_RP2040
-	MIDI_USB.sendClock();
 #ifdef SERIAL_MIDI
 	MIDI_OUT1.sendClock();
 	MIDI_OUT2.sendClock();
+	
 #endif
+	MIDI_USB.sendClock();
 #else
 	usbMIDI.sendRealTime(usbMIDI.Clock);
 #endif
