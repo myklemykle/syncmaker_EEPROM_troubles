@@ -105,6 +105,7 @@
 #define SERIAL2_UART
 #define SERIAL_MIDI
 #define BUTTON4 					/* from v6 on, we have a fourth (reset) button */
+#define LED4 							/* and an LED next to it. */
 #define PWM_LED_BRIGHNESS 1024 /* from v6 on, all the LEDs are on analog pins */
 #endif
 
@@ -114,12 +115,14 @@
 #define TEENSY32 		/* mcu is a NXP cortex-m4 */
 #define IMU_ICM42605 /* imu from TDK */
 #define SPIPORT SPI  /* default from Teensy's SPI.h */
-// I don't yet perceive any improvement over 2khz, for the record
+// we can get faster updates from IMU with these defines, but 
+// I don't yet perceive any improvement over 2khz.
 //#define IMU_8KHZ fasterpussycat!
 //#define IMU_4KHZ gospeedracer
 #define NONSTOP_HACK // bit-banging PWM on the too-bright LED on that rev:
 #define AUDIO_TEENSY
 #define MIDI_TEENSY
+#define LED4 					/* this is the board LED on Teensy 3.2 */
 #endif
 
 
