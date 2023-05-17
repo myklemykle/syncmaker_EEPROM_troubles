@@ -300,16 +300,14 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	// index into _settings.s.outs[] for these two pins:
 	settingsIdx = (tipPin == tip1 ? 0 : 2);
 
-	/* // If either pin mode is MIDI, both must be configured. */
-	/* // Assuming TRS adapter type A (the MIDI standard): https://minimidi.world/ */
-	/* //   ring will be connected to UART TX, */
-	/* //   tip will be +v current source */
-	/* //  */
-	/* if (tipMode == OUTMODE_MIDI || ringMode == OUTMODE_MIDI){ */
-	/* 	tipMode = OUTMODE_MIDI; // sink current (data) */
-	/* 	if (ringMode != OUTMODE_LOW)  // allow for experimental backwardsland ... */
-	/* 		ringMode = OUTMODE_HIGH; // supply current (v+) */
-	/* } */
+	// If either pin mode is MIDI, both must be configured.
+	// Assuming TRS adapter type A (the MIDI standard): https://minimidi.world/
+	//   tip will be send "normal" rs232 logic, while ring sends "inverted" rs232 logic.
+	// 
+	if (tipMode == OUTMODE_MIDI || ringMode == OUTMODE_MIDI){
+		tipMode = OUTMODE_MIDI; 
+		ringMode = OUTMODE_MIDI;
+	}
 
 	Dbg_print("ring mode: ");
 	switch(ringMode) { // OUTMODES are defined in settings.h
@@ -341,10 +339,6 @@ case OUTMODE_SYNC:
 		break;
 case OUTMODE_MIDI:
 		Dbg_println("midi");
-		/* if (ringPin == ring1) */
-		/* 	gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial! */
-		/* else  */
-		/* 	gpio_set_function(ringPin, GPIO_FUNC_UART ); */
 		gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
@@ -379,10 +373,6 @@ case OUTMODE_SYNC:
 		break;
 case OUTMODE_MIDI:
 		Dbg_println("midi");
-		/* if (tipPin == tip1) */
-		/* 	gpio_set_function(tipPin, GPIO_FUNC_PIO0); // sofware serial! */
-		/* else  */
-		/* 	gpio_set_function(tipPin, GPIO_FUNC_UART ); */
 		gpio_set_function(tipPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}

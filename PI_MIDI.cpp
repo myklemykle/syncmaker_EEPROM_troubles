@@ -24,12 +24,15 @@ extern SerialPIO SSerialRing2;
 extern SerialPIO SSerialTip2;
 
 //MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
-//MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing1, MIDI_OUT1);
-MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip1, MIDI_OUT1);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing1, MIDI_OUT_R1);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip1, MIDI_OUT_T1);
 
 // MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
-//MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_OUT2);
-MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip2, MIDI_OUT2);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_OUT_R2);
+MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip2, MIDI_OUT_T2);
+
+// MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_PWR2);
+//
 //
 // FWIW the above macro creates two symbols: 
 // a MidiInterface instance called "SSerialRing2"
@@ -50,8 +53,18 @@ void PI_MIDI::begin(){
   MIDI_USB.begin(MIDI_CHANNEL_OMNI);
 
 #ifdef SERIAL_MIDI
-	MIDI_OUT1.begin(MIDI_CHANNEL_OMNI);
-	MIDI_OUT2.begin(MIDI_CHANNEL_OMNI);
+	// For type A connectors we source from ring, sink to tip.
+	// To make that work at our voltage, through out filter, we need to tug at both ends.
+	//
+	// Send inverted logic on ring
+	SSerialRing1.setInverted(true);
+	MIDI_OUT_R1.begin(MIDI_CHANNEL_OMNI);
+	// At the same time, send normal logic on tip
+	MIDI_OUT_T1.begin(MIDI_CHANNEL_OMNI);
+
+	SSerialRing2.setInverted(true);
+	MIDI_OUT_R2.begin(MIDI_CHANNEL_OMNI);
+	MIDI_OUT_T2.begin(MIDI_CHANNEL_OMNI);
 #endif
 
 #endif
@@ -75,8 +88,10 @@ void PI_MIDI::flushInput(){
 void PI_MIDI::clockStart(){
 #ifdef MIDI_RP2040
 #ifdef SERIAL_MIDI
-	MIDI_OUT1.sendStart();
-	MIDI_OUT2.sendStart();
+	MIDI_OUT_R1.sendStart();
+	MIDI_OUT_T1.sendStart();
+	MIDI_OUT_R2.sendStart();
+	MIDI_OUT_T2.sendStart();
 #endif
 	MIDI_USB.sendStart();
 #else
@@ -87,8 +102,10 @@ void PI_MIDI::clockStart(){
 void PI_MIDI::clockStop(){
 #ifdef MIDI_RP2040
 #ifdef SERIAL_MIDI
-	MIDI_OUT1.sendStop();
-	MIDI_OUT2.sendStop();
+	MIDI_OUT_R1.sendStop();
+	MIDI_OUT_T1.sendStop();
+	MIDI_OUT_R2.sendStop();
+	MIDI_OUT_T2.sendStop();
 #endif
 	MIDI_USB.sendStop();
 #else
@@ -99,8 +116,10 @@ void PI_MIDI::clockStop(){
 void PI_MIDI::clockContinue(){
 #ifdef MIDI_RP2040
 #ifdef SERIAL_MIDI
-	MIDI_OUT1.sendContinue();
-	MIDI_OUT2.sendContinue();
+	MIDI_OUT_R1.sendContinue();
+	MIDI_OUT_T1.sendContinue();
+	MIDI_OUT_R2.sendContinue();
+	MIDI_OUT_T2.sendContinue();
 #endif
 	MIDI_USB.sendContinue();
 #else
@@ -111,9 +130,10 @@ void PI_MIDI::clockContinue(){
 void PI_MIDI::clockTick(){
 #ifdef MIDI_RP2040
 #ifdef SERIAL_MIDI
-	MIDI_OUT1.sendClock();
-	MIDI_OUT2.sendClock();
-	
+	MIDI_OUT_R1.sendClock();
+	MIDI_OUT_T1.sendClock();
+	MIDI_OUT_R2.sendClock(); // inverted
+	MIDI_OUT_T2.sendClock(); // normal
 #endif
 	MIDI_USB.sendClock();
 #else
