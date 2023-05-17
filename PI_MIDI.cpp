@@ -9,10 +9,12 @@ Adafruit_USBD_MIDI usb_midi;
 // Create a new instance of the (generic) Arduino MIDI Library,
 // and attach usb_midi as the transport.
 MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI_USB);
-// (jeesuz what a hairy-looking macro to do something pretty basic)
-// (what is this MIDI now? what type? what symbol? this is just weird.)
+// What a hairy-looking macro to do something pretty basic.
+// I think this creates a MidiInterface instance "usb_midi" plus 
+// maybe an instance of some other USB-MIDI object? I think
+// maybe Adafruit redefines this macro someplace but i don't know where.
 
-// Create another 2 instances for serial/trs MIDI.
+// Now create another 4(!) instances for serial/trs MIDI.
 // (Not necessarily connected to GPIO yet.)
 // Serial1 & Serial2 are provied by the Philtower Arduino-Pico core
 
@@ -23,20 +25,13 @@ extern SerialPIO SSerialTip1;
 extern SerialPIO SSerialRing2;
 extern SerialPIO SSerialTip2;
 
-//MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI_OUT1);
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing1, MIDI_OUT_R1);
+// FWIW: in the serial case, the above macro creates two symbols: 
+// a 'MidiInterface' instance called "SSerialRing1"
+// and 'SerialMIDI' instance (as opposed to a 'HardwareSerial' instance) called "serialSSerialRing1"
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip1, MIDI_OUT_T1);
-
-// MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI_OUT2);
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_OUT_R2);
 MIDI_CREATE_INSTANCE(HardwareSerial, SSerialTip2, MIDI_OUT_T2);
-
-// MIDI_CREATE_INSTANCE(HardwareSerial, SSerialRing2, MIDI_PWR2);
-//
-//
-// FWIW the above macro creates two symbols: 
-// a MidiInterface instance called "SSerialRing2"
-// and SerialMIDI instance called "serialSSerialRing2"
 //
 #endif // serial midi
 #endif // rp2040
@@ -53,16 +48,20 @@ void PI_MIDI::begin(){
   MIDI_USB.begin(MIDI_CHANNEL_OMNI);
 
 #ifdef SERIAL_MIDI
-	// For type A connectors we source from ring, sink to tip.
-	// To make that work at our voltage, through out filter, we need to tug at both ends.
+	// For type A connectors (the MIDI standard) we source current from ring, sink it to tip.
+	// To make that work at our voltage, through out DC-blocking filters, we need to tug at both ends.
+	//
+	// NOTE: type B would be the opposite signal (invert the tips not the rings).
+	// Type C would be entirely between tip & ground, but mono plugs/jacks might be involved so you would want to isolate ring somehow.
+	// Supporting all 3 types would be perhaps useful to someone?  Not hard to try, if requested.
 	//
 	// Send inverted logic on ring
-	SSerialRing1.setInverted(true);
+	SSerialRing1.setInverted(true,false);
 	MIDI_OUT_R1.begin(MIDI_CHANNEL_OMNI);
 	// At the same time, send normal logic on tip
 	MIDI_OUT_T1.begin(MIDI_CHANNEL_OMNI);
 
-	SSerialRing2.setInverted(true);
+	SSerialRing2.setInverted(true,false);
 	MIDI_OUT_R2.begin(MIDI_CHANNEL_OMNI);
 	MIDI_OUT_T2.begin(MIDI_CHANNEL_OMNI);
 #endif

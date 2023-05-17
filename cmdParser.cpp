@@ -161,10 +161,10 @@ void cmd_set(CMDARGS) {
 #ifdef SERIAL_MIDI
 			if (mode == OUTMODE_MIDI) { 
 				// set logic inversion on all
-					SSerialTip1.setInverted(invert);
-					SSerialTip2.setInverted(invert);
-					SSerialRing1.setInverted(invert);
-					SSerialRing2.setInverted(invert);
+					SSerialTip1.setInverted(invert,false);
+					SSerialTip2.setInverted(invert,false);
+					SSerialRing1.setInverted(invert,false);
+					SSerialRing2.setInverted(invert,false);
 			}
 #endif
 			cmd_dump_settings(args, response);
@@ -210,7 +210,7 @@ void cmd_set(CMDARGS) {
 	// set logic inversion
 	if (mode == OUTMODE_MIDI) {
 		serp->end();
-		serp->setInverted(invert);
+		serp->setInverted(invert,false);
 		serp->begin(31250); // midi baud rate
 	}
 #endif
