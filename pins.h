@@ -73,13 +73,13 @@ const int unusedPins[7] = { 7,16,17,25,27,28,29 };
 #elif PI_REV == 4
 const int button1Pin = 22;   // sw1
 const int button2Pin = 21;   // sw2
+const int button3Pin = 0;   // nonstop
 const int boardLedPin = 13;	// builtin led on Teensy 3.2
-const int led4Pin = boardLedPin;	
+const int nonstopLedPin = 1; // nonstop led
 const int led1Pin =  15;    // led1
 const int led2Pin =  8;    // led2
-const int button3Pin = 0;   // nonstop
-const int nonstopLedPin = 1; // nonstop led
 const int led3Pin = nonstopLedPin;
+const int led4Pin = boardLedPin;	
 const int tip1 = 20; 	// j1 tip / l_sync_out
 const int tip2 = 23; 		// j2 tip / r_sync_out
 const int PO_play = 16; 		// goes high on PO play (runs to play LED)
@@ -94,6 +94,7 @@ const int SPI_clock = 13;
 const int SPI_cs = 10;
 const int SPI_miso = 12;
 const int SPI_mosi = 11;
+
 #else
 const int button1Pin = 0;   // sw1
 const int button2Pin = 9;   // sw2
