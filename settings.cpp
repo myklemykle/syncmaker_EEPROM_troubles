@@ -7,7 +7,7 @@ bool Settings::init(){
 	s = { 
 		SETTINGSFLAG, 
 		SETTINGSVERSION, 
-		500 * 1000, // uS
+		500 * 1000, // uS == 120bpm
 		{ OUTMODE_SYNC, OUTMODE_SHAKE, OUTMODE_SYNC, OUTMODE_SHAKE } //  tip1, ring1, tip2, ring2
 	};
 	return true;
