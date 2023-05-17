@@ -402,76 +402,64 @@ void configOutput(int pin, byte mode){
 
 }
 
-// configure/initalize/etc at boot.
-void setup() {
+#define RUNMODE_BOOT 0
+#define RUNMODE_PLAY 1
+#define RUNMODE_TEST 2
+#define RUNMODE_DEBUG 3
+uint8_t runMode = RUNMODE_PLAY;
+
+///////
+// Pin setup:
+//
+void setupPins(){
 #ifdef MCU_RP2040
-	  // fix startup weirdness
-  rp2040.idleOtherCore();
-
-	  // enable watchdog
-	rp2040.wdt_begin(5000);
-#endif
-
-	// get settings:
-#ifdef MCU_RP2040
-	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
-#endif
-	if (! _settings.get()) {
-		_settings.init();
-	}
-
-  ///////
-  // Pin setup:
-  //
 	// voltage select for 1.8v operation: set bit 0 of PADS_BANK0 and PADS_QSPI
 	uint32_t *pads_voltage_sel = (uint32_t *) PADS_BANK0_BASE;
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
 	pads_voltage_sel = (uint32_t *) PADS_QSPI_BASE;
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
+#endif
 
-	// pin modes:
-	
+	// pin modes of LEDs:
 	leds[1].init();
 	leds[2].init();
 #ifdef NONSTOP_HACK
-	leds[2].initPWM();
+	leds[3].initPWM();
 #else
 	leds[3].init();
 #endif
-
-#ifdef BUTTON4
+#ifdef LED4
 	leds[4].init();
 #endif
-#ifdef EVT4
-  leds[4].init(); // aka boardLedPin
-#endif
 
+	// pin modes of output jacks:
 #ifdef MCU_RP2040
 	// raising the current limit to support TRSMIDI (default is 4ma, MIDI needs >5ma)
-  pinMode(tip1, OUTPUT_8MA);              // j1 tip
-  pinMode(tip2, OUTPUT_8MA);              // j2 tip
-  pinMode(ring1, OUTPUT_8MA);              // j1 ring
-  pinMode(ring2, OUTPUT_8MA);              // j2 ring
+	pinMode(tip1, OUTPUT_8MA);              // j1 tip
+	pinMode(tip2, OUTPUT_8MA);              // j2 tip
+	pinMode(ring1, OUTPUT_8MA);              // j1 ring
+	pinMode(ring2, OUTPUT_8MA);              // j2 ring
 #else
-  pinMode(tip1, OUTPUT);              // j1 tip
-  pinMode(tip2, OUTPUT);              // j2 tip
+	pinMode(tip1, OUTPUT);              // j1 tip
+	pinMode(tip2, OUTPUT);              // j2 tip
 	// Teensy has ring 1&2 hardwired to dac
 #endif
 
-  pinMode(button1Pin, INPUT_PULLUP);  // sw1
-  pinMode(button2Pin, INPUT_PULLUP);  // sw2
-  pinMode(button3Pin, INPUT_PULLUP);  // nonstop
+	// pin modes of buttons:
+	pinMode(button1Pin, INPUT_PULLUP);  // sw1
+	pinMode(button2Pin, INPUT_PULLUP);  // sw2
+	pinMode(button3Pin, INPUT_PULLUP);  // nonstop
 
-#ifdef EVT4
-  leds[4].init(); // aka boardLedPin
-#endif
+	// pin mode of IMU interrupt pin:
+	pinMode(IMU_int, INPUT_PULLUP);
 
-  pinMode(PO_play, INPUT);  // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
-  pinMode(PO_wake, INPUT);
-  pinMode(PO_reset, INPUT_PULLUP);  // TODO: check v6: do we still get resets when physically connecting the boards? V6 added a pullup here ...
-  pinMode(PO_SWCLK, INPUT_PULLUP);
-  pinMode(PO_SWDIO, INPUT_PULLUP);
-  pinMode(PO_SWO, INPUT_PULLUP);
+	// pin modes of the inter-board connections:
+	pinMode(PO_play, INPUT);  // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
+	pinMode(PO_wake, INPUT);
+	pinMode(PO_reset, INPUT_PULLUP);  
+	pinMode(PO_SWCLK, INPUT_PULLUP);
+	pinMode(PO_SWDIO, INPUT_PULLUP);
+	pinMode(PO_SWO, INPUT_PULLUP);
 
 #if PI_REV >= 9
 	// turn on the analog reference regulator:
@@ -488,44 +476,90 @@ void setup() {
 	}
 #endif
 
-	// initialize USB connections:
-	myMidi.begin();
-  Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
+}
 
-#ifdef MCU_RP2040
-	// configure output jacks -- potentially disconnecting serial for now
-	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
-	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
-#endif
-
-	// flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
+// Flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
+void goodMorning(){
 	leds[1].on();
 	leds[2].on();
 	leds[3].on();
-#ifdef BUTTON4
+#ifdef LED4
 	leds[4].on();
-#endif // BUTTON4
+#endif 
 
-  delay(200); // waiting for USB host...
+	delay(200); // waiting for USB host...
 
 	leds[1].off();
 	leds[2].off();
 	leds[3].off();
-#ifdef BUTTON4
+#ifdef LED4
 	leds[4].off();
-#endif // BUTTON4
+#endif // LED4
 
-  ///////////
-  // initialize loop state:
-  CBINIT(inertia, 0);
-  CBINIT(nonstop, 0);
-  CBINIT(playing, 0);
-  CBINIT(decodedPlayLed, 0);
+#if PI_REV == 10
+  Dbg_println("flashed for v10 board");
+#elif PI_REV == 9
+  Dbg_println("flashed for v9 board");
+#elif PI_REV == 8
+  Dbg_println("flashed for v8 board");
+#elif PI_REV == 7
+  Dbg_println("flashed for v7 board");
+#elif PI_REV == 6
+  Dbg_println("flashed for v6 board");
+	//
+	// rev 5 (with Microchip MCU) never got as far as firmware
+	//
+#elif PI_REV == 4
+  Dbg_println("flashed for EVT4 board");
+#else
+  Dbg_println("flashed for rev3 board");
+	//
+	// earlier versions are super-unsupported!
+	//
+#endif
+}
 
+// Configure & read the Bounce lib instances.
+void setupButtons(){
+  // Button setup:
+  //
+  btn1.attach(button1Pin);
+  btn1.interval(debounceLen);
 
+  btn2.attach(button2Pin);
+  btn2.interval(debounceLen);
+
+  btn3.attach(button3Pin);
+  btn3.interval(debounceLen);
+
+#ifdef BUTTON4
+  btn4.attach(button4Pin);
+  btn4.interval(debounceLen);
+#endif
+
+}
+
+// Call the Bounce library functions to read the button state,
+// and update the btnPressed booleans.
+void readButtons(){
+	// check buttons:
+	if (btn1.update())
+		btn1pressed = (btn1.read() == LOW);
+	if (btn2.update())
+		btn2pressed = (btn2.read() == LOW);
+	if (btn3.update())
+		btn3pressed = (btn3.read() == LOW);
+#ifdef BUTTON4
+	if (btn4.update())
+		btn4pressed = (btn4.read() == LOW);
+#endif
+}
+
+	
+///////
+// SPI+IMU setup:
+void setupIMU(){
 #ifdef IMU_SPI
-  ///////
-  // SPI+IMU setup:
 
   // raise chipSelect line to select the only chip.
   // (no-op; the library toggles it on & off anyway)
@@ -548,39 +582,18 @@ void setup() {
 #endif
 
 #endif
-
-  pinMode(IMU_int, INPUT_PULLUP);
-  attachInterrupt(IMU_int, imu_int_handler, FALLING);
 	
   imu.begin();
+}
 
-
-
-  // Button setup:
-  //
-  btn1.attach(button1Pin);
-  btn1.interval(debounceLen);
-
-  btn2.attach(button2Pin);
-  btn2.interval(debounceLen);
-
-  btn3.attach(button3Pin);
-  btn3.interval(debounceLen);
-
-#ifdef BUTTON4
-  btn4.attach(button4Pin);
-  btn4.interval(debounceLen);
-#endif
-
-	readButtons();
-
-	// TODO: check for initial button states at boot to trigger various
-	// mode changes, resets, etc.
-
+//////////////
+// Setup specific to RUNMODE_PLAY
+void setup_play(){
   ////////
-  // Clock setup:
+  // Human Clock setup:
   //
   hc.downbeatTime = micros();  // now!
+	// TODO move to runtime select
   // If side buttons are held down when we boot, reset the default measure length
   if (BOTHPRESSED) {
     _settings.s.measureLen = hc.measureLen = 250 * 1000;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
@@ -589,13 +602,22 @@ void setup() {
 		hc.measureLen = _settings.s.measureLen;
   }
 
-
 #ifdef MIDITIMECODE
   mtc.setup();
 #endif
 
   CBINIT(hc.tapIntervals, 0);
 
+  sleep_setup();
+
+	cmd_setup();
+
+	PROFILE_SETUP();
+}
+
+////////////
+// setup audio subsystem
+void setupAudio(){
 #ifdef TEENSY32
   ////////
   // Teensy Audio setup:
@@ -616,58 +638,143 @@ void setup() {
                           // anyway I still get background noise when running off battery.
                           // TODO: test without this stuff & instead with INTERNAL in dac1.analogReference
 #else
-	rp2040.resumeOtherCore();
   // see setup1() for rp2040 audio on second core
 #endif
+}
 
-  sleep_setup();
+#ifdef MCU_RP2040
+#define LONG_HOLD 2000 //ms
+///////
+// Use the button configuration to determine what mode we boot into
+// (For this MCU we just presume LED4 and BUTTON4 exist.)
+void selectRunMode(){
+	// if all 3 upper buttons are pressed at boot:
+	if (btn1pressed && btn2pressed && btn3pressed) {
+		runMode = RUNMODE_TEST;
+		return;
+	}
 
-	cmd_setup();
+	// if top & bottom (but not left or right) are held long:
+	if (btn3pressed && btn4pressed && !(btn1pressed || btn2pressed)) {
+		leds[3].on();
+		leds[4].on();
+		// wait N seconds.
+		delay(LONG_HOLD);  // TODO: actually notice when  button is released?
+		readButtons();
+		if (btn3pressed && btn4pressed) {
+			runMode = RUNMODE_DEBUG;
+			leds[3].off();
+			leds[4].off();
+			return;
+		}
+	}
 
-	PROFILE_SETUP();
+	// if no upper button is pressed:
+	if (!(btn1pressed || btn2pressed || btn3pressed)) {
+		if (btn4pressed) {
+			leds[4].on();
+			// wait N seconds.
+			delay(LONG_HOLD);  // TODO: actually notice when  button is released?
+			readButtons();
+			if (btn4pressed) {
+				reset_usb_boot(1 << led4Pin, 0);
+			} 
+			// nothing pressed. Normal mode.
+			runMode = RUNMODE_PLAY;
+			return;
+		}
+	}
 
-#if PI_REV == 10
-  Dbg_println("flashed for v10 board");
-#elif PI_REV == 9
-  Dbg_println("flashed for v9 board");
-#elif PI_REV == 8
-  Dbg_println("flashed for v8 board");
-#elif PI_REV == 7
-  Dbg_println("flashed for v7 board");
-#elif PI_REV == 6
-  Dbg_println("flashed for v6 board");
-//
-// FWIW, rev 5 (with Microchip MCU) never got as far as firmware
-//
-#elif PI_REV == 4
-  Dbg_println("flashed for EVT4 board");
+	// any other odd possible combo means nothing.
+	runMode = RUNMODE_PLAY;
+}
+#endif
+
+///////////
+// Main Arduino setup entry point!
+// Configure/initalize/etc the hardware at boot,
+// and determine the run mode.
+void setup() {
+	// note the time:
+	unsigned long bootedAt = millis();
+
+#ifdef MCU_RP2040
+	  // fix startup weirdness
+  rp2040.idleOtherCore();
+
+	  // enable watchdog
+	rp2040.wdt_begin(5000);
+#endif
+
+	// load settings:
+#ifdef MCU_RP2040
+	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
+#endif
+	if (! _settings.get()) {
+		_settings.init();
+	}
+
+	// set all pin modes, current levels, etc.
+	setupPins();
+
+	// set up the buttons & read them.
+	setupButtons();
+	readButtons();
+	// btnPressed booleans are now valid, for run state selection etc.
+
+	// initialize USB connections:
+	myMidi.begin();
+  Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
+
+	// flash hello; also gives 200ms for usb to stabilize:
+	// (TODO: runmode-specific flash?)
+	goodMorning();
+
+  // If side buttons (only) are held down when we boot, revert to default settings.
+  if (btn1pressed && btn2pressed && !(btn3pressed)) {
+		_settings.init();
+		// TODO: give a confirming flash.
+  } 
+
+#ifdef MCU_RP2040
+	// configure output modes -- potentially disconnecting serial for now
+	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
+	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
+#endif
+
+  ///////////
+  // initialize loop state:
+  CBINIT(inertia, 0);
+	// TODO: some of these could be in setup_play:
+  CBINIT(nonstop, 0);
+  CBINIT(playing, 0);
+  CBINIT(decodedPlayLed, 0);
+
+	// start IMU 
+  attachInterrupt(IMU_int, imu_int_handler, FALLING); // IMU craps out if this isn't done first. dunno why.
+	setupIMU();
+	// TODO: testing & maybe auto-adjusting resolution and rate here.
+
+	// audio setup:
+	// TODO: not all runmodes? move to runmode setup
+	setupAudio();
+
+#ifdef MCU_RP2040
+	// runmode setup
+	selectRunMode();
+	setup_play();
 #else
-  Dbg_println("flashed for rev3 board");
-//
-// earlier versions are super-unsupported!
-//
+	// play only
+	setup_play();
 #endif
 
-}
 
-
-// Call the Bounce library functions to read the button state,
-// and update the btnPressed booleans.
-void readButtons(){
-	// check buttons:
-	if (btn1.update())
-		btn1pressed = (btn1.read() == LOW);
-	if (btn2.update())
-		btn2pressed = (btn2.read() == LOW);
-	if (btn3.update())
-		btn3pressed = (btn3.read() == LOW);
-#ifdef BUTTON4
-	if (btn4.update())
-		btn4pressed = (btn4.read() == LOW);
+#ifdef MCU_RP2040
+	rp2040.resumeOtherCore();
 #endif
 }
 
-	
+
 int ax, ay, az;
 int gx, gy, gz;
 uint32_t volumeLevel = 0; 
@@ -1385,8 +1492,21 @@ void loop1(){
 
 #endif
 
-
 void loop() {
+	switch (runMode) {
+		case RUNMODE_PLAY: 
+			loop_play();
+			break;
+		case RUNMODE_TEST: 
+			loop_play(); //for now
+			break;
+		case RUNMODE_DEBUG:
+			loop_play(); //for now
+			break;
+	}
+}
+
+void loop_play() {
 
   unsigned long loopStartTime = loopTimer_us;
 	static unsigned long lastNap = loopStartTime;
@@ -1461,7 +1581,9 @@ void loop() {
 #ifdef BUTTON4
 	// Manage button 4 behavior: reboots, mode changes, etc.
 	if (btn4.fell()){
+#ifdef LED4
 		leds[4].on();
+#endif //LED4
 		resetTimer_ms = 0;
 	}
 	if (btn4.rose()){
@@ -1478,8 +1600,10 @@ void loop() {
 		reset_usb_boot(1 << led4Pin, 0);
 
 #else
+#ifdef LED4
 		// just turn off the led:
 		leds[4].off();
+#endif // LED4
 #endif  // MCU_RP2040
 	}
 
