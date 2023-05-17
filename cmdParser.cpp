@@ -30,6 +30,14 @@ extern RP2040Audio audio;
 // extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SIZE];
 #endif
 
+#ifdef SERIAL_MIDI
+// PIO serial ports:
+extern SerialPIO SSerialRing1;
+extern SerialPIO SSerialTip1;
+extern SerialPIO SSerialRing2;
+extern SerialPIO SSerialTip2;
+#endif
+
 #define strmatch(a, b) ( strcmp(a, b) == 0 )
 
 // note: using this macro requires the "response" variable;
@@ -106,6 +114,8 @@ void cmd_dump_settings(CMDARGS) {
 // extern const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 void cmd_set(CMDARGS) {
 	byte chan;
+	SerialPIO *serp;
+	bool invert = false;
 	char mode = -1;
 	
 	// parse mode
@@ -118,6 +128,11 @@ void cmd_set(CMDARGS) {
 	// some synonyms:
 	if (strmatch(args[1].asString, "midi")){
 		mode = OUTMODE_MIDI;
+		// invert is already false
+	}
+	else if (strmatch(args[1].asString, "idim")){
+		mode = OUTMODE_MIDI;
+		invert = true;
 	}
 	else if (strmatch(args[1].asString, "hi")){
 		mode = OUTMODE_HIGH;
@@ -143,6 +158,15 @@ void cmd_set(CMDARGS) {
 			// change all channels to mode
 			configOutputs(tip1, mode, mode);
 			configOutputs(tip2, mode, mode);
+#ifdef SERIAL_MIDI
+			if (mode == OUTMODE_MIDI) { 
+				// set logic inversion on all
+					SSerialTip1.setInverted(invert);
+					SSerialTip2.setInverted(invert);
+					SSerialRing1.setInverted(invert);
+					SSerialRing2.setInverted(invert);
+			}
+#endif
 			cmd_dump_settings(args, response);
 			return;
 		} else {
@@ -153,16 +177,27 @@ void cmd_set(CMDARGS) {
 	// "set [tip|ring][1|2]"
 	else if (strmatch(args[0].asString, "tip1")){
 		chan = OUTCHANNEL_TIP1;
+#ifdef SERIAL_MIDI
+		serp = &SSerialTip1;
+#endif
 	}
 	else if (strmatch(args[0].asString, "ring1")){
 		chan = OUTCHANNEL_RING1;
+#ifdef SERIAL_MIDI
+		serp = &SSerialRing1;
+#endif
 	}
 	else if (strmatch(args[0].asString, "tip2")){
 		chan = OUTCHANNEL_TIP2;
+#ifdef SERIAL_MIDI
+		serp = &SSerialTip2;
+#endif
 	}
 	else if (strmatch(args[0].asString, "ring2")){
 		chan = OUTCHANNEL_RING2;
-
+#ifdef SERIAL_MIDI
+		serp = &SSerialRing2;
+#endif
 	} else {
 		respond("error: bad channel");
 		return;
@@ -170,6 +205,16 @@ void cmd_set(CMDARGS) {
 	
 	// change one channel to mode
 	configOutput(outChannelPins[chan], mode);
+
+#ifdef SERIAL_MIDI
+	// set logic inversion
+	if (mode == OUTMODE_MIDI) {
+		serp->end();
+		serp->setInverted(invert);
+		serp->begin(31250); // midi baud rate
+	}
+#endif
+
 	// _settings.put();
 
 	respond("ok");
@@ -332,7 +377,7 @@ void cmd_imu_set(CMDARGS){
 	unsigned long addr = args[0].asUInt64;
 	unsigned long val  = args[1].asUInt64;
 	imu.set_reg(SPI_cs, addr, val);
-	respondf("set addr %x to %x", addr, val);
+	respondf("set imu register %x to %x", addr, val);
 }
 
 // // dump all registers of the LSM IMU
@@ -348,6 +393,25 @@ void cmd_imu_set(CMDARGS){
 // 	imu.read_regs(SPI_cs, addr, &buf, cnt);
 // 	respondf("addr %x val %x", addr, buf);
 // }
+//
+
+void cmd_peek(CMDARGS){
+	unsigned long *addr;
+	addr	= (unsigned long *) args[0].asUInt64;
+	unsigned long val = *addr;
+	respondf("addr %x == %x", addr, val);
+}
+
+void cmd_poke(CMDARGS){
+	unsigned long *addr;
+	addr = (unsigned long *) args[0].asUInt64;
+	unsigned long val  = (unsigned long) args[1].asUInt64;
+	*addr = val;
+	respondf("set addr %x to %x", addr, val);
+}
+
+
+
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
@@ -370,6 +434,9 @@ void cmd_setup() {
 	parser.registerCommand("imugetn","uu",&cmd_imu_getn);
 	// parser.registerCommand("imudump","",&cmd_imu_dump);
 	parser.registerCommand("imuset","uu",&cmd_imu_set);
+
+	parser.registerCommand("peek","u", &cmd_peek);
+	parser.registerCommand("poke","uu", &cmd_poke);
 }
 
 void cmd_update() {
