@@ -1584,29 +1584,16 @@ void loop_play() {
 #ifdef LED4
 		leds[4].on();
 #endif //LED4
-		resetTimer_ms = 0;
-	}
-	if (btn4.rose()){
 #ifdef   MCU_RP2040
 		rp2040.reboot();
 #endif  // MCU_RP2040
-	}
-	// if reset is held down for 3 secs, boot in USB bootloader mode
-	if (btn4pressed && (resetTimer_ms > 3000)) {
-
 #ifdef   MCU_RP2040
-		// TODO/TOTRY: if we install ISR on btn4 here, will it remain connected after reset?
-		// if so, we can use that to reset out of bootloader mode ...
-		reset_usb_boot(1 << led4Pin, 0);
-
 #else
 #ifdef LED4
-		// just turn off the led:
 		leds[4].off();
 #endif // LED4
 #endif  // MCU_RP2040
 	}
-
 #endif// BUTTON4
 
 	// update LEDs
