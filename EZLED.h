@@ -1,6 +1,7 @@
 #ifndef LEDS_H
 #define LEDS_H
 #include <Arduino.h> // uint8_t, etc.
+#include <elapsedMillis.h>
 
 #include "config.h" // PWM_LED_BRIGHNESS, etc.
 										
@@ -12,19 +13,31 @@
 // TODO: 
 // -- allow individual leds to be either analog or digital,
 // instead of a single global flag for all.
-// -- onAt, offAt, dimAt() methods to change state at a later time?
-// -- fade between values?
 //
+
+// LED scripting commands:
+enum ledVerb { dim, fade, end };
+typedef struct {
+	ledVerb cmd;
+	float brightness; // 0-100 inclusive
+	int duration; // ms
+} LEDCommand;
+// An array of those is an LED script.
+
 class EZLED {
 public:
 	uint8_t pin;
-	float state;
+	float pinState;
+	LEDCommand *script;
+	bool looping  = false;
+
 #ifdef NONSTOP_HACK
 	// for PWM hack:
-	bool pwm; // manual PWM?
+	bool softpwm; // manual PWM?
 	bool pwmState; // currently on or off?
 	unsigned long pwmClock;
 	void initPWM(); // same as init, but turn on manual PWM (sheesh)
+	void pwmUpdate(); // for flickering the PWM
 #endif
 
 	void init(); // call once before other methods to set up hardware.
@@ -34,12 +47,22 @@ public:
 	void dim(unsigned int pct); 
 	void on();
 	void off();
-	void update(); // for animation of dimming, and for updating manual PWM.
+
+	// animation/script commands:
+	void begin(unsigned long startTime=0);
+	void stop();
+	void resume();
+	void update(); 
 
 	// void fade(pct, interval)
 	// void fade(pct, arrivalTime)
 
 	EZLED(uint8_t p);
+
+private:
+	unsigned long scriptDuration;
+	elapsedMillis timer;
+	bool running = false;
 };
 
 #ifdef NONSTOP_HACK
@@ -47,6 +70,6 @@ public:
 #define NSLEDPWM_ON 300    // usec
 #define NSLEDPWM_OFF 5000  // usec
 #endif
-	
+
 
 #endif // LEDS_H
