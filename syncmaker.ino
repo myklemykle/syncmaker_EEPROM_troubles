@@ -523,9 +523,7 @@ void setup() {
 
 	LEDCommand blinkScript[3] = { { dim, 100, 100 },{ dim, 0, 100 }, { end, 0, 0 } };
 	for (int i=1; i<5; i++){
-		leds[i].script = blinkScript;
-		leds[i].looping = true;
-		leds[i].begin();
+		leds[i].runScript(blinkScript);
 	}
 
 	awakeTimer_ms = 0;
@@ -535,9 +533,7 @@ void setup() {
 	}
 
 	for (i=1; i<5; i++) {
-		leds[i].stop();
-		leds[i].script = NULL;
-		leds[i].off();
+		leds[i].rmScript();
 	}
 
   ///////////

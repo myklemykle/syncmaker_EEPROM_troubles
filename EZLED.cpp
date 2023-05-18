@@ -101,6 +101,23 @@ void EZLED::off(){
   pinState = 0;
 }
 
+void EZLED::setScript(LEDCommand cmds[], bool loop){
+	script = cmds;
+	looping = loop;
+}
+
+void EZLED::runScript(LEDCommand cmds[], bool loop){
+	setScript(cmds, loop);
+	begin();
+}
+
+void EZLED::rmScript(){
+	stop();
+	script = NULL;
+	looping = false;
+	off();
+}
+
 // start playing the animation script
 void EZLED::begin(unsigned long startTime){
 	if (script == NULL) {

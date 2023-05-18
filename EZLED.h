@@ -49,6 +49,9 @@ public:
 	void off();
 
 	// animation/script commands:
+	void setScript(LEDCommand cmds[], bool loop = true);
+	void runScript(LEDCommand cmds[], bool loop = true);
+	void rmScript();
 	void begin(unsigned long startTime=0);
 	void stop();
 	void resume();
