@@ -717,10 +717,8 @@ void setup() {
 	// set all pin modes, current levels, etc.
 	setupPins();
 
-	// set up the buttons & read them.
+	// set up the buttons
 	setupButtons();
-	readButtons();
-	// btnPressed booleans are now valid, for run state selection etc.
 
 	// initialize USB connections:
 	myMidi.begin();
@@ -730,7 +728,9 @@ void setup() {
 	// (TODO: runmode-specific flash?)
 	goodMorning();
 
+	// read initial button state.
   // If side buttons (only) are held down when we boot, revert to default settings.
+	readButtons(); // TODO: not working at boot? how often do we need to call update() to get good readings?
   if (btn1pressed && btn2pressed && !(btn3pressed)) {
 		_settings.init();
 		// TODO: give a confirming flash.
