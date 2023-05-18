@@ -77,7 +77,6 @@ void EZLED::dim(unsigned int pct){
 // turn led on
 void EZLED::on(){
 	if (pinState == 100) {
-		// Dbg_println("led already on");
 		return;
 	}
 
@@ -92,7 +91,6 @@ void EZLED::on(){
 // blah blah off blah
 void EZLED::off(){
 	if (pinState == 0) {
-		// Dbg_println("led already off");
 		return;
 	}
 #ifdef PWM_LED_BRIGHNESS
@@ -115,7 +113,7 @@ void EZLED::begin(unsigned long startTime){
 		scriptDuration += i->duration;
 	}
 	timer = startTime;
-	resume();
+	running = true;
 }
 
 // halt the animation script
@@ -127,15 +125,18 @@ void EZLED::stop(){
 void EZLED::resume(){
 	// TODO: how to pause & resume the timer?
 	running = true;
-	update();
 }
 
 // find the current command & make sure the led is updated.
 void EZLED::update(){
+	if (!running) return;
+
 	unsigned long t = timer; 
 	while (timer > scriptDuration) {
-		if (! looping) 
+		if (! looping) {
+			running = false;
 			return;
+		}
 		timer -= scriptDuration;
 		// For the very-slightly-possible corner case where the timer advances past scriptDuration right after I measure it:
 		t -= scriptDuration;
@@ -157,7 +158,18 @@ void EZLED::update(){
 		currentCmd++;
 	}
 
-	fdim(currentCmd->brightness);
+	Dbg_println(currentCmd->brightness);
+
+	if (currentCmd->brightness == 100) {
+		Dbg_println("on");
+		on();
+	} else if (currentCmd->brightness == 0){
+		Dbg_println("off");
+		off();
+	} else{
+		Dbg_println("dim");
+		fdim(currentCmd->brightness);
+	}
 }
 
 
@@ -165,7 +177,7 @@ void EZLED::update(){
 // update the blighted PWM hack.
 void EZLED::pwmUpdate(){
 	if (! softpwm) return;
-	if (pinState == 0) return;
+	if (pinState == 0) return; // darkness!
 
 	unsigned long nowTime = micros();
 	if (pwmState) {                            // is on now

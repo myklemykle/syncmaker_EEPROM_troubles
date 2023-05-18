@@ -429,6 +429,11 @@ void setup() {
 	pads_voltage_sel = (uint32_t *) PADS_QSPI_BASE;
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
 
+#ifdef MCU_RP2040
+#ifdef PWM_LED_BRIGHNESS
+	analogWriteRange(PWM_LED_BRIGHNESS);
+#endif
+#endif
 	// pin modes:
 	
 	leds[1].init();
@@ -516,22 +521,22 @@ void setup() {
 /* 	leds[4].off(); */
 /* #endif // BUTTON4 */
 
-	// testing led animation ...
-	LEDCommand blink[3] = { { dim, 100, 100 },{ dim, 0, 100 }, { end, 0, 0 } };
-	for (int i=0; i<4; i++){
-		leds[i].script = blink;
+	LEDCommand blinkScript[3] = { { dim, 100, 100 },{ dim, 0, 100 }, { end, 0, 0 } };
+	for (int i=1; i<5; i++){
+		leds[i].script = blinkScript;
 		leds[i].looping = true;
 		leds[i].begin();
 	}
 
 	awakeTimer_ms = 0;
-	while (awakeTimer_ms < 3000) {
-		for (i=0; i<4; i++)
+	while (awakeTimer_ms < 1000) {
+		for (i=1; i<5; i++)
 			leds[i].update();
 	}
 
-	for (i=0; i<4; i++) {
+	for (i=1; i<5; i++) {
 		leds[i].stop();
+		leds[i].script = NULL;
 		leds[i].off();
 	}
 
@@ -934,14 +939,12 @@ void decodePlayState(unsigned long nowTime){
   if (btn3pressed && btn3.fell()) {  // if NONSTOP button pressed,
     if (nonstop[0]) {
       CBSET(nonstop, false);
-			Dbg_println("NEVER NOT STOPPING!");//DEBUG
       if (!decodedPlayLed[0]) {// if PO not currently playing,
       	CBSET(playing, false); // stop when nonstop is deactivated.
       }
       // get it on the next loop
     } else {
       CBSET(nonstop, true);
-			Dbg_println("NOT STOPPING!");//DEBUG
     }
   }
 
