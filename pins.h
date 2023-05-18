@@ -8,16 +8,16 @@ const int button1Pin = 10;   // sw1 = gpio10
 const int button2Pin = 24;   // sw2 = gpio24
 const int button3Pin = 0;   // sw3/nonstop
 const int button4Pin = 5;   // sw4/reset
-const int led1Pin =  9;    // led1
-const int led2Pin =  23;    // led2
-const int led3Pin = 8; // led3/nonstop led
+const int led1Pin =  9;    // pwm channel 4B
+const int led2Pin =  23;    // pwm channel 3B
+const int led3Pin = 8; // pwm channel 4A
 const int nonstopLedPin = led3Pin; 
-const int led4Pin = 6;	// builtin led on Teensy 3.2, or led4 of v6
+const int led4Pin = 6;	// pwm channel 3A
 const int boardLedPin = led4Pin;
-const int tip1 = 19; 	// tip1 / l_sync_out
-const int tip2 = 21; 		// tip2 / r_sync_out
-const int ring1 = 18;
-const int ring2 = 20;
+const int tip1 = 19; 	// pwm channel 1B
+const int tip2 = 21; 		// pwm channel 2B
+const int ring1 = 18; // pwm channel 1A
+const int ring2 = 20;	// pwm channel 2A
 const int outPins[4] = { tip1, ring1, tip2, ring2 };
 const int PO_play = 4; 		// goes high on PO play (runs to play LED)
 const int PO_wake = 26;			// goes low when PO sleeps -- gpio26/adc0

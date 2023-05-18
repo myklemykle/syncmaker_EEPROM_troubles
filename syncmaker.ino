@@ -420,6 +420,13 @@ void setupPins(){
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
 #endif
 
+	// not needed? defaults seem fine.
+/* #ifdef MCU_RP2040 */
+/* #ifdef PWM_LED_BRIGHNESS */
+/* 	analogWriteRange(PWM_LED_BRIGHNESS); */
+/* #endif */
+/* #endif */
+	
 	// pin modes of LEDs:
 	leds[1].init();
 	leds[2].init();
@@ -480,21 +487,22 @@ void setupPins(){
 
 // Flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
 void goodMorning(){
-	leds[1].on();
-	leds[2].on();
-	leds[3].on();
-#ifdef LED4
-	leds[4].on();
-#endif 
+	int i;
+	LEDCommand blinkScript[3] = { { dim, 100, 50 },{ dim, 0, 50 }, { end, 0, 0 } };
 
-	delay(200); // waiting for USB host...
+	for (i=1; i<5; i++){
+		leds[i].runScript(blinkScript);
+	}
 
-	leds[1].off();
-	leds[2].off();
-	leds[3].off();
-#ifdef LED4
-	leds[4].off();
-#endif // LED4
+	awakeTimer_ms = 0;
+	while (awakeTimer_ms < 200) {
+		for (i=1; i<5; i++)
+			leds[i].update();
+	}
+
+	for (i=1; i<5; i++) {
+		leds[i].rmScript();
+	}
 
 #if PI_REV == 10
   Dbg_println("flashed for v10 board");
@@ -1219,7 +1227,7 @@ void updateLEDs(unsigned long nowTime){
 		leds[3].on();
   }
 #ifdef NONSTOP_HACK
-	leds[3].update(); // TODO: move this to some less tight loop?
+	leds[3].pwmUpdate(); // TODO: move this to some less tight loop?
 #endif
 }
 
