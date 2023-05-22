@@ -135,27 +135,25 @@ void EZLED::begin(unsigned long startTime){
 
 // halt the animation script
 void EZLED::stop(){
-	// TODO: how to pause & resume the timer?
+	timerPausedAt = timer;
 	running = false;
 }
 
 void EZLED::resume(){
-	// TODO: how to pause & resume the timer?
 	running = true;
+	timer = timerPausedAt;
 }
 
 // find the current command & make sure the led is updated.
 void EZLED::update(){
 	if (!running) return;
 
-	unsigned long t = timer; 
-	while (timer > scriptDuration) {
+	unsigned long t = speed * timer / 100;  // speed defaults to 100
+	while (t > scriptDuration) {
 		if (! looping) {
 			running = false;
 			return;
 		}
-		timer -= scriptDuration;
-		// For the very-slightly-possible corner case where the timer advances past scriptDuration right after I measure it:
 		t -= scriptDuration;
 	}
 
@@ -175,16 +173,11 @@ void EZLED::update(){
 		currentCmd++;
 	}
 
-	Dbg_println(currentCmd->brightness);
-
 	if (currentCmd->brightness == 100) {
-		Dbg_println("on");
 		on();
 	} else if (currentCmd->brightness == 0){
-		Dbg_println("off");
 		off();
 	} else{
-		Dbg_println("dim");
 		fdim(currentCmd->brightness);
 	}
 }

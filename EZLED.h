@@ -30,6 +30,7 @@ public:
 	float pinState;
 	LEDCommand *script;
 	bool looping  = false;
+	int speed = 100; // (a percentage of specified animation speeds)
 
 #ifdef NONSTOP_HACK
 	// for PWM hack:
@@ -65,6 +66,7 @@ public:
 private:
 	unsigned long scriptDuration;
 	elapsedMillis timer;
+	unsigned long timerPausedAt;
 	bool running = false;
 };
 
