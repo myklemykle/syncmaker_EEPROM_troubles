@@ -118,17 +118,23 @@ void EZLED::rmScript(){
 	off();
 }
 
+// measure script duration:
+// If you manipulate any script command durations behind the scenes,
+// call this after the change, before calling update().
+void EZLED::measureScript(){
+	scriptDuration = 0;
+	for (LEDCommand *i = script; i->cmd != end; i++) {
+		scriptDuration += i->duration;
+	}
+}
+
 // start playing the animation script
 void EZLED::begin(unsigned long startTime){
 	if (script == NULL) {
 		Dbg_println("exception: uninitialized led script");
 		return; // real exception handling in arduino could be nice ...
 	}
-	// measure script duration:
-	scriptDuration = 0;
-	for (LEDCommand *i = script; i->cmd != end; i++) {
-		scriptDuration += i->duration;
-	}
+	measureScript();
 	timer = startTime;
 	running = true;
 }
@@ -149,6 +155,7 @@ void EZLED::update(){
 	if (!running) return;
 
 	unsigned long t = speed * timer / 100;  // speed defaults to 100
+
 	while (t > scriptDuration) {
 		if (! looping) {
 			running = false;

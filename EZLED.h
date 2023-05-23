@@ -20,7 +20,7 @@ enum ledVerb { dim, fade, end };
 typedef struct {
 	ledVerb cmd;
 	float brightness; // 0-100 inclusive
-	int duration; // ms
+	unsigned int duration; // ms
 } LEDCommand;
 // An array of those is an LED script.
 
@@ -53,6 +53,7 @@ public:
 	void setScript(LEDCommand cmds[], bool loop = true);
 	void runScript(LEDCommand cmds[], bool loop = true);
 	void rmScript();
+	void measureScript();
 	void begin(unsigned long startTime=0);
 	void stop();
 	void resume();
