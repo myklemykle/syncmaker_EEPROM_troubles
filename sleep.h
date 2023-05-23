@@ -27,6 +27,18 @@
 // For V9 boards, we are seeing about 850-920 when awake, depending on battery charge, 
 // down to 24 when asleep.
 //
+// For V10 boards: 
+	// running the PO without batteries installed, while on USB power:
+//
+	// at boot time (while PO is waiting for clock to be set) we see 77.
+	// at runtime (PO clock is set, PO is stopped): 867
+	// At some point after some idle time but before sleep: 904.
+	// Then, when PO sleeps: 34
+	//
+	// running the PO with both batteries and USB:
+	// at boot time (while PO is waiting for clock to be set) we see 82.
+	// at runtime: 935 (based on some random pair of batteries)
+//
 // NOTE: the rest of the Pocket Operator will appear to wake from a button press, but 
 // its sleeping codec doesn't get powered back on until the very moment you hit PLAY,
 // which is when this value goes up.
