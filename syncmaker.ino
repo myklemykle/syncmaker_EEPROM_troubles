@@ -312,11 +312,11 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	Dbg_print("ring mode: ");
 	switch(ringMode) { // OUTMODES are defined in settings.h
 case OUTMODE_OFF:  
-		Dbg_println("off");
+		Dbg_print("off");
 		gpio_set_function(ringPin, GPIO_FUNC_NULL );
 		break;
 case OUTMODE_LOW:  
-		Dbg_println("low");
+		Dbg_print("low");
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		digitalWrite(ringPin, LOW);
 		break;
@@ -328,22 +328,22 @@ case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
 case OUTMODE_SINE:
 case OUTMODE_SQUARE:
-		Dbg_println("audio");
+		Dbg_print("audio");
 		// PWM audio
 		gpio_set_function(ringPin, GPIO_FUNC_PWM );
 		break;
 case OUTMODE_SYNC:
-		Dbg_println("sync");
+		Dbg_print("sync");
 		// plain old output pin
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		break;
 case OUTMODE_MIDI:
-		Dbg_println("midi");
+		Dbg_print("midi");
 		gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
 
-	Dbg_print("tip mode: ");
+	Dbg_print(", tip mode: ");
 	switch(tipMode) {
 case OUTMODE_OFF:  
 		Dbg_println("off");
@@ -381,7 +381,7 @@ case OUTMODE_MIDI:
 	_settings.s.outs[settingsIdx++] = tipMode;
 	_settings.s.outs[settingsIdx] = ringMode;
 
-// TODO: if anything can be turned off, turn it off.
+// TODO: if anything else can be turned off to save power, turn it off.
 }
 
 // simpler util, for setting just one pin:
@@ -456,6 +456,9 @@ void setupPins(){
 	pinMode(button1Pin, INPUT_PULLUP);  // sw1
 	pinMode(button2Pin, INPUT_PULLUP);  // sw2
 	pinMode(button3Pin, INPUT_PULLUP);  // nonstop
+#ifdef BUTTON4
+	pinMode(button4Pin, INPUT_PULLUP);  // reset
+#endif
 
 	// pin mode of IMU interrupt pin:
 	pinMode(IMU_int, INPUT_PULLUP);
@@ -486,7 +489,7 @@ void setupPins(){
 }
 
 // Flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
-void goodMorning(){
+void hello_boot(){
 	int i;
 	LEDCommand blinkScript[3] = { { dim, 100, 50 },{ dim, 0, 50 }, { end, 0, 0 } };
 
@@ -563,6 +566,25 @@ void readButtons(){
 #endif
 }
 
+// Alas, the Bounce2 library seems to have a bug with button-held-at-boot.
+// https://github.com/thomasfredericks/Bounce2/issues/93
+// So we use this during startup, without additional debouncing.
+void readButtonsQuick(){
+	btn1pressed = ! digitalRead(button1Pin);
+	btn2pressed = ! digitalRead(button2Pin);
+	btn3pressed = ! digitalRead(button3Pin);
+#ifdef BUTTON4
+	btn4pressed = ! digitalRead(button4Pin);
+#endif
+}
+
+// sometimes we just want to do it over and over again while we wait ...
+void readButtons_ms(unsigned long dur){
+	elapsedMillis t = 0;
+	while (t < dur)
+		readButtonsQuick();
+}
+
 	
 ///////
 // SPI+IMU setup:
@@ -600,21 +622,13 @@ void setup_play(){
   ////////
   // Human Clock setup:
   //
-  hc.downbeatTime = micros();  // now!
-	// TODO move to runtime select
-  // If side buttons are held down when we boot, reset the default measure length
-  if (BOTHPRESSED) {
-    _settings.s.measureLen = hc.measureLen = 250 * 1000;  // 120bpm == 2 beats per second, @ 2 pulses per beat == 1/4 second (250ms) per pulse) */
-		_settings.put();
-  } else {
-		hc.measureLen = _settings.s.measureLen;
-  }
+	hc.downbeatTime = micros(); 
+	hc.measureLen = _settings.s.measureLen;
+	CBINIT(hc.tapIntervals, 0);
 
 #ifdef MIDITIMECODE
   mtc.setup();
 #endif
-
-  CBINIT(hc.tapIntervals, 0);
 
   sleep_setup();
 
@@ -650,15 +664,51 @@ void setupAudio(){
 #endif
 }
 
+void hello_test(){
+	LEDCommand s1[3] = { { dim, 100, 50 }, {dim, 0, 100}, {end, 0, 0} };
+	LEDCommand s2[4] = { {dim, 0, 50}, { dim, 100, 50 }, {dim, 0, 50}, {end, 0, 0} };
+	LEDCommand s3[3] = { { dim, 0, 100 }, {dim, 100, 50}, {end, 0, 0} };
+
+	/* leds[1].speed = 50; */
+	/* leds[2].speed = 50; */
+	/* leds[3].speed = 50; */
+
+	leds[1].runScript(s1);
+	leds[2].runScript(s2);
+	leds[3].runScript(s3);
+
+	elapsedMillis t = 0;
+	while (t < 900) {
+		leds[1].update();
+		leds[2].update();
+		leds[3].update();
+		delay(50);
+	}
+	leds[1].rmScript();
+	leds[2].rmScript();
+	leds[3].rmScript();
+}
+
+void hello_debug(){
+	LEDCommand s1[3] = { { dim, 100, 50 }, {dim, 0, 100}, {end, 0, 0} };
+	leds[3].runScript(s1);
+	for (elapsedMillis t = 0;t<3000;){
+		leds[3].update();
+	}
+	leds[3].rmScript();
+}
+
 #ifdef MCU_RP2040
 #define LONG_HOLD 2000 //ms
 ///////
 // Use the button configuration to determine what mode we boot into
 // (For this MCU we just presume LED4 and BUTTON4 exist.)
 void selectRunMode(){
+	readButtonsQuick();
 	// if all 3 upper buttons are pressed at boot:
 	if (btn1pressed && btn2pressed && btn3pressed) {
 		runMode = RUNMODE_TEST;
+		hello_test();
 		return;
 	}
 
@@ -667,10 +717,10 @@ void selectRunMode(){
 		leds[3].on();
 		leds[4].on();
 		// wait N seconds.
-		delay(LONG_HOLD);  // TODO: actually notice when  button is released?
-		readButtons();
+		readButtons_ms(LONG_HOLD);
 		if (btn3pressed && btn4pressed) {
 			runMode = RUNMODE_DEBUG;
+			hello_debug();
 			leds[3].off();
 			leds[4].off();
 			return;
@@ -682,8 +732,7 @@ void selectRunMode(){
 		if (btn4pressed) {
 			leds[4].on();
 			// wait N seconds.
-			delay(LONG_HOLD);  // TODO: actually notice when  button is released?
-			readButtons();
+			readButtons_ms(LONG_HOLD);
 			if (btn4pressed) {
 				reset_usb_boot(1 << led4Pin, 0);
 			} 
@@ -710,8 +759,6 @@ void setup() {
 	  // fix startup weirdness
   rp2040.idleOtherCore();
 
-	  // enable watchdog
-	rp2040.wdt_begin(5000);
 #endif
 
 	// load settings:
@@ -732,15 +779,14 @@ void setup() {
 	myMidi.begin();
   Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
 
-	// flash hello; also gives 200ms for usb to stabilize:
+	// flash hello; this also gives 200ms for usb to stabilize:
 	// (TODO: runmode-specific flash?)
-	goodMorning();
+	hello_boot();
 
-	// read initial button state.
-  // If side buttons (only) are held down when we boot, revert to default settings.
-	readButtons(); // TODO: not working at boot? how often do we need to call update() to get good readings?
+	readButtonsQuick();
   if (btn1pressed && btn2pressed && !(btn3pressed)) {
 		_settings.init();
+		/* Dbg_println("_settings.init();"); */
 		// TODO: give a confirming flash.
   } 
 
@@ -764,11 +810,10 @@ void setup() {
 	// TODO: testing & maybe auto-adjusting resolution and rate here.
 
 	// audio setup:
-	// TODO: not all runmodes? move to runmode setup
+	// TODO: not all runmodes? move to runmode setup?
 	setupAudio();
 
 #ifdef MCU_RP2040
-	// runmode setup
 	selectRunMode();
 	setup_play();
 #else
@@ -776,9 +821,10 @@ void setup() {
 	setup_play();
 #endif
 
-
 #ifdef MCU_RP2040
 	rp2040.resumeOtherCore();
+	  // enable watchdog
+	rp2040.wdt_begin(5000);
 #endif
 }
 
@@ -1227,7 +1273,7 @@ void updateLEDs(unsigned long nowTime){
 		leds[3].on();
   }
 #ifdef NONSTOP_HACK
-	leds[3].pwmUpdate(); // TODO: move this to some less tight loop?
+	leds[3].pwmUpdate(); 
 #endif
 }
 
@@ -1405,9 +1451,15 @@ void updateCClock(unsigned long nowTime){
 void printStats(){
     if (showStats) {
       Dbg_print(awakeTimer_ms);
-      Dbg_print(':');
+      Dbg_print('/');
       Dbg_print(loopTimer_us);
       Dbg_print(':');
+
+			/* if (btn1pressed) { */
+			/* 	Dbg_print("down "); */
+			/* } else { */
+			/* 	Dbg_print("up "); */
+			/* } */
 
       if (awakePinState >= awakePinThreshold) {
         Dbg_print(playing[0] ? (decodedPlayLed[0] ? "play" : "(play)")
@@ -1501,6 +1553,11 @@ void loop1(){
 #endif
 
 void loop() {
+#ifdef MCU_RP2040
+	// feed kibble to watchdog
+	rp2040.wdt_reset();
+#endif
+
 	switch (runMode) {
 		case RUNMODE_PLAY: 
 			loop_play();
@@ -1521,12 +1578,6 @@ void loop_play() {
 
 	/* PROFILE_START_LOOP(); */
 	PROFILE_MARK_START("ALL");
-
-#ifdef MCU_RP2040
-	// feed kibble to watchdog
-	rp2040.wdt_reset();
-#endif
-
 
 	// check if PO has gone to sleep:
   awakePinState = analogRead(PO_wake);
