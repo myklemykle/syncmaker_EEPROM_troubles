@@ -637,6 +637,30 @@ void setup_play(){
 	PROFILE_SETUP();
 }
 
+///////////////
+// Setup specific to RUNMODE_TEST
+#define LED_MIN_ON 100
+LEDCommand testmodeLedScripts[5][3] = {
+	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } },  // dummy
+	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } }, 
+	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } }, 
+	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } }, 
+	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } } 
+};
+	
+void setup_test(){
+	// script the LEDS
+	for (int i = 1; i<=4; i++){
+		leds[i].runScript(testmodeLedScripts[i]);
+		leds[i].update();
+	}
+}
+
+///////////////
+// Setup specific to RUNMODE_DEBUG
+void setup_debug(){
+}
+
 ////////////
 // setup audio subsystem
 void setupAudio(){
@@ -668,10 +692,6 @@ void hello_test(){
 	LEDCommand s1[3] = { { dim, 100, 50 }, {dim, 0, 100}, {end, 0, 0} };
 	LEDCommand s2[4] = { {dim, 0, 50}, { dim, 100, 50 }, {dim, 0, 50}, {end, 0, 0} };
 	LEDCommand s3[3] = { { dim, 0, 100 }, {dim, 100, 50}, {end, 0, 0} };
-
-	/* leds[1].speed = 50; */
-	/* leds[2].speed = 50; */
-	/* leds[3].speed = 50; */
 
 	leds[1].runScript(s1);
 	leds[2].runScript(s2);
@@ -815,7 +835,19 @@ void setup() {
 
 #ifdef MCU_RP2040
 	selectRunMode();
-	setup_play();
+	switch(runMode){
+		case RUNMODE_PLAY: 
+			setup_play();
+			break;
+		case RUNMODE_TEST:
+			setup_test();
+			break;
+		case RUNMODE_DEBUG:
+			setup_debug();
+			break;
+		default:
+			Dbg_println("exception: bad runmode");
+	}
 #else
 	// play only
 	setup_play();
@@ -1563,11 +1595,70 @@ void loop() {
 			loop_play();
 			break;
 		case RUNMODE_TEST: 
-			loop_play(); //for now
+			loop_test(); 
 			break;
 		case RUNMODE_DEBUG:
 			loop_play(); //for now
 			break;
+	}
+}
+
+void loop_test() {
+	static elapsedMicros ledTimer = 0;
+
+	// led blinks: the on-times will remain steady,
+	// the off-times will go to zero as approaching max, approach TIMEDIFFxON as approaching min.
+	// gs/IMU_COUNT_PER_G should range -1 to +1
+	// 1 - gs/IMU_COUNT_PER_G should range 0 to 2
+#define LED_TIMEDIFF 20
+//#define LED_OFFTIME(gs) { (1.0 - (gs / IMU_COUNT_PER_G)) / 2 * LED_MIN_ON * LED_TIMEDIFF }
+//#define LED_OFFTIME(gs) { ( (IMU_COUNT_PER_G - gs) / 2) * LED_MIN_ON * LED_TIMEDIFF / IMU_COUNT_PER_G}
+//#define LED_OFFTIME(gs) { LED_MIN_ON * ( ( (IMU_COUNT_PER_G - gs) / 2) * LED_TIMEDIFF / IMU_COUNT_PER_G ) }
+#define LED_OFFTIME(gs) { max(0, ( LED_MIN_ON * ( ( (IMU_COUNT_PER_G - gs) / 2) * LED_TIMEDIFF )) / IMU_COUNT_PER_G ) }
+
+  // Read IMU data if ready:
+  if (imu_ready) {  
+    // IMU inner loop runs once per IMU interrupt
+    imu_ready = false;
+		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
+	}
+
+	while (ledTimer > 50000) { // every 50ms
+		ledTimer -= 50000;
+		// -- calculate led blinkrates based on tilt, and adjust animation scripts
+		// led1 = -x, led2 = +x, 3 = -y, 4 = +y
+		testmodeLedScripts[1][1].duration = LED_OFFTIME(-ax);
+		testmodeLedScripts[2][1].duration = LED_OFFTIME(ax);
+		testmodeLedScripts[3][1].duration = LED_OFFTIME(-ay);
+		testmodeLedScripts[4][1].duration = LED_OFFTIME(ay);
+		for (int i = 1; i<=4; i++){
+			leds[i].measureScript();
+		}
+	}
+	// update LEDs.
+	for (int i = 1; i<=4; i++){
+		leds[i].update();
+	}
+
+	// -- adjust audio based on tilt?
+
+	// read buttons
+	// -- light LEDs when buttons pressed, otherwise do blinkrates
+
+	// animate the PI->PO pinset so we can test the connector somehow
+	 
+	// stats?
+	/* if (statsTimer_ms > STATSTIME){ */
+	/* 	statsTimer_ms -= STATSTIME; */
+	if (statsTimer_ms > 100){
+		statsTimer_ms -= 100;
+		Dbg_print("led durations: ");
+		for (int i=1;i<=4;i++){
+			Dbg_print(testmodeLedScripts[i][1].duration);
+			Dbg_print(", ");
+		}
+		Dbg_printf("acc %d, %d, %d", ax, ay, az);
+		Dbg_println();
 	}
 }
 
