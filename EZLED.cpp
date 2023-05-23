@@ -124,7 +124,7 @@ void EZLED::rmScript(){
 void EZLED::measureScript(){
 	scriptDuration = 0;
 	for (LEDCommand *i = script; i->cmd != end; i++) {
-		scriptDuration += i->duration;
+		scriptDuration += (i->duration * speed / 100);
 	}
 }
 
@@ -154,15 +154,19 @@ void EZLED::resume(){
 void EZLED::update(){
 	if (!running) return;
 
-	unsigned long t = speed * timer / 100;  // speed defaults to 100
-
-	while (t > scriptDuration) {
+	while (timer > scriptDuration) {
 		if (! looping) {
 			running = false;
 			return;
 		}
-		t -= scriptDuration;
+		timer -= scriptDuration;
 	}
+
+	unsigned long t = timer;  
+														
+	// corner case:
+	if (t > scriptDuration)
+		t -= scriptDuration;
 
 	LEDCommand *currentCmd = script;
 	if (script == NULL) {
@@ -170,13 +174,14 @@ void EZLED::update(){
 		return; // real exception handling in arduino could be nice ...
 	}
 
+	unsigned int realDuration;
 	// traverse the script to find the current command.
-	while (currentCmd->duration < t){
+	while ((realDuration = currentCmd->duration * speed / 100) < t) {
 		if (currentCmd->cmd == end) {
 			Dbg_println("exception: reached end of script before duration");
 			return; // yeah that would be nice
 		}
-		t -= currentCmd->duration;
+		t -= realDuration;
 		currentCmd++;
 	}
 
