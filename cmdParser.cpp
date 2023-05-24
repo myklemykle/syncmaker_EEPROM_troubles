@@ -15,7 +15,7 @@
 
 //typedef CommandParser<16,4,10,32,64> MyCommandParser; //default vals
 //typedef CommandParser<16,4,10,32,128> MyCommandParser; // longer responses
-typedef CommandParser<16,4,10,32,1024> MyCommandParser; // support hex dumps
+typedef CommandParser<16,4,10,32,1024> MyCommandParser; // even longer to fit hex dumps
 
 MyCommandParser parser;
 
@@ -26,8 +26,6 @@ extern void configOutputs(int pinPair, byte tipMode, byte ringMode);
 
 #ifdef AUDIO_RP2040
 extern RP2040Audio audio;
-// extern short RP2040Audio::transferBuffer[TRANSFER_BUFF_SIZE];
-// extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SIZE];
 #endif
 
 #ifdef SERIAL_MIDI
@@ -411,6 +409,31 @@ void cmd_poke(CMDARGS){
 }
 
 
+void cmd_audio(CMDARGS){
+	int channel = args[0].asUInt64; // 1 or 2, or 0 for both channels.
+	if (channel < 0 || channel > 2){
+		syntaxErr("audio [1|2|0] [on|off]");
+		return;
+	}
+		
+	if (strmatch(args[1].asString, "on")) {
+		if (channel < 2) { // 0 or 1
+			audio.play(0);
+		}
+		if (channel == 0 || channel == 2) {
+			audio.play(1);
+		}
+		respond("playing");
+	} else if (strmatch(args[1].asString, "off")) {
+		if (channel < 2) // 0 or 1
+			audio.pause(0);
+		if (channel == 0 || channel == 2)
+			audio.pause(1);
+		respond("paused");
+	} else {
+		syntaxErr("audio [1|2|0] [on|off]");
+	}
+}
 
 
 void cmd_setup() {
@@ -437,6 +460,8 @@ void cmd_setup() {
 
 	parser.registerCommand("peek","u", &cmd_peek);
 	parser.registerCommand("poke","uu", &cmd_poke);
+
+	parser.registerCommand("audio","us", &cmd_audio);
 }
 
 void cmd_update() {
