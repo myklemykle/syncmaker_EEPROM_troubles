@@ -100,20 +100,32 @@ void RP2040Audio::init() {
 
 
 bool RP2040Audio::isPlaying(unsigned char port) {
-  // This is not perfect: approx 1 time per transfer buffer rewind 
+  if (dma_channel_is_busy(wavDataCh[port]))
+		return true;
+
+  // This is tricky: 
+	// approx 1 time per transfer buffer rewind 
 	// (that's (TRANSFER_BUFF_SAMPLES/2) / WAV_SAMPLE_RATE hz) 
-	// is when the loop control DMA resets this DMA,
-  // so this DMA channel could be not-busy at that moment.  
+	// the loop control DMA resets this DMA.
+  // This DMA channel could be not_busy at that moment 
+	// even when the channel isPlaying.
 	//
-	// That reset window could be pretty short. I don't know how many cycles
-	// it takes for a chain between DMAs to happen -- it's not documented to take
-	// any time at all, maybe it doesn't!  The loop DMA writes a single word
+	// That reset window could be pretty short. 
+	// I don't know how many cycles it takes for a chain between DMAs 
+	// to happen -- maybe zero! The loop DMA writes a single word
 	// to rewind the data DMA, so that should only need 1 cycle.
-	// But with 4 DMA channels round-robining, that's really 4 cycles.
+	// But with 4 DMA channels round-robining, that's really 4 cycles, minimum.
 	//
-	// So odds of hitting this are as described above: 
-	// quite low, but not impossible.
-  // How to do better? Check twice?
+	// So the odds of hitting this reset window when we call dma_channel_is_busy()
+	// are as described above: extremely low, but not impossible.
+	//
+  // How to do better? Check twice.
+	// dma_channel_is_busy() seems to compile down to 9 instructions, 
+	// so it takes at least 9 cycles.
+	//
+	// In the unlikely event we hit the reset window with the last check, 
+	// I hope this next check will still spot a busy channel.
+	
   return dma_channel_is_busy(wavDataCh[port]);
 }
 
