@@ -19,6 +19,7 @@
 #ifdef AUDIO_RP2040
 // rp2040 audio
 #include "RP2040Audio.h"
+#include "hardware/irq.h"
 #include "hardware/pwm.h"
 #include "pico/bootrom.h"
 #elif defined(AUDIO_TEENSY)
@@ -99,10 +100,10 @@ RP2040Audio audio;
 
 // C++ you so crazy!  Why do i have to redefine these?  Read the header file dude!
 // This buffer stores our audio sample: white or pink noise for maraca.
-extern short RP2040Audio::transferBuffer[TRANSFER_BUFF_SIZE];
+extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SAMPLES];
 // We scale/process audio out of the sample buffer into this small buffer,
 // and DMA copies that to the PWM output.
-extern short RP2040Audio::sampleBuffer[SAMPLE_BUFF_SIZE];
+extern short RP2040Audio::transferBuffer[2][TRANSFER_BUFF_SAMPLES];
 
 #endif
 
@@ -619,6 +620,13 @@ void setupIMU(){
 //////////////
 // Setup specific to RUNMODE_PLAY
 void setup_play(){
+
+#ifdef MCU_RP2040
+	// configure output modes -- potentially disconnecting serial for now
+	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
+	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
+#endif
+
   ////////
   // Human Clock setup:
   //
@@ -648,12 +656,23 @@ LEDCommand testmodeLedScripts[5][3] = {
 	{ { dim, 100, LED_MIN_ON },{ dim, 0, 666 }, { end, 0, 0 } } 
 };
 	
+///////////////////
+// setup specific to RUNMODE_TEST
 void setup_test(){
 	// script the LEDS
 	for (int i = 1; i<=4; i++){
 		leds[i].runScript(testmodeLedScripts[i]);
 		leds[i].update();
 	}
+
+#ifdef MCU_RP2040
+	// configure output modes
+	configOutputs(ring1, OUTMODE_SINE, OUTMODE_SINE);
+	configOutputs(ring2, OUTMODE_SINE, OUTMODE_SINE);
+#endif
+
+	// setup serial interface
+	cmd_setup();
 }
 
 ///////////////
@@ -763,7 +782,8 @@ void selectRunMode(){
 	}
 
 	// any other odd possible combo means nothing.
-	runMode = RUNMODE_PLAY;
+	//runMode = RUNMODE_PLAY;
+	runMode = RUNMODE_TEST; // while developing test.
 }
 #endif
 
@@ -810,12 +830,6 @@ void setup() {
 		// TODO: give a confirming flash.
   } 
 
-#ifdef MCU_RP2040
-	// configure output modes -- potentially disconnecting serial for now
-	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
-	configOutputs(ring2, _settings.s.outs[2], _settings.s.outs[3]);
-#endif
-
   ///////////
   // initialize loop state:
   CBINIT(inertia, 0);
@@ -854,7 +868,8 @@ void setup() {
 #endif
 
 #ifdef MCU_RP2040
-	rp2040.resumeOtherCore();
+	//rp2040.resumeOtherCore();
+	rp2040.restartCore1();
 	  // enable watchdog
 	rp2040.wdt_begin(5000);
 #endif
@@ -869,26 +884,14 @@ uint32_t volumeLevel = 0;
 // calculate new shaker volume
 // update the audio system with that.
 
-uint32_t processIMU(int& ax, int& ay, int& az, int& gx, int& gy, int& gz){
-#ifdef SDEBUG
-	imus++;
-#endif
 
-	// shift inner loop state:
-	CBNEXT(inertia);
-
-	PROFILE_MARK_START("imu");
-	imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-	PROFILE_MARK_END("imu");
+uint32_t setLevels(int ax, int ay, int az){
 
 	PROFILE_MARK_START("sqrt");
+	// shift inner loop state:
+	CBNEXT(inertia);
 	CBSET(inertia, (long)sqrt((ax * ax) + (ay * ay) + (az * az)));  // vector amplitude (always positive)
 	PROFILE_MARK_END("sqrt");
-
-#ifdef SDEBUG
-	/* if (inertia[0] > shakeThreshold)  */
-	/* 	Dbg_println(inertia[0]); */
-#endif
 
 	// This funny formula gives a float value for volume:
 	// it's the difference between momentary intertia and a minimum inertial threshhold (shakeThreshold),
@@ -1545,26 +1548,83 @@ void printStats(){
     }
 }
 
-
-#ifdef AUDIO_RP2040
+volatile bool ISR_SET=false;//TEST
+#ifdef MCU_RP2040
+/////////////////////////
+// Core 1 setup & loop:
+void setup1(){
+  // assuming core0 setup has already set runMode
+  switch(runMode){
+    case RUNMODE_PLAY:
+      setup1_play();
+      break;
+    case RUNMODE_TEST:
+      setup1_test();
+      break;
+    case RUNMODE_DEBUG:
+      setup1_debug();
+      break;
+    default:
+      Dbg_println("exception: bad runmode");
+  }
+}
 
 // rp2040 audio on core 1:
-void setup1(){
+void setup1_play(){
 
+#ifdef AUDIO_RP2040
 	// put some noise in the buffer:
 	audio.fillWithNoise();
 
 	// Setup PWM outputs & interrupt handler
 	audio.init();
+	irq_set_exclusive_handler(PWM_IRQ_WRAP, &RP2040Audio::ISR_play);
 
   // Start DMA-ing audio from transfer buffer to PWM pins.
   audio.play(0);
   audio.play(1);
+#endif
+}
+
+void setup1_test(){
+#ifdef AUDIO_RP2040
+	// Fill the sample buffer with a single sine wave
+	audio.fillWithSine(1, true);
+	//audio.fillWithSine(110); //TEST
+
+	// Set up the ISR that does pitch from volume levels
+	audio.init();
+	irq_set_exclusive_handler(PWM_IRQ_WRAP, &RP2040Audio::ISR_test);
+
+  // Start DMA-ing audio from transfer buffer to PWM pins.
+  audio.play(0);
+  audio.play(1);
+#endif
+}
+
+void setup1_debug(){
+	//tbd
+}
+
+
+void loop1(){
+  switch(runMode){
+    case RUNMODE_PLAY:
+      loop1_play();
+      break;
+    case RUNMODE_TEST:
+      loop1_test();
+      break;
+    case RUNMODE_DEBUG:
+      loop1_debug();
+      break;
+    default:
+      Dbg_println("exception: bad runmode");
+  }
 }
 
 volatile uint32_t iVolumeLevel;
-
-void loop1(){
+void loop1_play(){
 	static short reportcount = 1500; 
 
 	// update the interpolater with the latest volume level
@@ -1582,8 +1642,54 @@ void loop1(){
 	//audio.tweak(); // only for testing/tuning
 }
 
-#endif
+volatile uint32_t iPitch[4] = { 110,110,110,110 };
+volatile float sampleCursorInc[4];
+void loop1_test(){
+	static elapsedMillis reportTimer = 0;
 
+	// block until core0 sends a value, to signal that iPitch[] is updated (happens at ISR update rate)
+	// (the value itself doesn't matter.)
+	rp2040.fifo.pop();
+	for (int i=0;i<4;i++){
+		// calculate cursor increment for this pitch,
+		// from a SAMPLE_BUFF_SAMPLES buffer (we'll pretend it's mono) of 1 hz
+		// into a transfer buffer that gets played at WAV_SAMPLE_RATE 
+		// so a direct copy (increment of 1.0) has a rate of WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ; if buffer is 10 and rate is 100, it'll be 10hz.
+		// an increment of 2.0 will double the hz.
+		// an increment of n gives a rate of (n * WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ) (n * W / S)
+		// an increment of n * S / W gives a rate of n.
+		sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
+	}
+
+	// check commands
+	if (cmdTimer_ms > CMDTIME){
+		// read/handle serial commands
+		cmd_update();
+		cmdTimer_ms -= CMDTIME;
+	}
+
+	if (reportTimer > STATSTIME){
+		if (showStats) { 
+			Dbg_print("core1 is alive, ");
+			Dbg_printf("pitches: %d, %d, %d, %d, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3]);
+			Dbg_printf("cursors: %.4f, %.4f, %.4f, %.4f",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
+			Dbg_println();
+		}
+	
+		// wrap timer
+		while (reportTimer > STATSTIME)
+			reportTimer -= STATSTIME;
+	}
+}
+
+void loop1_debug(){
+	// tbd
+}
+
+#endif // MCU_RP2040
+
+//////////
+// Core 0 main loop
 void loop() {
 #ifdef MCU_RP2040
 	// feed kibble to watchdog
@@ -1604,7 +1710,7 @@ void loop() {
 }
 
 void loop_test() {
-	static elapsedMicros ledTimer = 0;
+	static elapsedMillis ledTimer = 0;
 
 	// led blinks: the on-times will remain steady,
 	// the off-times will go to zero as approaching max, approach TIMEDIFFxON as approaching min.
@@ -1620,11 +1726,20 @@ void loop_test() {
   if (imu_ready) {  
     // IMU inner loop runs once per IMU interrupt
     imu_ready = false;
-		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
+		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
+
+		// adjust audio based on tilt
+		// TOD: calc four pitches from accel data
+		iPitch[0]=100;
+		iPitch[1]=300;
+		iPitch[2]=900;
+		iPitch[3]=1600;
+		// notify core1 that pitches have been updated:
+		rp2040.fifo.push_nb(666);
 	}
 
-	while (ledTimer > 50000) { // every 50ms
-		ledTimer -= 50000;
+	while (ledTimer > 50) { // every 50ms
+		ledTimer -= 50;
 		// -- calculate led blinkrates based on tilt, and adjust animation scripts
 		// led1 = -x, led2 = +x, 3 = -y, 4 = +y
 		testmodeLedScripts[1][1].duration = LED_OFFTIME(-ax);
@@ -1635,31 +1750,36 @@ void loop_test() {
 			leds[i].measureScript();
 		}
 	}
+
 	// update LEDs.
 	for (int i = 1; i<=4; i++){
 		leds[i].update();
 	}
 
-	// -- adjust audio based on tilt?
-
 	// read buttons
+	readButtons();
+
 	// -- light LEDs when buttons pressed, otherwise do blinkrates
+
+	// reboot on button 4 press
+	if (btn4.fell()){
+		leds[4].on();
+		rp2040.reboot();
+	}
 
 	// animate the PI->PO pinset so we can test the connector somehow
 	 
-	// stats?
+	/* // stats? */
 	/* if (statsTimer_ms > STATSTIME){ */
 	/* 	statsTimer_ms -= STATSTIME; */
-	if (statsTimer_ms > 100){
-		statsTimer_ms -= 100;
-		Dbg_print("led durations: ");
-		for (int i=1;i<=4;i++){
-			Dbg_print(testmodeLedScripts[i][1].duration);
-			Dbg_print(", ");
-		}
-		Dbg_printf("acc %d, %d, %d", ax, ay, az);
-		Dbg_println();
-	}
+	/* 	Dbg_print("led durations: "); */
+	/* 	for (int i=1;i<=4;i++){ */
+	/* 		Dbg_print(testmodeLedScripts[i][1].duration); */
+	/* 		Dbg_print(", "); */
+	/* 	} */
+	/* 	Dbg_printf("acc %d, %d, %d", ax, ay, az); */
+	/* 	Dbg_println(); */
+	/* } */
 }
 
 void loop_play() {
@@ -1708,8 +1828,17 @@ void loop_play() {
   // Read IMU data if ready:
   if (imu_ready) {  // on interrupt
     imu_ready = false;
-    // IMU inner loop runs once per IMU interrupt
-		volumeLevel = processIMU(ax,ay,az,gx,gy,gz);
+#ifdef SDEBUG
+		imus++;
+#endif
+		PROFILE_MARK_START("imu");
+		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
+		PROFILE_MARK_END("imu");
+		
+		// calc new levels for things:
+		PROFILE_MARK_START("setlevels");
+		volumeLevel = setLevels(ax,ay,az);
+		PROFILE_MARK_END("setlevels");
 	}
 	
 #ifdef MIDITIMECODE
@@ -1729,7 +1858,7 @@ void loop_play() {
 	checkTaps(loopStartTime);
 
 #ifdef BUTTON4
-	// Manage button 4 behavior: reboots, mode changes, etc.
+	// Reboot on button 4 press
 	if (btn4.fell()){
 #ifdef LED4
 		leds[4].on();
