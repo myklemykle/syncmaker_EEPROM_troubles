@@ -731,7 +731,7 @@ void hello_test(){
 void hello_debug(){
 	LEDCommand s1[3] = { { dim, 100, 50 }, {dim, 0, 100}, {end, 0, 0} };
 	leds[3].runScript(s1);
-	for (elapsedMillis t = 0;t<3000;){
+	for (elapsedMillis t = 0;t<2000;){
 		leds[3].update();
 	}
 	leds[3].rmScript();
@@ -1712,8 +1712,9 @@ void loop() {
 void loop_test() {
 	static elapsedMillis ledTimer = 0;
 
-	// led blinks: the on-times will remain steady,
-	// the off-times will go to zero as approaching max, approach TIMEDIFFxON as approaching min.
+	// calculation for led blinks: 
+	// the on-times will remain steady (LED_MIN_ON),
+	// the off-times will go to zero as approaching max, approach LED_TIMEDIFFxLED_MIN_ON as approaching min.
 	// gs/IMU_COUNT_PER_G should range -1 to +1
 	// 1 - gs/IMU_COUNT_PER_G should range 0 to 2
 #define LED_TIMEDIFF 20
@@ -1760,26 +1761,55 @@ void loop_test() {
 	readButtons();
 
 	// -- light LEDs when buttons pressed, otherwise do blinkrates
+	if (btn1.fell()){
+		leds[1].stop();
+		leds[1].on();
+	} else if (btn1.rose()){
+		leds[1].resume();
+	}
+	if (btn2.fell()){
+		leds[2].stop();
+		leds[2].on();
+	} else if (btn2.rose()){
+		leds[2].resume();
+	}
+	if (btn3.fell()){
+		leds[3].stop();
+		leds[3].on();
+	} else if (btn3.rose()){
+		leds[3].resume();
+	}
 
-	// reboot on button 4 press
+	// same with button 4, but also reboot if held for LONG_HOLD ms.
+	static elapsedMillis rbTimer;
 	if (btn4.fell()){
+		leds[4].stop();
 		leds[4].on();
+		rbTimer = 0;
+		Dbg_println("b4 fell");
+	} else if (btn4.rose())  {
+		leds[4].resume();
+		Dbg_println("b4 rose");
+	} else if (btn4pressed && rbTimer > LONG_HOLD) {
+		Dbg_println("b4 l8r");
 		rp2040.reboot();
 	}
 
 	// animate the PI->PO pinset so we can test the connector somehow
 	 
-	/* // stats? */
-	/* if (statsTimer_ms > STATSTIME){ */
-	/* 	statsTimer_ms -= STATSTIME; */
-	/* 	Dbg_print("led durations: "); */
-	/* 	for (int i=1;i<=4;i++){ */
-	/* 		Dbg_print(testmodeLedScripts[i][1].duration); */
-	/* 		Dbg_print(", "); */
-	/* 	} */
-	/* 	Dbg_printf("acc %d, %d, %d", ax, ay, az); */
-	/* 	Dbg_println(); */
-	/* } */
+	// stats?
+	if (statsTimer_ms > STATSTIME){
+		statsTimer_ms -= STATSTIME;
+		if (showStats) { 
+			Dbg_print("led durations: ");
+			for (int i=1;i<=4;i++){
+				Dbg_print(testmodeLedScripts[i][1].duration);
+				Dbg_print(", ");
+			}
+			Dbg_printf("acc %d, %d, %d", ax, ay, az);
+			Dbg_println();
+		}
+	}
 }
 
 void loop_play() {
