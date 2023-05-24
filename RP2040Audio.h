@@ -23,7 +23,8 @@
 
 // Core1 scales samples from the sample buffer into this buffer,
 // while DMA transfers from this buffer to the PWM.
-#define TRANSFER_WINDOW_XFERS 8 // number of 32-bit DMA transfers in the window
+//#define TRANSFER_WINDOW_XFERS 8 // number of 32-bit DMA transfers in the window
+#define TRANSFER_WINDOW_XFERS 80 // number of 32-bit DMA transfers in the window
 #define TRANSFER_BUFF_SAMPLES TRANSFER_WINDOW_XFERS * AUDIO_CHANNELS  // size in uint_16s
 																																 
 // IMPORTANT:
@@ -33,7 +34,7 @@
 //#define SAMPLE_BUFF_SAMPLES 	( TRANSFER_WINDOW_XFERS * (320 / WAV_PWM_SCALE) )
 //
 // that's fine for a waveform, but for noise we need a much larger buffer:
-#define SAMPLE_BUFF_SAMPLES (TRANSFER_WINDOW_XFERS * 10000) // about 1.6 secs at WAV_PWM_SCALE = 1
+#define SAMPLE_BUFF_SAMPLES (TRANSFER_WINDOW_XFERS * 1000) // about 1.6 secs at WAV_PWM_SCALE = 1
 
 // Here is a spare pwm slice that we can make a timer from:
 #define TRIGGER_SLICE 0
