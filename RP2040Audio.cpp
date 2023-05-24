@@ -100,10 +100,20 @@ void RP2040Audio::init() {
 
 
 bool RP2040Audio::isPlaying(unsigned char port) {
-  // This is not perfect: approx 1 cycle per AUDIO_PERIOD seconds is when the loop control DMA resets this DMA,
-  // so this DMA channel could be not-busy at that moment.  Odds of this are approx once in 133 megachances ... ultra low.
-  // but likely we can't expect multiple calls to dma_channel_is_busy to solve that, because the DMAs are moving
-  // targets. How to do this exactly right?
+  // This is not perfect: approx 1 time per transfer buffer rewind 
+	// (that's (TRANSFER_BUFF_SAMPLES/2) / WAV_SAMPLE_RATE hz) 
+	// is when the loop control DMA resets this DMA,
+  // so this DMA channel could be not-busy at that moment.  
+	//
+	// That reset window could be pretty short. I don't know how many cycles
+	// it takes for a chain between DMAs to happen -- it's not documented to take
+	// any time at all, maybe it doesn't!  The loop DMA writes a single word
+	// to rewind the data DMA, so that should only need 1 cycle.
+	// But with 4 DMA channels round-robining, that's really 4 cycles.
+	//
+	// So odds of hitting this are as described above: 
+	// quite low, but not impossible.
+  // How to do better? Check twice?
   return dma_channel_is_busy(wavDataCh[port]);
 }
 
@@ -203,12 +213,12 @@ extern volatile uint32_t iVolumeLevel;
 
 // init() sets up an interrupt every TRANSFER_WINDOW_XFERS output samples,
 // then this ISR refills the transfer buffer with TRANSFER_BUFF_SAMPLES more samples,
-// which is TRANSFER_WINDOW_XFERS * number of channels.
+// which is TRANSFER_WINDOW_XFERS * TRANSFER_BUFF_CHANNELS
 void RP2040Audio::ISR_play() {
   static unsigned int sampleBuffCursor = 0;
   pwm_clear_irq(TRIGGER_SLICE);
 
-  for (int i = 0; i < TRANSFER_BUFF_SAMPLES; i++) {
+  for (int i = 0; i < TRANSFER_BUFF_SAMPLES; i+=TRANSFER_BUFF_CHANNELS ) {
 
     // Since amplitude can go over max, use interpolator #1 in clamp mode
 		// to hard-limit the signal.
@@ -221,27 +231,32 @@ void RP2040Audio::ISR_play() {
                          / WAV_PWM_RANGE      // scale denominator (TODO right shift here? or is the compiler smart?)
                          )
       ;
-			// TODO: set up interp0 to perform this add?
-		transferBuffer[0][i] = transferBuffer[1][i] = interp1->peek[0] + (WAV_PWM_RANGE / 2);  // shift to positive
+		// TODO: set up interp0 to perform this add?
+		short scaledSample = interp1->peek[0] + (WAV_PWM_RANGE / 2); // shift to positive
+																																 
+		// put that in both channels of both outputs:
+		for (int j=0;j<TRANSFER_BUFF_CHANNELS;j++) 
+			transferBuffer[0][i+j] = transferBuffer[1][i+j] = scaledSample;
 
     if (sampleBuffCursor == SAMPLE_BUFF_SAMPLES)
       sampleBuffCursor = 0;
   }
 }
 
-// Fancier version, time-scaling a 1hz sample:
+// Fancier version, time-scaling a 1hz sample into 4 output channels at 4 rates, but not (yet) adjusting volume.
 extern volatile float sampleCursorInc[4];
 void RP2040Audio::ISR_test() {
   static float sampleBuffCursor[4] = {0,0,0,0};
   pwm_clear_irq(TRIGGER_SLICE);
 
 	for (uint8_t port = 0; port<2; port++) {
-		for (int i = 0; i < TRANSFER_BUFF_SAMPLES; i+=2) {
-			for (uint8_t chan = 0; chan < 2; chan++){
+		for (int i = 0; i < TRANSFER_BUFF_SAMPLES; i+=TRANSFER_BUFF_CHANNELS) {
+			for (uint8_t chan = 0; chan < TRANSFER_BUFF_CHANNELS; chan++){
 				uint8_t pc = (port<<1)+chan;
 
+				// copy from mono samplebuf to stereo transferbuf
 				transferBuffer[port][i+chan] = sampleBuffer[(unsigned int)sampleBuffCursor[pc]] ;
-						// + (WAV_PWM_RANGE / 2);  // not shifting! we expect a positive-weighted sample (true flag passed to fillWithSine)
+						// + (WAV_PWM_RANGE / 2);  // not shifting! we expect a positive-weighted sample in the buffer (true arg passed to fillWithSine)
 
 				// advance cursor:
 				sampleBuffCursor[pc] += sampleCursorInc[pc];
@@ -272,8 +287,8 @@ void RP2040Audio::fillWithSine(uint count, bool positive){
 	const float twoPI = 6.283;
 	const float scale = (WAV_PWM_RANGE) / 2;
 
-	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= AUDIO_CHANNELS){
-		for(int j=0;j<AUDIO_CHANNELS; j++)
+	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= SAMPLE_BUFF_CHANNELS){
+		for(int j=0;j<SAMPLE_BUFF_CHANNELS; j++)
 			sampleBuffer[i + j] = (int) (scale
 					* sin( (float)i * count / (float)SAMPLE_BUFF_SAMPLES * twoPI ) 
 				 ) + (positive ? scale : 0) ; // shift sample to positive? (so the ISR routine doesn't have to)
@@ -282,8 +297,8 @@ void RP2040Audio::fillWithSine(uint count, bool positive){
 
 // fill buffer with square waves
 void RP2040Audio::fillWithSquare(uint count){
-	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= AUDIO_CHANNELS)
-		for(int j=0;j<AUDIO_CHANNELS; j++)
+	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= SAMPLE_BUFF_CHANNELS)
+		for(int j=0;j<SAMPLE_BUFF_CHANNELS; j++)
 		 if ((i*count)%SAMPLE_BUFF_SAMPLES < (SAMPLE_BUFF_SAMPLES / 2)){ 
 			 sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2;
 		 } else {
@@ -297,8 +312,8 @@ void RP2040Audio::fillWithSaw(uint count){
 	const float twoPI = 6.283;
 	const float scale = (WAV_PWM_RANGE) / 2;
 
-	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= AUDIO_CHANNELS){
-		for(int j=0;j<AUDIO_CHANNELS; j++)
+	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= SAMPLE_BUFF_CHANNELS){
+		for(int j=0;j<SAMPLE_BUFF_CHANNELS; j++)
 			sampleBuffer[i + j] = (int) 
 
 				// i 																																// 0 -> SAMPLE_BUFF_SAMPLES-1
