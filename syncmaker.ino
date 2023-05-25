@@ -421,13 +421,6 @@ void setupPins(){
 	*pads_voltage_sel = *pads_voltage_sel | 0b1; 
 #endif
 
-	// not needed? defaults seem fine.
-/* #ifdef MCU_RP2040 */
-/* #ifdef PWM_LED_BRIGHNESS */
-/* 	analogWriteRange(PWM_LED_BRIGHNESS); */
-/* #endif */
-/* #endif */
-	
 	// pin modes of LEDs:
 	leds[1].init();
 	leds[2].init();
@@ -1590,7 +1583,6 @@ void setup1_test(){
 #ifdef AUDIO_RP2040
 	// Fill the sample buffer with a single sine wave
 	audio.fillWithSine(1, true);
-	//audio.fillWithSine(110); //TEST
 
 	// Set up the ISR that does pitch from volume levels
 	audio.init();
@@ -1642,44 +1634,40 @@ void loop1_play(){
 	//audio.tweak(); // only for testing/tuning
 }
 
-volatile uint32_t iPitch[4] = { 110,110,110,110 };
+volatile unsigned short iPitch[4] = { 110,110,110,110 };
+float foo;
+float bar;
 volatile float sampleCursorInc[4];
 void loop1_test(){
 	static elapsedMillis reportTimer = 0;
 
-	// block until core0 sends a value, to signal that iPitch[] is updated (happens at ISR update rate)
-	// (the value itself doesn't matter.)
-	rp2040.fifo.pop();
-	for (int i=0;i<4;i++){
-		// calculate cursor increment for this pitch,
-		// from a SAMPLE_BUFF_SAMPLES buffer (we'll pretend it's mono) of 1 hz
-		// into a transfer buffer that gets played at WAV_SAMPLE_RATE 
-		// so a direct copy (increment of 1.0) has a rate of WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ; if buffer is 10 and rate is 100, it'll be 10hz.
-		// an increment of 2.0 will double the hz.
-		// an increment of n gives a rate of (n * WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ) (n * W / S)
-		// an increment of n * S / W gives a rate of n.
-		sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
-	}
-
-	// check commands
-	if (cmdTimer_ms > CMDTIME){
-		// read/handle serial commands
-		cmd_update();
-		cmdTimer_ms -= CMDTIME;
-	}
-
-	if (reportTimer > STATSTIME){
-		if (showStats) { 
-			Dbg_print("core1 is alive, ");
-			Dbg_printf("pitches: %d, %d, %d, %d, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3]);
-			Dbg_printf("cursors: %.4f, %.4f, %.4f, %.4f",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
-			Dbg_println();
+	if (rp2040.fifo.available()) {
+		// core0 sends a value through the fifo to signal iPitch[] has been updated (happens at ISR update rate)
+		rp2040.fifo.pop(); 		// (the value itself doesn't matter.)
+		for (int i=0;i<4;i++){
+			// calculate cursor increment for this pitch,
+			// from a SAMPLE_BUFF_SAMPLES buffer (we'll pretend it's mono) of 1 hz
+			// into a transfer buffer that gets played at WAV_SAMPLE_RATE 
+			// so a direct copy (increment of 1.0) has a rate of WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ; if buffer is 10 and rate is 100, it'll be 10hz.
+			// an increment of 2.0 will double the hz.
+			// an increment of n gives a rate of (n * WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ) (n * W / S)
+			// an increment of n * S / W gives a rate of n.
+			sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
+			// TODO: integer math ok here?
 		}
-	
-		// wrap timer
-		while (reportTimer > STATSTIME)
-			reportTimer -= STATSTIME;
 	}
+
+	// temp off while i solve a performance issue ...
+	/* if (reportTimer > STATSTIME){ */
+	/* 	if (showStats) {  */
+	/* 		Dbg_print("core1 is alive, "); */
+	/* 		Dbg_println(); */
+	/* 	} */
+	/*  */
+	/* 	// wrap timer */
+	/* 	while (reportTimer > STATSTIME) */
+	/* 		reportTimer -= STATSTIME; */
+	/* } */
 }
 
 void loop1_debug(){
@@ -1729,14 +1717,37 @@ void loop_test() {
     imu_ready = false;
 		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
-		// adjust audio based on tilt
-		// TOD: calc four pitches from accel data
-		iPitch[0]=100;
-		iPitch[1]=300;
-		iPitch[2]=900;
-		iPitch[3]=1600;
+		// Test tone pitches:
+		// "The Ptolemy’s just intonation scale is: (1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2)."
+		//   -- https://www.cantorsparadise.com/the-mathematical-nature-of-musical-scales-f0a6536bca5d
+#define PITCH0 220 // tonic
+#define PITCH1 ( PITCH0 * 15 / 8 ) // 7th above tonic
+#define PITCH2 ( 2*PITCH0 * 3 / 2 ) // 5th above octave above tonic
+#define PITCH3 ( 4*PITCH0 * 5 / 4 ) // third above second octave above tonic
+
+		// Adjust pitch of test tones based on IMU data:
+		// p is base pitch, acceleration can alter that by +- one octave/g
+/* #define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g */
+
+		// But now I'm hitting this nutty core0->core1 math problem ...
+		//
+		// https://github.com/earlephilhower/arduino-pico/discussions/1474
+		//
+		// So hack for now:
+#define PITCHPOWER(p, a) (p + (float)a/20)
+
+
+		iPitch[0]=PITCHPOWER(PITCH0,ax);
+		iPitch[1]=PITCHPOWER(PITCH1,ay);
+		iPitch[2]=PITCHPOWER(PITCH2,az);
+		iPitch[3]=PITCHPOWER(PITCH3, (ax + ay + az));
+		/* iPitch[0]=PITCH0; */
+		/* iPitch[1]=PITCH1; */
+		/* iPitch[2]=PITCH2; */
+		/* iPitch[3]=PITCH3; */
 		// notify core1 that pitches have been updated:
 		rp2040.fifo.push_nb(666);
+		//rp2040.fifo.push_nb((uint32_t)(PITCH3+(float)(ax/33)));//test
 	}
 
 	while (ledTimer > 50) { // every 50ms
@@ -1797,10 +1808,20 @@ void loop_test() {
 
 	// animate the PI->PO pinset so we can test the connector somehow
 	 
+	// check commands
+	if (cmdTimer_ms > CMDTIME){
+		// read/handle serial commands
+		cmd_update();
+		cmdTimer_ms -= CMDTIME;
+	}
+
 	// stats?
 	if (statsTimer_ms > STATSTIME){
 		statsTimer_ms -= STATSTIME;
 		if (showStats) { 
+			//Dbg_printf("pitches: %d, %d, %d, %d, foo %.2f, bar %.2f, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3], foo, bar);
+			Dbg_printf("pitches: %d, %d, %d, %d, bar %.2f, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3], bar);
+			Dbg_printf("cursors: %.4f, %.4f, %.4f, %.4f",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
 			Dbg_print("led durations: ");
 			for (int i=1;i<=4;i++){
 				Dbg_print(testmodeLedScripts[i][1].duration);
