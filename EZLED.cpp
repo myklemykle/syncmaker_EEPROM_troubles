@@ -1,7 +1,7 @@
 #include "EZLED.h"
 #include <Arduino.h> // uint8_t, etc.
 #include <elapsedMillis.h>
-#include "config.h" // PWM_LED_BRIGHNESS, etc.
+#include "config.h" // LED_ANALOG_RANGE, etc.
 	
 // constructor
 EZLED::EZLED(uint8_t p){
@@ -43,16 +43,20 @@ void EZLED::fdim(float pct){
   float newState = max(0.0, min(pct,100.0));
 	if (newState == pinState)
 		return;
-#ifdef PWM_LED_BRIGHNESS
-  analogWrite(pin, (newState / 100.0 * PWM_LED_BRIGHNESS));
-#else
-  // turn it on if it's nonzero.
-  if (newState > 0.0)
-    on();
-  else
-    off();
-#endif
-	pinState = newState;
+
+  if (analog) {
+		analogWrite(pin, (newState / 100.0 * LED_ANALOG_RANGE));
+		pinState = newState;
+	} else { 
+		// turn it on if it's nonzero.
+		if (newState > 0.0) {
+			digitalWrite(pin, HIGH);
+		  pinState = 100;
+		} else {
+			digitalWrite(pin, LOW);
+			pinState = 0;
+		}
+	}
 }
 
 // dim to an int percentage
@@ -62,29 +66,33 @@ void EZLED::dim(unsigned int pct){
   unsigned int newState = max(0, min(pct,100));
 	if (newState == pinState) 
 		return;
-#ifdef PWM_LED_BRIGHNESS
-  analogWrite(pin, (newState * PWM_LED_BRIGHNESS / 100));
-#else
-  // turn it on if it's nonzero.
-  if (newState > 0)
-    on();
-  else
-    off();
-#endif
-	pinState = newState;
+
+	if (analog) {
+		analogWrite(pin, (newState * LED_ANALOG_RANGE / 100));
+		pinState = newState;
+	} else {
+		// turn it on if it's nonzero.
+		if (newState > 0) {
+			digitalWrite(pin, HIGH);
+		  pinState = 100;
+		} else {
+			digitalWrite(pin, LOW);
+			pinState = 0;
+		}
+	}
 }
 
-// turn led on
+// turn led on 
 void EZLED::on(){
 	if (pinState == 100) {
 		return;
 	}
 
-#ifdef PWM_LED_BRIGHNESS
-  analogWrite(pin, PWM_LED_BRIGHNESS);
-#else
-  digitalWrite(pin, HIGH);
-#endif
+ 	if (analog)
+		analogWrite(pin, LED_ANALOG_RANGE);
+  else 
+		digitalWrite(pin, HIGH);
+
   pinState = 100;
 }
 
@@ -93,11 +101,12 @@ void EZLED::off(){
 	if (pinState == 0) {
 		return;
 	}
-#ifdef PWM_LED_BRIGHNESS
-  analogWrite(pin, 0);
-#else
-  digitalWrite(pin, LOW);
-#endif
+
+	if (analog)
+		analogWrite(pin, 0);
+	else 
+		digitalWrite(pin, LOW);
+
   pinState = 0;
 }
 

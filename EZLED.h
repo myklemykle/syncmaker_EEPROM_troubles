@@ -3,7 +3,7 @@
 #include <Arduino.h> // uint8_t, etc.
 #include <elapsedMillis.h>
 
-#include "config.h" // PWM_LED_BRIGHNESS, etc.
+#include "config.h" // LED_ANALOG_RANGE, etc.
 										
 // Basic management of our LEDs,
 // to encompass both digital and analog (dimmed) use,
@@ -28,6 +28,13 @@ class EZLED {
 public:
 	uint8_t pin;
 	float pinState;
+#ifdef LED_ANALOG_RANGE
+	// default to analog pins if analog is possible
+	bool analog = true; 
+#else
+	bool analog = false;
+#endif
+
 	LEDCommand *script;
 	bool looping  = false;
 	int speed = 100; // (a percentage of specified animation speeds)
