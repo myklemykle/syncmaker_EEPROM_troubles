@@ -256,9 +256,10 @@ void RP2040Audio::ISR_play() {
 }
 
 // Fancier version, time-scaling a 1hz sample into 4 output channels at 4 rates, but not (yet) adjusting volume.
-extern volatile float sampleCursorInc[4];
+// instead of FP, we will use long ints, and shift off the 8 LSB 
+extern volatile uint32_t sampleCursorInc[4];
 void RP2040Audio::ISR_test() {
-  static float sampleBuffCursor[4] = {0,0,0,0};
+  static long sampleBuffCursor[4] = {0,0,0,0};
   pwm_clear_irq(TRIGGER_SLICE);
 
 	for (uint8_t port = 0; port<2; port++) {
@@ -267,13 +268,14 @@ void RP2040Audio::ISR_test() {
 				uint8_t pc = (port<<1)+chan;
 
 				// copy from mono samplebuf to stereo transferbuf
-				transferBuffer[port][i+chan] = sampleBuffer[(unsigned int)sampleBuffCursor[pc]] ;
+				// transferBuffer[port][i+chan] = sampleBuffer[ sampleBuffCursor[pc]] ;
+				transferBuffer[port][i+chan] = sampleBuffer[ sampleBuffCursor[pc] / 256 ] ;
 						// + (WAV_PWM_RANGE / 2);  // not shifting! we expect a positive-weighted sample in the buffer (true arg passed to fillWithSine)
 
 				// advance cursor:
 				sampleBuffCursor[pc] += sampleCursorInc[pc];
-				while (sampleBuffCursor[pc] >= SAMPLE_BUFF_SAMPLES)
-					sampleBuffCursor[pc] -= SAMPLE_BUFF_SAMPLES;
+					while (sampleBuffCursor[pc] >= SAMPLE_BUFF_SAMPLES *256)
+						sampleBuffCursor[pc] -= SAMPLE_BUFF_SAMPLES *256;
 			}
 		}
 	}
@@ -308,19 +310,19 @@ void RP2040Audio::fillWithSine(uint count, bool positive){
 }
 
 // fill buffer with square waves
-void RP2040Audio::fillWithSquare(uint count){
+void RP2040Audio::fillWithSquare(uint count, bool positive){
 	for (int i=0; i<SAMPLE_BUFF_SAMPLES; i+= SAMPLE_BUFF_CHANNELS)
 		for(int j=0;j<SAMPLE_BUFF_CHANNELS; j++)
 		 if ((i*count)%SAMPLE_BUFF_SAMPLES < (SAMPLE_BUFF_SAMPLES / 2)){ 
-			 sampleBuffer[i + j] = (WAV_PWM_RANGE)/ 2;
+			 sampleBuffer[i + j] = positive ? WAV_PWM_RANGE : (WAV_PWM_RANGE)/ 2;
 		 } else {
-			 sampleBuffer[i + j] = 0 - ((WAV_PWM_RANGE) / 2);
+			 sampleBuffer[i + j] = positive ? 0 : 0 - ((WAV_PWM_RANGE) / 2);
 		 }
 }
 
 // fill buffer with sawtooth waves running negative to positive
 // (Still slightly buggy ...)
-void RP2040Audio::fillWithSaw(uint count){
+void RP2040Audio::fillWithSaw(uint count, bool positive){
 	const float twoPI = 6.283;
 	const float scale = (WAV_PWM_RANGE) / 2;
 
@@ -333,7 +335,7 @@ void RP2040Audio::fillWithSaw(uint count){
 				// i * WAV_PWM_RANGE / (SAMPLE_BUFF_SAMPLES -1) 												// 0 -> WAV_PWM_RANGE
 				// (i * count) * WAV_PWM_RANGE / (SAMPLE_BUFF_SAMPLES -1) 							// 0 -> count*WAV_PWM_RANGE
 				(i * count * WAV_PWM_RANGE / (SAMPLE_BUFF_SAMPLES -1) ) % WAV_PWM_RANGE // 0 -> WAV_PWM_RANGE, count times
-					- (WAV_PWM_RANGE / 2); // shift to 50% negative
+					- (positive ? 0 : (WAV_PWM_RANGE / 2)) ; // shift to 50% negative?
 	}
 }
 
