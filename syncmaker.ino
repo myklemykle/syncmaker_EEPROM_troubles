@@ -403,6 +403,7 @@ void configOutput(int pin, byte mode){
 
 }
 
+// move to app header file?
 #define RUNMODE_BOOT 0
 #define RUNMODE_PLAY 1
 #define RUNMODE_TEST 2
@@ -1634,10 +1635,18 @@ void loop1_play(){
 	//audio.tweak(); // only for testing/tuning
 }
 
-volatile unsigned short iPitch[4] = { 110,110,110,110 };
-float foo;
-float bar;
-volatile float sampleCursorInc[4];
+// Test tone pitches:
+// "The Ptolemy’s just intonation scale is: (1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2)."
+//   -- https://www.cantorsparadise.com/the-mathematical-nature-of-musical-scales-f0a6536bca5d
+//#define PITCH0 220 // tonic
+#define PITCH0 210 // tonic
+#define PITCH1 ( PITCH0 * 15 / 8 ) // 7th above tonic
+#define PITCH2 ( 2*PITCH0 * 3 / 2 ) // 5th above octave above tonic
+#define PITCH3 ( 4*PITCH0 * 5 / 4 ) // third above second octave above tonic
+volatile unsigned long iPitch[4] = { PITCH0, PITCH1, PITCH2, PITCH3 };
+// actually sounds terrible ...
+
+volatile uint32_t sampleCursorInc[4];
 void loop1_test(){
 	static elapsedMillis reportTimer = 0;
 
@@ -1652,22 +1661,23 @@ void loop1_test(){
 			// an increment of 2.0 will double the hz.
 			// an increment of n gives a rate of (n * WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ) (n * W / S)
 			// an increment of n * S / W gives a rate of n.
-			sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
-			// TODO: integer math ok here?
+			//sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
+
+			// int version, with "fixed point" (8 LSB are discarded)
+			sampleCursorInc[i] = iPitch[i] * SAMPLE_BUFF_SAMPLES * 256.0 / WAV_SAMPLE_RATE;
 		}
 	}
 
-	// temp off while i solve a performance issue ...
-	/* if (reportTimer > STATSTIME){ */
-	/* 	if (showStats) {  */
-	/* 		Dbg_print("core1 is alive, "); */
-	/* 		Dbg_println(); */
-	/* 	} */
-	/*  */
-	/* 	// wrap timer */
-	/* 	while (reportTimer > STATSTIME) */
-	/* 		reportTimer -= STATSTIME; */
-	/* } */
+	if (reportTimer > STATSTIME){
+		if (showStats) { 
+			Dbg_print("core1 is alive, ");
+			Dbg_println();
+		}
+
+		// wrap timer
+		while (reportTimer > STATSTIME)
+			reportTimer -= STATSTIME;
+	}
 }
 
 void loop1_debug(){
@@ -1699,13 +1709,15 @@ void loop() {
 
 void loop_test() {
 	static elapsedMillis ledTimer = 0;
+	static elapsedMillis chanSwitchTimer = 0;
 
 	// calculation for led blinks: 
 	// the on-times will remain steady (LED_MIN_ON),
-	// the off-times will go to zero as approaching max, approach LED_TIMEDIFFxLED_MIN_ON as approaching min.
+	// the off-times will go to zero as approaching max, approach LED_TIMEDIFF x LED_MIN_ON as approaching min.
 	// gs/IMU_COUNT_PER_G should range -1 to +1
 	// 1 - gs/IMU_COUNT_PER_G should range 0 to 2
-#define LED_TIMEDIFF 20
+#define LED_TIMEDIFF 20 // i.e. LED is off, at most, for 20x as long as it is on
+	// show your work!
 //#define LED_OFFTIME(gs) { (1.0 - (gs / IMU_COUNT_PER_G)) / 2 * LED_MIN_ON * LED_TIMEDIFF }
 //#define LED_OFFTIME(gs) { ( (IMU_COUNT_PER_G - gs) / 2) * LED_MIN_ON * LED_TIMEDIFF / IMU_COUNT_PER_G}
 //#define LED_OFFTIME(gs) { LED_MIN_ON * ( ( (IMU_COUNT_PER_G - gs) / 2) * LED_TIMEDIFF / IMU_COUNT_PER_G ) }
@@ -1717,37 +1729,17 @@ void loop_test() {
     imu_ready = false;
 		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
-		// Test tone pitches:
-		// "The Ptolemy’s just intonation scale is: (1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2)."
-		//   -- https://www.cantorsparadise.com/the-mathematical-nature-of-musical-scales-f0a6536bca5d
-#define PITCH0 220 // tonic
-#define PITCH1 ( PITCH0 * 15 / 8 ) // 7th above tonic
-#define PITCH2 ( 2*PITCH0 * 3 / 2 ) // 5th above octave above tonic
-#define PITCH3 ( 4*PITCH0 * 5 / 4 ) // third above second octave above tonic
-
 		// Adjust pitch of test tones based on IMU data:
 		// p is base pitch, acceleration can alter that by +- one octave/g
-/* #define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g */
-
-		// But now I'm hitting this nutty core0->core1 math problem ...
-		//
-		// https://github.com/earlephilhower/arduino-pico/discussions/1474
-		//
-		// So hack for now:
-#define PITCHPOWER(p, a) (p + (float)a/20)
-
-
+#define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g 
 		iPitch[0]=PITCHPOWER(PITCH0,ax);
 		iPitch[1]=PITCHPOWER(PITCH1,ay);
 		iPitch[2]=PITCHPOWER(PITCH2,az);
 		iPitch[3]=PITCHPOWER(PITCH3, (ax + ay + az));
-		/* iPitch[0]=PITCH0; */
-		/* iPitch[1]=PITCH1; */
-		/* iPitch[2]=PITCH2; */
-		/* iPitch[3]=PITCH3; */
+
+		
 		// notify core1 that pitches have been updated:
 		rp2040.fifo.push_nb(666);
-		//rp2040.fifo.push_nb((uint32_t)(PITCH3+(float)(ax/33)));//test
 	}
 
 	while (ledTimer > 50) { // every 50ms
@@ -1806,6 +1798,33 @@ void loop_test() {
 		rp2040.reboot();
 	}
 
+#define CHSWITCHTIME 125 //ms
+	// switch audio channels on & off.
+	static int switchPosition = 1;
+	if (chanSwitchTimer > 4* CHSWITCHTIME){
+		// switch
+		configOutput(ring2, OUTMODE_SINE);
+		configOutput(tip2, OUTMODE_LOW);
+		// wrap
+		chanSwitchTimer -= CHSWITCHTIME * 4;
+		switchPosition = 1;
+	} else if (switchPosition == 3 && chanSwitchTimer > 3* CHSWITCHTIME){
+		// switch
+		configOutput(tip2, OUTMODE_SINE);
+		configOutput(ring1, OUTMODE_LOW);
+		switchPosition = 4;
+	} else if (switchPosition == 2 && chanSwitchTimer > 2* CHSWITCHTIME){
+		// switch
+		configOutput(ring1, OUTMODE_SINE);
+		configOutput(tip1, OUTMODE_LOW);
+		switchPosition = 3;
+	} else if (switchPosition == 1 && chanSwitchTimer > CHSWITCHTIME){
+		// switch
+		configOutput(tip1, OUTMODE_SINE);
+		configOutput(ring2, OUTMODE_LOW);
+		switchPosition = 2;
+	}
+
 	// animate the PI->PO pinset so we can test the connector somehow
 	 
 	// check commands
@@ -1819,15 +1838,15 @@ void loop_test() {
 	if (statsTimer_ms > STATSTIME){
 		statsTimer_ms -= STATSTIME;
 		if (showStats) { 
-			//Dbg_printf("pitches: %d, %d, %d, %d, foo %.2f, bar %.2f, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3], foo, bar);
-			Dbg_printf("pitches: %d, %d, %d, %d, bar %.2f, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3], bar);
-			Dbg_printf("cursors: %.4f, %.4f, %.4f, %.4f",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
+			Dbg_printf("acc %d, %d, %d, ", ax, ay, az);
+			Dbg_printf("pitches: %d, %d, %d, %d, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3]);
+			Dbg_printf("cursorIncs: %u, %u, %u, %u, ",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
+			//Dbg_printf("cursorIncs: %x, %x, %x, %x, ",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
 			Dbg_print("led durations: ");
 			for (int i=1;i<=4;i++){
 				Dbg_print(testmodeLedScripts[i][1].duration);
 				Dbg_print(", ");
 			}
-			Dbg_printf("acc %d, %d, %d", ax, ay, az);
 			Dbg_println();
 		}
 	}

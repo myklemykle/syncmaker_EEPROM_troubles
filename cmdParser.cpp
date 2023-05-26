@@ -15,7 +15,7 @@
 
 //typedef CommandParser<16,4,10,32,64> MyCommandParser; //default vals
 //typedef CommandParser<16,4,10,32,128> MyCommandParser; // longer responses
-typedef CommandParser<16,4,10,32,1024> MyCommandParser; // even longer to fit hex dumps
+typedef CommandParser<17,4,10,32,1024> MyCommandParser; // even longer to fit hex dumps
 
 MyCommandParser parser;
 
@@ -221,9 +221,15 @@ void cmd_set(CMDARGS) {
 
 const char* testtoneNames[TESTTONE_COUNT] = TESTTONE_NAMES ;
 extern char testTone;
+extern volatile unsigned long iPitch[4];
+// runmode defs dup'd from main .ino file:
+#define RUNMODE_BOOT 0
+#define RUNMODE_PLAY 1
+#define RUNMODE_TEST 2
+#define RUNMODE_DEBUG 3
+extern uint8_t runMode;
 
 
-//void _test_tone(CMDARGS) {
 void _test_tone(char *type, char *response) {
 	for(int i=0;i<TESTTONE_COUNT;i++) {
 		if (strmatch(type, testtoneNames[i])){
@@ -240,17 +246,17 @@ void _test_tone(char *type, char *response) {
 						break;
 					case TESTTONE_SINE:
 #ifdef AUDIO_RP2040
-							audio.fillWithSine(110);
+							audio.fillWithSine(runMode == RUNMODE_TEST ? 1 : 110);
 #endif
 						break;
 					case TESTTONE_SQUARE:
 #ifdef AUDIO_RP2040
-							audio.fillWithSquare(110);
+							audio.fillWithSquare(runMode == RUNMODE_TEST ? 1 : 110);
 #endif
 						break;
 					case TESTTONE_SAW:
 #ifdef AUDIO_RP2040
-							audio.fillWithSaw(110);
+							audio.fillWithSaw(runMode == RUNMODE_TEST ? 1 : 110);
 #endif
 						break;
 					case TESTTONE_OFF:
@@ -410,24 +416,24 @@ void cmd_poke(CMDARGS){
 
 
 void cmd_audio(CMDARGS){
-	int channel = args[0].asUInt64; // 1 or 2, or 0 for both channels.
-	if (channel < 0 || channel > 2){
+	int port = args[0].asUInt64; // 1 or 2, or 0 for both ports.
+	if (port < 0 || port > 2){
 		syntaxErr("audio [1|2|0] [on|off]");
 		return;
 	}
 		
 	if (strmatch(args[1].asString, "on")) {
-		if (channel < 2) { // 0 or 1
+		if (port < 2) { // 0 or 1
 			audio.play(0);
 		}
-		if (channel == 0 || channel == 2) {
+		if (port == 0 || port == 2) {
 			audio.play(1);
 		}
 		respond("playing");
 	} else if (strmatch(args[1].asString, "off")) {
-		if (channel < 2) // 0 or 1
+		if (port < 2) // 0 or 1
 			audio.pause(0);
-		if (channel == 0 || channel == 2)
+		if (port == 0 || port == 2)
 			audio.pause(1);
 		respond("paused");
 	} else {
@@ -435,6 +441,18 @@ void cmd_audio(CMDARGS){
 	}
 }
 
+void cmd_pitch(CMDARGS){
+	int channel = args[0].asUInt64; // 1-4, or 0 for all
+	if (channel < 0 || channel > 4) {
+		syntaxErr("pitch [1-4|0] [hz]");
+	}
+	int pitch = args[1].asUInt64;
+	for (int i = 0; i<4; i++){
+		if (channel - 1 == i || channel == 0)
+			iPitch[i] = pitch;
+	}
+	respond("set pitch");
+}
 
 void cmd_setup() {
   //parser.registerCommand("TEST", "sdiu", &cmd_test);
@@ -462,6 +480,7 @@ void cmd_setup() {
 	parser.registerCommand("poke","uu", &cmd_poke);
 
 	parser.registerCommand("audio","us", &cmd_audio);
+	parser.registerCommand("pitch","uu", &cmd_pitch);
 }
 
 void cmd_update() {
