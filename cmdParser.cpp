@@ -100,6 +100,19 @@ void cmd_wake(CMDARGS) {
 	}
 }
 
+void cmd_settings(CMDARGS){
+	if (strmatch(args[0].asString, "get")){
+		_settings.get();
+		respond("got settings");
+	}else if (strmatch(args[0].asString, "put")){
+		_settings.put();
+		respond("put settings");
+	} else {
+		// return the current settings ...
+		_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
+	}
+}
+
 // print out the current settings ...
 void cmd_dump_settings(CMDARGS) {
 	_settings.sprint(response, MyCommandParser::MAX_RESPONSE_SIZE);
@@ -469,7 +482,7 @@ void cmd_setup() {
 	parser.registerCommand("sleep","s",&cmd_sleep);
 	parser.registerCommand("wake","",&cmd_wake);
 
-	parser.registerCommand("settings","",&cmd_dump_settings);
+	parser.registerCommand("settings","s",&cmd_settings);
 
 	parser.registerCommand("imuget","u",&cmd_imu_get);
 	parser.registerCommand("imugetn","uu",&cmd_imu_getn);
