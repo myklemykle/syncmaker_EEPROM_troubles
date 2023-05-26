@@ -4,9 +4,10 @@
 #include "config.h" // LED_ANALOG_RANGE, etc.
 	
 // constructor
-EZLED::EZLED(uint8_t p){
+EZLED::EZLED(uint8_t p, bool isAnalog){
 	pin = p;
 	pinState = 0;
+	analog = isAnalog;
 #ifdef NONSTOP_HACK
 	softpwm = false;
 #endif

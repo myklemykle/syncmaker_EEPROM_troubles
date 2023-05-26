@@ -28,12 +28,7 @@ class EZLED {
 public:
 	uint8_t pin;
 	float pinState;
-#ifdef LED_ANALOG_RANGE
-	// default to analog pins if analog is possible
-	bool analog = true; 
-#else
-	bool analog = false;
-#endif
+	bool analog;
 
 	LEDCommand *script;
 	bool looping  = false;
@@ -69,7 +64,12 @@ public:
 	// void fade(pct, interval)
 	// void fade(pct, arrivalTime)
 
-	EZLED(uint8_t p);
+#ifdef LED_ANALOG_RANGE
+	// default to analog pins if analog is possible
+	EZLED(uint8_t p, bool isAnalog = true);
+#else
+	EZLED(uint8_t p, bool isAnalog = false);
+#endif
 
 private:
 	unsigned long scriptDuration;
