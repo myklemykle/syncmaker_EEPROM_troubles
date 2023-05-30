@@ -651,6 +651,11 @@ void setup_play(){
 	cmd_setup();
 
 	PROFILE_SETUP();
+
+#ifdef MCU_RP2040
+	  // enable watchdog in play mode
+	/* rp2040.wdt_begin(5000); */
+#endif
 }
 
 ///////////////
@@ -674,12 +679,13 @@ void setup_test(){
 	/* pinMode(PO_SWCLK, OUTPUT); */
 	/* pinMode(PO_SWDIO, OUTPUT); */
 	/* pinMode(PO_SWO, OUTPUT); */
-	pinMode(PO_play, INPUT);  
-	pinMode(PO_wake, INPUT);
-	pinMode(PO_reset, INPUT_PULLUP);  
-	pinMode(PO_SWCLK, INPUT_PULLUP);
-	pinMode(PO_SWDIO, INPUT_PULLUP);
-	pinMode(PO_SWO, INPUT_PULLUP);
+
+	/* pinMode(PO_play, INPUT);   */
+	/* pinMode(PO_wake, INPUT); */
+	/* pinMode(PO_reset, INPUT_PULLUP);   */
+	/* pinMode(PO_SWCLK, INPUT_PULLUP); */
+	/* pinMode(PO_SWDIO, INPUT_PULLUP); */
+	/* pinMode(PO_SWO, INPUT_PULLUP); */
 
 	// script the LEDS
 	for (int i = 1; i<=4; i++){
@@ -743,7 +749,7 @@ void hello_test(){
 		leds[1].update();
 		leds[2].update();
 		leds[3].update();
-		delay(50);
+		/* delay(50); */
 	}
 	leds[1].rmScript();
 	leds[2].rmScript();
@@ -820,89 +826,35 @@ void selectRunMode(){
 // Configure/initalize/etc the hardware at boot,
 // and determine the run mode.
 void setup() {
-	// note the time:
-	unsigned long bootedAt = millis();
 
-#ifdef MCU_RP2040
-	  // fix startup weirdness
   rp2040.idleOtherCore();
-#endif
 
 	// initialize USB connections (midi & serial):
-	myMidi.begin();
   Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
-	delay(5000); // let USB stabilize before speaking ...
+	delay(200); // let USB stabilize before speaking ...
 
 	// load persistent settings from NVram:
-#ifdef MCU_RP2040
 	EEPROM.begin(SETTINGSEEPROMSIZE); // necessary for the rp2040 EEPROM emulation in Flash
-#endif
 
 	if (! _settings.get()) {
 		Dbg_println("settings borked ...");
 		_settings.init();
 	}
-	_settings.print();
+
+	//////////////////////
+	// this enables the bug to be triggered later:
+	/* _settings.print(); */
+	// this does not: (same code as _settings.print(), but buf[] declared here. )
+	char buf[1000];
+  _settings.sprint(buf, 1000);
+  Dbg_println(buf);
 
 	// set all pin modes, current levels, etc.
 	setupPins();
 
-	// set up the buttons
-	setupButtons();
+	setup_test();
 
-	readButtonsQuick();
-  if (btn1pressed && btn2pressed && !(btn3pressed)) {
-		_settings.init();
-		/* Dbg_println("_settings.init();"); */
-		// TODO: give a confirming flash.
-  } 
-
-  ///////////
-  // initialize loop state:
-  CBINIT(inertia, 0);
-	// TODO: some of these could be in setup_play:
-  CBINIT(nonstop, 0);
-  CBINIT(playing, 0);
-  CBINIT(decodedPlayLed, 0);
-
-	// start IMU 
-  attachInterrupt(IMU_int, imu_int_handler, FALLING); // IMU craps out if this isn't done first. dunno why.
-	setupIMU();
-	// TODO: testing & maybe auto-adjusting resolution and rate here.
-
-	// audio setup:
-	// TODO: not all runmodes? move to runmode setup?
-	setupAudio();
-
-#ifdef MCU_RP2040
-	selectRunMode();
-	switch(runMode){
-		case RUNMODE_PLAY: 
-			hello_play();
-			setup_play();
-			break;
-		case RUNMODE_TEST:
-			hello_test();
-			setup_test();
-			break;
-		case RUNMODE_DEBUG:
-			hello_debug();
-			setup_debug();
-			break;
-		default:
-			Dbg_println("exception: bad runmode");
-	}
-#else
-	// play only
-	setup_play();
-#endif
-
-#ifdef MCU_RP2040
-	//rp2040.resumeOtherCore();
-	rp2040.restartCore1();
-	  // enable watchdog
-	rp2040.wdt_begin(5000);
-#endif
+	// not even starting core 1
 }
 
 
@@ -1578,98 +1530,14 @@ void printStats(){
     }
 }
 
-volatile bool ISR_SET=false;//TEST
-#ifdef MCU_RP2040
-/////////////////////////
-// Core 1 setup & loop:
 void setup1(){
-  // assuming core0 setup has already set runMode
-  switch(runMode){
-    case RUNMODE_PLAY:
-      setup1_play();
-      break;
-    case RUNMODE_TEST:
-      setup1_test();
-      break;
-    case RUNMODE_DEBUG:
-      setup1_debug();
-      break;
-    default:
-      Dbg_println("exception: bad runmode");
-  }
-}
-
-// rp2040 audio on core 1:
-void setup1_play(){
-
-#ifdef AUDIO_RP2040
-	// put some noise in the buffer:
-	audio.fillWithNoise();
-
-	// Setup PWM outputs & interrupt handler
-	audio.init();
-	irq_set_exclusive_handler(PWM_IRQ_WRAP, &RP2040Audio::ISR_play);
-
-  // Start DMA-ing audio from transfer buffer to PWM pins.
-  audio.play(0);
-  audio.play(1);
-#endif
-}
-
-void setup1_test(){
-#ifdef AUDIO_RP2040
-	// Fill the sample buffer with a single sine wave
-	audio.fillWithSine(1, true);
-
-	// Set up the ISR that does pitch from volume levels
-	audio.init();
-	irq_set_exclusive_handler(PWM_IRQ_WRAP, &RP2040Audio::ISR_test);
-
-  // Start DMA-ing audio from transfer buffer to PWM pins.
-  audio.play(0);
-  audio.play(1);
-#endif
+	return;
 }
 
 void setup1_debug(){
 	//tbd
 }
 
-
-void loop1(){
-  switch(runMode){
-    case RUNMODE_PLAY:
-      loop1_play();
-      break;
-    case RUNMODE_TEST:
-      loop1_test();
-      break;
-    case RUNMODE_DEBUG:
-      loop1_debug();
-      break;
-    default:
-      Dbg_println("exception: bad runmode");
-  }
-}
-
-volatile uint32_t iVolumeLevel;
-void loop1_play(){
-	static short reportcount = 1500; 
-
-	// update the interpolater with the latest volume level
-	iVolumeLevel = rp2040.fifo.pop(); // this blocks at IMU interrupt rate
-
-	reportcount--;
-	if (reportcount ==0){
-		reportcount = 1500;
-		//Dbg_printf("iVol: %d\n", iVolumeLevel);
-		/* Serial.printf("unscaled: %d\n",interp0->base[1]); */
-		/* Serial.printf("scale: %d\n",interp0->accum[1]); */
-		/* Serial.printf("lane1 result: %d\n",interp0->peek[1]); */
-	}
-
-	//audio.tweak(); // only for testing/tuning
-}
 
 // Test tone pitches:
 // "The Ptolemy’s just intonation scale is: (1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2)."
@@ -1683,67 +1551,13 @@ volatile unsigned long iPitch[4] = { PITCH0, PITCH1, PITCH2, PITCH3 };
 // should be a pleasing major 7th chord.  Actually sounds terrible.
 
 volatile uint32_t sampleCursorInc[4];
-void loop1_test(){
+void loop1(){
 	static elapsedMillis reportTimer = 0;
 
-	if (rp2040.fifo.available()) {
-		// core0 sends a value through the fifo to signal iPitch[] has been updated (happens at ISR update rate)
-		rp2040.fifo.pop(); 		// (the value itself doesn't matter.)
-		for (int i=0;i<4;i++){
-			// calculate cursor increment for this pitch,
-			// from a SAMPLE_BUFF_SAMPLES buffer (we'll pretend it's mono) of 1 hz
-			// into a transfer buffer that gets played at WAV_SAMPLE_RATE 
-			// so a direct copy (increment of 1.0) has a rate of WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ; if buffer is 10 and rate is 100, it'll be 10hz.
-			// an increment of 2.0 will double the hz.
-			// an increment of n gives a rate of (n * WAV_SAMPLE_RATE / SAMPLE_BUFF_SAMPLES ) (n * W / S)
-			// an increment of n * S / W gives a rate of n.
-			//sampleCursorInc[i] = (float)iPitch[i] * (float)SAMPLE_BUFF_SAMPLES / (float)WAV_SAMPLE_RATE;
-
-			// int version, with "fixed point" (8 LSB are discarded)
-			sampleCursorInc[i] = iPitch[i] * SAMPLE_BUFF_SAMPLES * 256.0 / WAV_SAMPLE_RATE;
-		}
-	}
-
-	if (reportTimer > STATSTIME){
-		if (showStats) { 
-			Dbg_print("core1 is alive, ");
-			Dbg_println();
-		}
-
-		// wrap timer
-		while (reportTimer > STATSTIME)
-			reportTimer -= STATSTIME;
-	}
+	return;
 }
 
-void loop1_debug(){
-	// tbd
-}
-
-#endif // MCU_RP2040
-
-//////////
-// Core 0 main loop
 void loop() {
-#ifdef MCU_RP2040
-	// feed kibble to watchdog
-	rp2040.wdt_reset();
-#endif
-
-	switch (runMode) {
-		case RUNMODE_PLAY: 
-			loop_play();
-			break;
-		case RUNMODE_TEST: 
-			loop_test(); 
-			break;
-		case RUNMODE_DEBUG:
-			loop_play(); //for now
-			break;
-	}
-}
-
-void loop_test() {
 	static elapsedMillis ledTimer = 0;
 	static elapsedMillis chanSwitchTimer = 0;
 
@@ -1761,39 +1575,35 @@ void loop_test() {
 //#define LED_OFFTIME(gs) { LED_MIN_ON * ( ( (IMU_COUNT_PER_G - gs) / 2) * LED_TIMEDIFF / IMU_COUNT_PER_G ) }
 #define LED_OFFTIME(gs) { max(0, ( LED_MIN_ON * ( ( (IMU_COUNT_PER_G - gs) / 2) * LED_TIMEDIFF )) / IMU_COUNT_PER_G ) }
 
-  // Read IMU data if ready:
-  if (imu_ready) {  
-    // IMU inner loop runs once per IMU interrupt
-    imu_ready = false;
-		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
-
-		// The IMU is alive and reporting data
-		imuSpoke++;
-
-		// Adjust pitch of test tones based on IMU data:
-		// p is base pitch, acceleration can alter that by +- one octave/g
-#define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g 
-		iPitch[0]=PITCHPOWER(PITCH0,ax);
-		iPitch[1]=PITCHPOWER(PITCH1,ay);
-		iPitch[2]=PITCHPOWER(PITCH2,az);
-		iPitch[3]=PITCHPOWER(PITCH3, (ax + ay + az));
-
-		
-		// notify core1 that pitches have been updated:
-		rp2040.fifo.push_nb(666);
-	}
-
-	// if we've seen this many IMU events, let's call it working.
-	if (imuSpoke == 10000){
-		Dbg_println("imu ok4u!");
-		Serial.flush();
-		delay(1000);//TEST
-		_settings.s.imuTested = true;
-		Dbg_println("here goes!");
-		Serial.flush();
-		delay(3000);//TEST
-		_settings.put();
-	}
+/*   // Read IMU data if ready: */
+/*   if (imu_ready) {   */
+/*     // IMU inner loop runs once per IMU interrupt */
+/*     imu_ready = false; */
+/* 		imu.readMotionSensor(ax, ay, az, gx, gy, gz); */
+/*  */
+/* 		// The IMU is alive and reporting data */
+/* 		imuSpoke++; */
+/*  */
+/* 		// Adjust pitch of test tones based on IMU data: */
+/* 		// p is base pitch, acceleration can alter that by +- one octave/g */
+/* #define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g  */
+/* 		iPitch[0]=PITCHPOWER(PITCH0,ax); */
+/* 		iPitch[1]=PITCHPOWER(PITCH1,ay); */
+/* 		iPitch[2]=PITCHPOWER(PITCH2,az); */
+/* 		iPitch[3]=PITCHPOWER(PITCH3, (ax + ay + az)); */
+/*  */
+/* 		 */
+/* 		// notify core1 that pitches have been updated: */
+/* 		rp2040.fifo.push_nb(666); */
+/* 	} */
+/*  */
+/* 	// if we've seen this many IMU events, let's call it working. */
+/* 	if (imuSpoke == 10000){ */
+/* 		Dbg_println("imu ok4u!"); */
+/* 		Serial.flush(); */
+/* 		_settings.s.imuTested = true; */
+/* 		_settings.put(); */
+/* 	} */
 
 	while (ledTimer > 50) { // every 50ms
 		ledTimer -= 50;
@@ -1896,12 +1706,12 @@ void loop_test() {
 /* 		pogoSwitchTimer -= POGOSWTIME;  */
 /* 	} */
 /* 	  */
-/* 	// check commands */
-/* 	if (cmdTimer_ms > CMDTIME){ */
-/* 		// read/handle serial commands */
-/* 		cmd_update(); */
-/* 		cmdTimer_ms -= CMDTIME; */
-/* 	} */
+	// check commands
+	if (cmdTimer_ms > CMDTIME){
+		// read/handle serial commands
+		cmd_update();
+		cmdTimer_ms -= CMDTIME;
+	}
 
 	// stats?
 	if (statsTimer_ms > STATSTIME){
@@ -1924,6 +1734,11 @@ void loop_play() {
 
   unsigned long loopStartTime = loopTimer_us;
 	static unsigned long lastNap = loopStartTime;
+
+#ifdef MCU_RP2040
+	// feed kibble to watchdog
+	/* rp2040.wdt_reset(); */
+#endif
 
 	/* PROFILE_START_LOOP(); */
 	PROFILE_MARK_START("ALL");

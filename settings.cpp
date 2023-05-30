@@ -33,23 +33,24 @@ bool Settings::get(){
 }
 
 bool Settings::put(){
-	Dbg_println("going to put settings");
-	Serial.flush();//TEST
-	delay(5000);//TEST
 	// TODO: make sure it's initialized?
 	EEPROM.put(SETTINGSEEPROMBASE, s);
 	Dbg_println("put settings");
-#ifdef MCU_RP2040
 	Serial.flush();//TEST
-	delay(5000);//TEST
-	EEPROM.commit();
+
+#ifdef MCU_RP2040
+	noInterrupts();
+
+	EEPROM.commit(); // crash/hang here ...
+									 
+	interrupts();
 	Dbg_println("committed settings");
+	Serial.flush();//TEST
 #endif
 	return true;
 }
 
 // dump a human-log of the settings into a provided buffer:
-// const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 char *Settings::sprint(char *buf, int buflen){
 	snprintf(buf, buflen, 
 			"flag: %x\nversion: %d\n measurelen: %d\n tip1: %s\n ring1: %s\n tip2: %s\n ring2: %s\n %s\n",
@@ -68,5 +69,6 @@ char *Settings::sprint(char *buf, int buflen){
 
 void Settings::print(){
 	char buf[1000];
-	Dbg_println(sprint(buf, 1000));
+	sprint(buf, 1000);
+	Dbg_println(buf);
 }
