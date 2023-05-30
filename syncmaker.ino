@@ -23,40 +23,6 @@ void setup() {
 
 	_settings.get(); // calls EEPROM.get()
 
-	/* ////////////////////// */
-	/* // this seems to be necessary for the bug to be triggered later: */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-	/* Dbg_println("Some kind of timing thing makes the bug sometimes appear, based on how long setup() takes to finish ..."); */
-
 	// If I don't write to the settings object the compiler removes something? and we don't see the bug.
 	for (int i = 0; i<4; i++)
 		_settings.s.outs[i] = 4;
