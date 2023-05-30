@@ -8,7 +8,8 @@ bool Settings::init(){
 		SETTINGSFLAG, 
 		SETTINGSVERSION, 
 		500 * 1000, // uS == 120bpm
-		{ OUTMODE_SYNC, OUTMODE_SHAKE, OUTMODE_SYNC, OUTMODE_SHAKE } //  tip1, ring1, tip2, ring2
+		{ OUTMODE_SYNC, OUTMODE_SHAKE, OUTMODE_SYNC, OUTMODE_SHAKE }, //  tip1, ring1, tip2, ring2
+		false // imuTested
 	};
 	return true;
 }
@@ -27,15 +28,22 @@ bool Settings::get(){
 			s.outs[2],
 			s.outs[3]
 			);
+	Dbg_println(s.imuTested ? "imu tested" : "imu NOT tested");
 	return (s._flag == SETTINGSFLAG) && (s._version == SETTINGSVERSION);
 }
 
 bool Settings::put(){
-	Dbg_println("put settings");
+	Dbg_println("going to put settings");
+	Serial.flush();//TEST
+	delay(5000);//TEST
 	// TODO: make sure it's initialized?
 	EEPROM.put(SETTINGSEEPROMBASE, s);
+	Dbg_println("put settings");
 #ifdef MCU_RP2040
+	Serial.flush();//TEST
+	delay(5000);//TEST
 	EEPROM.commit();
+	Dbg_println("committed settings");
 #endif
 	return true;
 }
@@ -44,15 +52,21 @@ bool Settings::put(){
 // const char* outmodeNames[OUTMODE_COUNT] = OUTMODE_NAMES;
 char *Settings::sprint(char *buf, int buflen){
 	snprintf(buf, buflen, 
-			"flag: %x\nversion: %d\n measurelen: %d\n tip1: %s\n ring1: %s\n tip2: %s\n ring2: %s\n",
+			"flag: %x\nversion: %d\n measurelen: %d\n tip1: %s\n ring1: %s\n tip2: %s\n ring2: %s\n %s\n",
 			s._flag,
 			s._version,
 			s.measureLen,
 			Settings::outmodeNames[s.outs[0]],
 			Settings::outmodeNames[s.outs[1]],
 			Settings::outmodeNames[s.outs[2]],
-			Settings::outmodeNames[s.outs[3]]
+			Settings::outmodeNames[s.outs[3]],
+			s.imuTested ? "imu tested" : "imu NOT tested"
 	);
 
 	return buf;
+}
+
+void Settings::print(){
+	char buf[1000];
+	Dbg_println(sprint(buf, 1000));
 }

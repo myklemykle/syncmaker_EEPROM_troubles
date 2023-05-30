@@ -7,6 +7,8 @@
 // long long ago, this was to avoid overwriting SensorFusion library's calibration data:
 #define SETTINGSEEPROMBASE 2000
 #else
+// Note: in RP2040 the total emulated EEPROM size is set in EEPROM.begin().
+#define SETTINGSEEPROMSIZE 256
 #define SETTINGSEEPROMBASE 0
 #endif
 
@@ -15,7 +17,7 @@
 #define SETTINGSFLAG  0x2323
 
 // We'll bump this whenever we change the format of _Settings:
-#define SETTINGSVERSION 2
+#define SETTINGSVERSION 3
 
 // output channel modes
 #define OUTMODE_MIDI 0
@@ -55,9 +57,10 @@ const int outChannelPins[4] = { tip1, ring1, tip2, ring2 }; // from pins.h
 // Settings object
 typedef struct {
 	uint16_t _flag;
-	unsigned int _version; 
+	uint16_t _version; 
 	unsigned long measureLen;	
 	unsigned char outs[4];
+	uint8_t imuTested;
 } _Settings;
 
 class Settings { 
@@ -68,6 +71,7 @@ class Settings {
 		bool get();
 		bool put();
 		char *sprint(char *buf, int buflen);
+		void print();
 };
 
 

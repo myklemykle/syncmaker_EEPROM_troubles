@@ -135,12 +135,23 @@ bool btn4pressed = false;
 // LEDs:
 
 #include "EZLED.h"
+// Our four board LEDs
 EZLED leds[5] = {
-	EZLED(0), // ignored, so that code names here match the schematic names which start from 1, not 0.
+	EZLED(0), // ignored, so that code names here match the schematic names which start from 1, not 0 ... 
 	EZLED(led1Pin),
 	EZLED(led2Pin),
 	EZLED(led3Pin), // aka nonstopPin
 	EZLED(led4Pin)
+};
+
+// In test mode we also animate these pogo pins, so we can connect an LED test board & confirm the pogos are all good.
+EZLED pogos[6] = {
+	EZLED(PO_play, false),
+	EZLED(PO_wake, false),
+	EZLED(PO_reset, false),
+	EZLED(PO_SWCLK, false),
+	EZLED(PO_SWDIO, false),
+	EZLED(PO_SWO, false)
 };
 
 
@@ -282,6 +293,8 @@ void imu_int_handler() {
 // configure one of our 2 tip/ring output pairs
 // pinpair is the number of a GPIO pin, but it's converted to a pair of pins
 // (TODO: normalize numbering of stuff on either 0&1 or 1&2!)
+
+// ALSO TODO: a seperate method for logging the state of outputs 
 void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 	int pins[2];
 	int tipPin, ringPin;
@@ -310,14 +323,14 @@ void configOutputs(int pinPair, byte tipMode, byte ringMode) {
 		ringMode = OUTMODE_MIDI;
 	}
 
-	Dbg_print("ring mode: ");
+	/* Dbg_print("ring mode: "); */
 	switch(ringMode) { // OUTMODES are defined in settings.h
 case OUTMODE_OFF:  
-		Dbg_print("off");
+		/* Dbg_print("off"); */
 		gpio_set_function(ringPin, GPIO_FUNC_NULL );
 		break;
 case OUTMODE_LOW:  
-		Dbg_print("low");
+		/* Dbg_print("low"); */
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		digitalWrite(ringPin, LOW);
 		break;
@@ -329,29 +342,29 @@ case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
 case OUTMODE_SINE:
 case OUTMODE_SQUARE:
-		Dbg_print("audio");
+		/* Dbg_print("audio"); */
 		// PWM audio
 		gpio_set_function(ringPin, GPIO_FUNC_PWM );
 		break;
 case OUTMODE_SYNC:
-		Dbg_print("sync");
+		/* Dbg_print("sync"); */
 		// plain old output pin
 		gpio_set_function(ringPin, GPIO_FUNC_SIO );
 		break;
 case OUTMODE_MIDI:
-		Dbg_print("midi");
+		/* Dbg_print("midi"); */
 		gpio_set_function(ringPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
 
-	Dbg_print(", tip mode: ");
+	/* Dbg_print(", tip mode: "); */
 	switch(tipMode) {
 case OUTMODE_OFF:  
-		Dbg_println("off");
+		/* Dbg_println("off"); */
 		gpio_set_function(tipPin, GPIO_FUNC_NULL );
 		break;
 case OUTMODE_LOW:  
-		Dbg_println("low");
+		/* Dbg_println("low"); */
 		gpio_set_function(tipPin, GPIO_FUNC_SIO );
 		digitalWrite(tipPin, LOW);
 		break;
@@ -363,17 +376,17 @@ case OUTMODE_SHAKE:
 case OUTMODE_NOISE:
 case OUTMODE_SINE:
 case OUTMODE_SQUARE:
-		Dbg_println("audio");
+		/* Dbg_println("audio"); */
 		// PWM audio
 		gpio_set_function(tipPin, GPIO_FUNC_PWM );
 		break;
 case OUTMODE_SYNC:
-		Dbg_println("sync");
+		/* Dbg_println("sync"); */
 		// plain old output pin
 		gpio_set_function(tipPin, GPIO_FUNC_SIO );
 		break;
 case OUTMODE_MIDI:
-		Dbg_println("midi");
+		/* Dbg_println("midi"); */
 		gpio_set_function(tipPin, GPIO_FUNC_PIO0); // sofware serial!
 		break;
 	}
@@ -458,13 +471,6 @@ void setupPins(){
 	// pin mode of IMU interrupt pin:
 	pinMode(IMU_int, INPUT_PULLUP);
 
-	// pin modes of the inter-board connections:
-	pinMode(PO_play, INPUT);  // not sure if PULLUP helps here or not?  Flickers on & off anyway ...
-	pinMode(PO_wake, INPUT);
-	pinMode(PO_reset, INPUT_PULLUP);  
-	pinMode(PO_SWCLK, INPUT_PULLUP);
-	pinMode(PO_SWDIO, INPUT_PULLUP);
-	pinMode(PO_SWO, INPUT_PULLUP);
 
 #if PI_REV >= 9
 	// turn on the analog reference regulator:
@@ -484,7 +490,7 @@ void setupPins(){
 }
 
 // Flash LEDs to say good morning, and give USB a moment to stabilize before we use it.
-void hello_boot(){
+void hello_play(){
 	int i;
 	LEDCommand blinkScript[3] = { { dim, 100, 50 },{ dim, 0, 50 }, { end, 0, 0 } };
 
@@ -615,6 +621,14 @@ void setupIMU(){
 // Setup specific to RUNMODE_PLAY
 void setup_play(){
 
+	// pin modes of the inter-board connections:
+	pinMode(PO_play, INPUT);  
+	pinMode(PO_wake, INPUT);
+	pinMode(PO_reset, INPUT_PULLUP);  
+	pinMode(PO_SWCLK, INPUT_PULLUP);
+	pinMode(PO_SWDIO, INPUT_PULLUP);
+	pinMode(PO_SWO, INPUT_PULLUP);
+
 #ifdef MCU_RP2040
 	// configure output modes -- potentially disconnecting serial for now
 	configOutputs(ring1, _settings.s.outs[0], _settings.s.outs[1]);
@@ -653,6 +667,20 @@ LEDCommand testmodeLedScripts[5][3] = {
 ///////////////////
 // setup specific to RUNMODE_TEST
 void setup_test(){
+	// pin modes of the inter-board connections:
+	/* pinMode(PO_play, OUTPUT);   */
+	/* pinMode(PO_wake, OUTPUT); */
+	/* pinMode(PO_reset, OUTPUT);   */
+	/* pinMode(PO_SWCLK, OUTPUT); */
+	/* pinMode(PO_SWDIO, OUTPUT); */
+	/* pinMode(PO_SWO, OUTPUT); */
+	pinMode(PO_play, INPUT);  
+	pinMode(PO_wake, INPUT);
+	pinMode(PO_reset, INPUT_PULLUP);  
+	pinMode(PO_SWCLK, INPUT_PULLUP);
+	pinMode(PO_SWDIO, INPUT_PULLUP);
+	pinMode(PO_SWO, INPUT_PULLUP);
+
 	// script the LEDS
 	for (int i = 1; i<=4; i++){
 		leds[i].runScript(testmodeLedScripts[i]);
@@ -738,10 +766,10 @@ void hello_debug(){
 // (For this MCU we just presume LED4 and BUTTON4 exist.)
 void selectRunMode(){
 	readButtonsQuick();
+	
 	// if all 3 upper buttons are pressed at boot:
 	if (btn1pressed && btn2pressed && btn3pressed) {
 		runMode = RUNMODE_TEST;
-		hello_test();
 		return;
 	}
 
@@ -753,7 +781,6 @@ void selectRunMode(){
 		readButtons_ms(LONG_HOLD);
 		if (btn3pressed && btn4pressed) {
 			runMode = RUNMODE_DEBUG;
-			hello_debug();
 			leds[3].off();
 			leds[4].off();
 			return;
@@ -776,8 +803,15 @@ void selectRunMode(){
 	}
 
 	// any other odd possible combo means nothing.
-	//runMode = RUNMODE_PLAY;
-	runMode = RUNMODE_TEST; // while developing test.
+
+	// if the IMU has not been tested, boot into TEST mode
+	if (! _settings.s.imuTested) {
+		runMode = RUNMODE_TEST;
+		return;
+	}
+
+	// The default case:
+	runMode = RUNMODE_PLAY;
 }
 #endif
 
@@ -792,30 +826,29 @@ void setup() {
 #ifdef MCU_RP2040
 	  // fix startup weirdness
   rp2040.idleOtherCore();
-
 #endif
 
-	// load settings:
+	// initialize USB connections (midi & serial):
+	myMidi.begin();
+  Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
+	delay(5000); // let USB stabilize before speaking ...
+
+	// load persistent settings from NVram:
 #ifdef MCU_RP2040
-	EEPROM.begin(256); // necessary for the rp2040 EEPROM emulation in Flash
+	EEPROM.begin(SETTINGSEEPROMSIZE); // necessary for the rp2040 EEPROM emulation in Flash
 #endif
+
 	if (! _settings.get()) {
+		Dbg_println("settings borked ...");
 		_settings.init();
 	}
+	_settings.print();
 
 	// set all pin modes, current levels, etc.
 	setupPins();
 
 	// set up the buttons
 	setupButtons();
-
-	// initialize USB connections:
-	myMidi.begin();
-  Serial.begin(115200);  // (Baud rate is ignored on USB serial but Pico core requires it anyway)
-
-	// flash hello; this also gives 200ms for usb to stabilize:
-	// (TODO: runmode-specific flash?)
-	hello_boot();
 
 	readButtonsQuick();
   if (btn1pressed && btn2pressed && !(btn3pressed)) {
@@ -845,12 +878,15 @@ void setup() {
 	selectRunMode();
 	switch(runMode){
 		case RUNMODE_PLAY: 
+			hello_play();
 			setup_play();
 			break;
 		case RUNMODE_TEST:
+			hello_test();
 			setup_test();
 			break;
 		case RUNMODE_DEBUG:
+			hello_debug();
 			setup_debug();
 			break;
 		default:
@@ -1641,10 +1677,10 @@ void loop1_play(){
 //#define PITCH0 220 // tonic
 #define PITCH0 210 // tonic
 #define PITCH1 ( PITCH0 * 15 / 8 ) // 7th above tonic
-#define PITCH2 ( 2*PITCH0 * 3 / 2 ) // 5th above octave above tonic
-#define PITCH3 ( 4*PITCH0 * 5 / 4 ) // third above second octave above tonic
+#define PITCH2 ( PITCH0 * 3 ) // 5th above octave above tonic
+#define PITCH3 ( PITCH0 * 5 ) // third above second octave above tonic
 volatile unsigned long iPitch[4] = { PITCH0, PITCH1, PITCH2, PITCH3 };
-// actually sounds terrible ...
+// should be a pleasing major 7th chord.  Actually sounds terrible.
 
 volatile uint32_t sampleCursorInc[4];
 void loop1_test(){
@@ -1711,6 +1747,8 @@ void loop_test() {
 	static elapsedMillis ledTimer = 0;
 	static elapsedMillis chanSwitchTimer = 0;
 
+	static int imuSpoke = 0;
+
 	// calculation for led blinks: 
 	// the on-times will remain steady (LED_MIN_ON),
 	// the off-times will go to zero as approaching max, approach LED_TIMEDIFF x LED_MIN_ON as approaching min.
@@ -1729,6 +1767,9 @@ void loop_test() {
     imu_ready = false;
 		imu.readMotionSensor(ax, ay, az, gx, gy, gz);
 
+		// The IMU is alive and reporting data
+		imuSpoke++;
+
 		// Adjust pitch of test tones based on IMU data:
 		// p is base pitch, acceleration can alter that by +- one octave/g
 #define PITCHPOWER(p, a) ( p * pow( 2.0, (float)a / IMU_COUNT_PER_G) ) // exponent varies from 0.5 to 2.0 as accel varies from -1g to +1g 
@@ -1740,6 +1781,18 @@ void loop_test() {
 		
 		// notify core1 that pitches have been updated:
 		rp2040.fifo.push_nb(666);
+	}
+
+	// if we've seen this many IMU events, let's call it working.
+	if (imuSpoke == 10000){
+		Dbg_println("imu ok4u!");
+		Serial.flush();
+		delay(1000);//TEST
+		_settings.s.imuTested = true;
+		Dbg_println("here goes!");
+		Serial.flush();
+		delay(3000);//TEST
+		_settings.put();
 	}
 
 	while (ledTimer > 50) { // every 50ms
@@ -1789,16 +1842,13 @@ void loop_test() {
 		leds[4].stop();
 		leds[4].on();
 		rbTimer = 0;
-		Dbg_println("b4 fell");
 	} else if (btn4.rose())  {
 		leds[4].resume();
-		Dbg_println("b4 rose");
 	} else if (btn4pressed && rbTimer > LONG_HOLD) {
-		Dbg_println("b4 l8r");
 		rp2040.reboot();
 	}
 
-#define CHSWITCHTIME 125 //ms
+#define CHSWITCHTIME 175 //ms
 	// switch audio channels on & off.
 	static int switchPosition = 1;
 	if (chanSwitchTimer > 4* CHSWITCHTIME){
@@ -1825,14 +1875,33 @@ void loop_test() {
 		switchPosition = 2;
 	}
 
-	// animate the PI->PO pinset so we can test the connector somehow
-	 
-	// check commands
-	if (cmdTimer_ms > CMDTIME){
-		// read/handle serial commands
-		cmd_update();
-		cmdTimer_ms -= CMDTIME;
-	}
+/* 	// animate the PI->PO pinset so we can test the connector somehow */
+/* 	static int pogoLit = 0; */
+/* 	static elapsedMillis pogoSwitchTimer; */
+/* #define POGOSWTIME 250 //ms */
+/* 	if (pogoSwitchTimer > POGOSWTIME) { */
+/*  */
+/* 		// Only animate the reset pin if both side buttons are pressed. */
+/* 		// Only animate the other pins if either side button is pressed; */
+/* 		//if (BOTHPRESSED || (pogos[pogoLit].pin != PO_reset && EITHERPRESSED) ) */
+/* 			pogos[pogoLit].off(); */
+/*  */
+/* 		// wrap */
+/* 		if (++pogoLit == 6) */
+/* 			pogoLit = 0; */
+/*  */
+/* 		//if (BOTHPRESSED || (pogos[pogoLit].pin != PO_reset && EITHERPRESSED) ) */
+/* 			pogos[pogoLit].on(); */
+/*  */
+/* 		pogoSwitchTimer -= POGOSWTIME;  */
+/* 	} */
+/* 	  */
+/* 	// check commands */
+/* 	if (cmdTimer_ms > CMDTIME){ */
+/* 		// read/handle serial commands */
+/* 		cmd_update(); */
+/* 		cmdTimer_ms -= CMDTIME; */
+/* 	} */
 
 	// stats?
 	if (statsTimer_ms > STATSTIME){
@@ -1841,7 +1910,6 @@ void loop_test() {
 			Dbg_printf("acc %d, %d, %d, ", ax, ay, az);
 			Dbg_printf("pitches: %d, %d, %d, %d, ",iPitch[0],iPitch[1],iPitch[2],iPitch[3]);
 			Dbg_printf("cursorIncs: %u, %u, %u, %u, ",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
-			//Dbg_printf("cursorIncs: %x, %x, %x, %x, ",sampleCursorInc[0],sampleCursorInc[1],sampleCursorInc[2],sampleCursorInc[3]);
 			Dbg_print("led durations: ");
 			for (int i=1;i<=4;i++){
 				Dbg_print(testmodeLedScripts[i][1].duration);
